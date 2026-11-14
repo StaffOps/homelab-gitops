@@ -1,0 +1,147 @@
+{{- $c := index .Values "llm-raw" }}
+# API key (Vault homelab/llm: api-key). Every endpoint except /health requires it, /metrics included.
+- apiVersion: external-secrets.io/v1
+  kind: ExternalSecret
+  metadata:
+      name: llm-api-key
+  spec:
+      refreshInterval: 1h
+      secretStoreRef:
+          kind: ClusterSecretStore
+          name: vault
+      target:
+          name: llm-api-key
+      data:
+          - secretKey: api-key
+            remoteRef:
+                key: {{ .Values.vault.prefix }}/llm
+                property: api-key
+# HF cache (GGUF models). Not in the Velero backup list: models are re-downloadable.
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+      name: models
+  spec:
+      accessModes: [ReadWriteOnce]
+      storageClassName: {{ .Values.storageClass }}
+      resources:
+          requests:
+              storage: 20Gi
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+      name: llama
+  spec:
+      replicas: 1
+      strategy:
+          type: Recreate # one GPU: a rolling update would sit Pending
+      selector:
+          matchLabels:
+              app: llama
+      template:
+          metadata:
+              labels:
+                  app: llama
+          spec:
+              runtimeClassName: nvidia
+              automountServiceAccountToken: false
+              containers:
+                  - name: llama
+                    image: {{ $c.image }}
+                    args:
+                        - -hf
+                        - {{ $c.model }}
+                        - --host
+                        - 0.0.0.0
+                        - --port
+                        - "8080"
+                        - -ngl
+                        - "99"
+                        - -c
+                        - "{{ $c.contextSize }}"
+                        - --metrics
+                    env:
+                        - name: NVIDIA_DRIVER_CAPABILITIES
+                          value: all # Vulkan ICD needs more than compute,utility,graphics on driver 470
+                        - name: LLAMA_CACHE
+                          value: /models
+                        - name: LLAMA_API_KEY
+                          valueFrom:
+                              secretKeyRef:
+                                  name: llm-api-key
+                                  key: api-key
+                    ports:
+                        - name: http
+                          containerPort: 8080
+                    readinessProbe:
+                        httpGet:
+                            path: /health
+                            port: http
+                        periodSeconds: 10
+                    startupProbe: # first start downloads the model
+                        httpGet:
+                            path: /health
+                            port: http
+                        periodSeconds: 10
+                        failureThreshold: 60
+                    volumeMounts:
+                        - name: models
+                          mountPath: /models
+                    resources:
+                        requests:
+                            cpu: "1"
+                            memory: 2Gi
+                        limits:
+                            memory: 6Gi
+                            nvidia.com/gpu: 1
+              volumes:
+                  - name: models
+                    persistentVolumeClaim:
+                        claimName: models
+- apiVersion: v1
+  kind: Service
+  metadata:
+      name: llama
+      labels:
+          app: llama
+  spec:
+      selector:
+          app: llama
+      ports:
+          - name: http
+            port: 8080
+            targetPort: http
+            appProtocol: http
+- apiVersion: gateway.networking.k8s.io/v1
+  kind: HTTPRoute
+  metadata:
+      name: llm
+  spec:
+      parentRefs:
+          - name: {{ .Values.gateway.name }}
+            namespace: {{ .Values.gateway.namespace }}
+            sectionName: https
+      hostnames:
+          - llm.{{ .Values.domain }}
+      rules:
+          - backendRefs:
+                - name: llama
+                  port: 8080
+# llamacpp:* metrics; /metrics needs the API key as bearer token
+- apiVersion: monitoring.coreos.com/v1
+  kind: ServiceMonitor
+  metadata:
+      name: llama
+  spec:
+      selector:
+          matchLabels:
+              app: llama
+      endpoints:
+          - port: http
+            path: /metrics
+            interval: 15s
+            authorization:
+                type: Bearer
+                credentials:
+                    name: llm-api-key
+                    key: api-key

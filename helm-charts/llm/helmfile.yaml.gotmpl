@@ -1,0 +1,26 @@
+# llm: llama.cpp server (Vulkan backend) on the GT 740 at https://llm.<domain> (OpenAI-compatible API).
+# Kepler / CC 3.0: current CUDA builds don't support it, Vulkan 1.2 does. Validated: Qwen2.5-1.5B-Instruct
+# Q4_K_M fully offloaded (~1.2 GiB VRAM of 4), ~21 tok/s prompt, ~7.5 tok/s generation.
+repositories:
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - llm-raw:
+                  enabled: true
+                  version: 2.0.2
+                  # ghcr.io/ggml-org/llama.cpp:server-vulkan, build b12359 (no per-build tag is published)
+                  image: ghcr.io/ggml-org/llama.cpp:server-vulkan@sha256:784bb87c7b22cf8653322f3680f33e1fd013d122d817441d5d2fc6410dee68da
+                  model: Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M
+                  contextSize: 4096
+---
+releases:
+    - chart: bedag/raw
+      name: llm-raw
+      namespace: llm
+      condition: llm-raw.enabled
+      version: '{{ index .Values "llm-raw" "version" }}'
+      values:
+          - ./llm-raw/values.yaml.gotmpl

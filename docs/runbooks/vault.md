@@ -32,6 +32,7 @@ so `https://vault.staffops.space` still answers and Vault can also be unsealed f
 | `scripts/vault.sh put oidc argocd grafana vault hermes backstage` | Keycloak clients ([sso.md](sso.md)) |
 | `scripts/vault.sh put keycloak-automation client-secret` | Keycloak realm import Job ([sso.md](sso.md#automation-client-realm-import)) |
 | `scripts/vault.sh put mcp grafana-token argocd-token dependency-track-api-key` | MCP servers (Grafana service-account token, Argo CD account `mcp` token, DT API key of a VIEW_* team) |
+| `scripts/vault.sh put llm api-key` | llama.cpp server (`Authorization: Bearer <key>` on llm.staffops.space) |
 | `scripts/vault.sh put dependency-track kek` | Dependency-Track (`openssl rand -base64 32`; keep a copy: losing it loses the secrets DT stores) |
 | `scripts/vault.sh put velero access-key-id secret-access-key endpoint` | Velero (R2 API token, see [backup.md](backup.md)) |
 

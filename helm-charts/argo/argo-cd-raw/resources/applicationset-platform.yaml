@@ -108,6 +108,9 @@
                     - appName: mcp-servers
                       path: mcp-servers
                       namespace: mcp-servers
+                    - appName: llm
+                      path: llm
+                      namespace: llm
       template:
           metadata:
               name: '{{`{{ .appName }}`}}'
