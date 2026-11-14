@@ -1,0 +1,86 @@
+# prometheus-mcp-server: Prometheus HTTP API (instant/range queries, metric metadata, targets, rules, alerts,
+# TSDB cardinality stats). Read-only by allow-list: v0.18.0 registers delete_series, clean_tombstones,
+# snapshot, quit and reload by default, so only the read tools below are loaded (Prometheus also runs without
+# the admin API and lifecycle endpoints). Prometheus has no auth inside the cluster; the Gateway strips the
+# caller's Authorization header, so nothing is forwarded to Prometheus.
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+      name: prometheus-mcp
+  spec:
+      replicas: 1
+      selector:
+          matchLabels:
+              app: prometheus-mcp
+      template:
+          metadata:
+              labels:
+                  app: prometheus-mcp
+          spec:
+              automountServiceAccountToken: false
+              securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65532
+                  seccompProfile:
+                      type: RuntimeDefault
+              containers:
+                  - name: mcp
+                    image: {{ index .Values "mcp-servers-raw" "prometheusMcpImage" }}
+                    args:
+                        - --prometheus.url=http://kps-prometheus.monitoring:9090
+                        - --mcp.transport=http
+                        - --web.listen-address=:8080
+                        - --prometheus.truncation-limit=500 # cap rows returned to the LLM
+                        - --mcp.tools=alertmanagers
+                        - --mcp.tools=build_info
+                        - --mcp.tools=config
+                        - --mcp.tools=docs_list
+                        - --mcp.tools=docs_read
+                        - --mcp.tools=docs_search
+                        - --mcp.tools=exemplar_query
+                        - --mcp.tools=flags
+                        - --mcp.tools=healthy
+                        - --mcp.tools=label_names
+                        - --mcp.tools=label_values
+                        - --mcp.tools=list_alerts
+                        - --mcp.tools=list_rules
+                        - --mcp.tools=list_targets
+                        - --mcp.tools=metric_metadata
+                        - --mcp.tools=query
+                        - --mcp.tools=range_query
+                        - --mcp.tools=ready
+                        - --mcp.tools=runtime_info
+                        - --mcp.tools=series
+                        - --mcp.tools=targets_metadata
+                        - --mcp.tools=tsdb_stats
+                        - --mcp.tools=wal_replay_status
+                    ports:
+                        - name: http
+                          containerPort: 8080
+                    readinessProbe:
+                        httpGet:
+                            path: / # v0.18.0 has no /-/ready yet (added on main)
+                            port: http
+                    securityContext:
+                        allowPrivilegeEscalation: false
+                        readOnlyRootFilesystem: true
+                        capabilities:
+                            drop: [ALL]
+                    resources:
+                        requests:
+                            cpu: 10m
+                            memory: 32Mi
+                        limits:
+                            memory: 128Mi
+- apiVersion: v1
+  kind: Service
+  metadata:
+      name: prometheus-mcp
+  spec:
+      selector:
+          app: prometheus-mcp
+      ports:
+          - name: http
+            port: 8080
+            targetPort: http
+            appProtocol: http

@@ -11,7 +11,7 @@
       hostnames:
           - mcp.{{ .Values.domain }}
       rules:
-          {{- range $name, $b := dict "kubernetes" (dict "svc" "kubernetes-mcp" "port" 8080 "path" "/mcp") "grafana" (dict "svc" "grafana-mcp" "port" 8000 "path" "/mcp") "argocd" (dict "svc" "argocd-mcp" "port" 3000 "path" "/mcp") "dependency-track" (dict "svc" "dependency-track-mcp" "port" 8080 "path" "/mcp") "keycloak" (dict "svc" "keycloak-mcp" "port" 8000 "path" "/mcp/") }}
+          {{- range $name, $b := dict "kubernetes" (dict "svc" "kubernetes-mcp" "port" 8080 "path" "/mcp") "grafana" (dict "svc" "grafana-mcp" "port" 8000 "path" "/mcp") "argocd" (dict "svc" "argocd-mcp" "port" 3000 "path" "/mcp") "dependency-track" (dict "svc" "dependency-track-mcp" "port" 8080 "path" "/mcp") "keycloak" (dict "svc" "keycloak-mcp" "port" 8000 "path" "/mcp/") "prometheus" (dict "svc" "prometheus-mcp" "port" 8080 "path" "/mcp") }}
           - matches:
                 - path:
                       type: PathPrefix
