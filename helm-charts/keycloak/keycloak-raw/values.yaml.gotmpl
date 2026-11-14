@@ -76,17 +76,17 @@ resources:
           dataFrom:
               - extract:
                     key: {{ .Values.vault.prefix }}/oidc
-    # Realm "homelab": group admins, scope "groups" (claim groups), one confidential client per app.
+    # Realm keycloak.realm (environment.yaml): group admins, scope "groups" (claim groups), one confidential client per app.
     # Users are created by hand in the admin console and added to the group admins.
     - apiVersion: v1
       kind: ConfigMap
       metadata:
-          name: keycloak-realm-homelab
+          name: keycloak-realm
       data:
-          homelab.yaml: |
-              realm: homelab
+          realm.yaml: |
+              realm: {{ .Values.keycloak.realm }}
               enabled: true
-              displayName: homelab
+              displayName: {{ .Values.keycloak.realm }}
               loginWithEmailAllowed: true
               groups:
                   - name: admins
@@ -212,4 +212,4 @@ resources:
                   volumes:
                       - name: realm
                         configMap:
-                            name: keycloak-realm-homelab
+                            name: keycloak-realm

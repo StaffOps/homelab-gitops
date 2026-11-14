@@ -7,7 +7,7 @@
 #   scripts/vault.sh unseal              after every restart of vault-0 (Vault starts sealed)
 #   scripts/vault.sh configure           KV v2 mount, Kubernetes auth, policy + role for External Secrets
 #   scripts/vault.sh autounseal-secret   Secret vault-unseal (unseal key) for the auto-unseal CronJob
-#   scripts/vault.sh oidc                login with Keycloak (realm homelab, client vault): group admins → policy admin
+#   scripts/vault.sh oidc                login with Keycloak (realm keycloak.realm in environment.yaml, client vault): group admins → policy admin
 #   scripts/vault.sh put <name> k1 k2…   prompt for each key (hidden) and write secret/<prefix>/<name>
 #
 # Keys and root token: $VAULT_INIT_FILE (default ~/.config/homelab/vault-init.json, mode 600). Keep a copy
@@ -107,7 +107,8 @@ case "$cmd" in
         # Needs the Keycloak realm (keycloak app synced) and secret/<prefix>/oidc with key "vault"
         [ "$(sealed)" = "false" ] || fail "Vault is sealed — run unseal first"
         domain="$(yq '.domain' "$(dirname "$0")/../helm-charts/environment.yaml")"
-        issuer="https://keycloak.$domain/realms/homelab"
+        realm="$(yq '.keycloak.realm' "$(dirname "$0")/../helm-charts/environment.yaml")"
+        issuer="https://keycloak.$domain/realms/$realm"
         : | with_token "
             set -e
             secret=\$(vault kv get -field=vault $KV_MOUNT/$PREFIX/oidc)

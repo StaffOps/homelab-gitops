@@ -21,7 +21,8 @@ Gateway API CRDs (`bootstrap.sh`), Istio ambient and the rest of the platform.
 
 ## Consequences
 
-- One node: no replication; data on `local-path` lives under `/opt/local-path-provisioner` on the node disk.
+- One node: no replication; data on `local-path` lives under `/opt/local-path-provisioner` on the node disk, as
+  `local` PVs (not hostPath) so Velero can back them up.
 - No PodDisruptionBudgets and 1 replica everywhere.
 - Istio installs with the default platform (no `global.platform`); istio-cni chains onto Calico.
 - kube-prometheus-stack does not scrape controller-manager, scheduler, etcd or kube-proxy: kubeadm binds their

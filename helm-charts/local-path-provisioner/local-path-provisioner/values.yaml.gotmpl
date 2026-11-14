@@ -6,6 +6,8 @@ helperImage:
 storageClass:
     name: {{ .Values.storageClass }}
     defaultClass: true # PVCs without storageClassName land here
+    # "local" PVs (with node affinity) instead of hostPath: Velero's file-system backup skips hostPath volumes
+    defaultVolumeType: local
     reclaimPolicy: Delete
     volumeBindingMode: WaitForFirstConsumer
 nodePathMap:

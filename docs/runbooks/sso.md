@@ -1,6 +1,6 @@
 # Single sign-on (Keycloak)
 
-Keycloak (`https://keycloak.staffops.space`) holds the realm `homelab`, applied by the PostSync Job
+Keycloak (`https://keycloak.staffops.space`) holds the realm `staffops` (`keycloak.realm` in `helm-charts/environment.yaml`), applied by the PostSync Job
 `keycloak/keycloak-realm-import` (keycloak-config-cli, `helm-charts/keycloak/keycloak-raw`) after every sync of
 the `keycloak` app. It defines the group `admins`, the client scope `groups` (claim `groups`) and one
 confidential client per app. Client secrets: Vault `homelab/oidc` (keys `argocd`, `grafana`, `vault`).
@@ -17,7 +17,7 @@ Local logins stay as break-glass: Argo CD `admin`, Grafana `admin` (Vault `homel
 
 1. Keycloak admin console (`https://keycloak.staffops.space/admin`, bootstrap admin from Vault
    `homelab/keycloak`): create a permanent admin in realm `master`, then delete the temporary one.
-2. Realm `homelab` → Users → create your user (email verified, set a password) → Groups → join `admins`.
+2. Realm `staffops` → Users → create your user (email verified, set a password) → Groups → join `admins`.
 3. `scripts/vault.sh oidc` (once; idempotent) — Vault's OIDC auth method, policy `admin`, group mapping.
 
 ## Rotate a client secret

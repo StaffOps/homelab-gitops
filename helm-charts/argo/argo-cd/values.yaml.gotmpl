@@ -14,11 +14,11 @@ crds:
 configs:
     cm:
         admin.enabled: true # local admin kept as break-glass (Keycloak down)
-        # Login with Keycloak (realm homelab, client argocd); the secret comes from Secret argocd-oidc
+        # Login with Keycloak (realm keycloak.realm, client argocd); the secret comes from Secret argocd-oidc
         # (ExternalSecret in argo-cd-raw, label part-of=argocd so Argo CD can reference it)
         oidc.config: |
             name: Keycloak
-            issuer: https://keycloak.{{ .Values.domain }}/realms/homelab
+            issuer: https://keycloak.{{ .Values.domain }}/realms/{{ .Values.keycloak.realm }}
             clientID: argocd
             clientSecret: $argocd-oidc:clientSecret
             requestedScopes:

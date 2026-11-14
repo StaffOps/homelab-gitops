@@ -32,3 +32,6 @@ backup:
         - vault
         - keycloak
         - dependency-track
+# Keycloak realm that holds the lab's users and OIDC clients (Argo CD, Grafana, Vault)
+keycloak:
+    realm: staffops
