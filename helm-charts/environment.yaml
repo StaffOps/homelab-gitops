@@ -35,3 +35,10 @@ backup:
 # Keycloak realm that holds the lab's users and OIDC clients (Argo CD, Grafana, Vault)
 keycloak:
     realm: staffops
+    # Tools that log in through Keycloak. Each gets groups /<tool>/admin and /<tool>/viewer in the realm
+    # (claim "groups" carries the full path); the tool maps them to its admin and read-only roles.
+    apps:
+        - argocd
+        - grafana
+        - vault
+        - dependency-track

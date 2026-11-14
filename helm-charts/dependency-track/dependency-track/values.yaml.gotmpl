@@ -22,6 +22,25 @@ apiServer:
     topology: monolith
     serviceMonitor:
         enabled: true
+    # Login with Keycloak (realm keycloak.realm, public client dependency-track). Users are created on first
+    # login and their teams follow the "groups" claim: map OIDC groups /dependency-track/admin and
+    # /dependency-track/viewer to teams once in the UI (Administration → Access Management → OpenID Connect
+    # Groups), see docs/runbooks/sso.md.
+    extraEnv:
+        - name: DT_OIDC_ENABLED
+          value: "true"
+        - name: DT_OIDC_ISSUER
+          value: https://keycloak.{{ .Values.domain }}/realms/{{ .Values.keycloak.realm }}
+        - name: DT_OIDC_CLIENT_ID
+          value: dependency-track
+        - name: DT_OIDC_USERNAME_CLAIM
+          value: preferred_username
+        - name: DT_OIDC_USER_PROVISIONING
+          value: "true"
+        - name: DT_OIDC_TEAM_SYNCHRONIZATION
+          value: "true"
+        - name: DT_OIDC_TEAMS_CLAIM
+          value: groups
     web:
         replicaCount: 1
         resources:
@@ -33,6 +52,17 @@ apiServer:
 frontend:
     enabled: true
     apiBaseUrl: https://dependency-track.{{ .Values.domain }}
+    extraEnv:
+        - name: OIDC_ISSUER
+          value: https://keycloak.{{ .Values.domain }}/realms/{{ .Values.keycloak.realm }}
+        - name: OIDC_CLIENT_ID
+          value: dependency-track
+        - name: OIDC_SCOPE
+          value: openid profile email groups
+        - name: OIDC_FLOW
+          value: code
+        - name: OIDC_LOGIN_BUTTON_TEXT
+          value: Login with Keycloak
     resources:
         requests:
             cpu: 10m

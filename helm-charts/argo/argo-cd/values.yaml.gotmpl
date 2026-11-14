@@ -21,6 +21,7 @@ configs:
             issuer: https://keycloak.{{ .Values.domain }}/realms/{{ .Values.keycloak.realm }}
             clientID: argocd
             clientSecret: $argocd-oidc:clientSecret
+            enablePKCEAuthentication: true # the Keycloak client requires PKCE (S256)
             requestedScopes:
                 - openid
                 - profile
@@ -65,12 +66,13 @@ configs:
                   - CertificateSigningRequest
               clusters:
                   - '*'
-    # Keycloak group admins → role:admin; everyone else who logs in gets nothing
+    # Keycloak groups /argocd/admin → role:admin, /argocd/viewer → role:readonly; anyone else gets nothing
     rbac:
         policy.default: ""
         scopes: "[groups]"
         policy.csv: |
-            g, admins, role:admin
+            g, /argocd/admin, role:admin
+            g, /argocd/viewer, role:readonly
     params:
         create: true
         server.insecure: true # TLS terminates at the Gateway

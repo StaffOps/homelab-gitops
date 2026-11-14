@@ -7,7 +7,7 @@
 #   scripts/vault.sh unseal              after every restart of vault-0 (Vault starts sealed)
 #   scripts/vault.sh configure           KV v2 mount, Kubernetes auth, policy + role for External Secrets
 #   scripts/vault.sh autounseal-secret   Secret vault-unseal (unseal key) for the auto-unseal CronJob
-#   scripts/vault.sh oidc                login with Keycloak (realm keycloak.realm in environment.yaml, client vault): group admins → policy admin
+#   scripts/vault.sh oidc                login with Keycloak (realm keycloak.realm in environment.yaml, client vault): /vault/admin → admin, /vault/viewer → viewer
 #   scripts/vault.sh put <name> k1 k2…   prompt for each key (hidden) and write secret/<prefix>/<name>
 #
 # Keys and root token: $VAULT_INIT_FILE (default ~/.config/homelab/vault-init.json, mode 600). Keep a copy
@@ -121,13 +121,19 @@ case "$cmd" in
                 allowed_redirect_uris=http://localhost:8250/oidc/callback >/dev/null
             printf '%s\n' 'path \"*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\", \"sudo\"] }' |
                 vault policy write admin - >/dev/null
-            vault write identity/group name=admins type=external policies=admin >/dev/null
-            gid=\$(vault read -field=id identity/group/name/admins)
+            printf '%s\n' 'path \"*\" { capabilities = [\"read\", \"list\"] }' | vault policy write viewer - >/dev/null
             accessor=\$(vault read -field=accessor sys/auth/oidc)
-            vault read -field=alias identity/group/name/admins 2>/dev/null | grep -q \"\$accessor\" ||
-                vault write identity/group-alias name=admins mount_accessor=\$accessor canonical_id=\$gid >/dev/null
+            # Keycloak groups /vault/admin and /vault/viewer (claim groups, full path) → external groups
+            for role in admin viewer; do
+                vault write identity/group name=vault-\$role type=external policies=\$role >/dev/null
+                gid=\$(vault read -field=id identity/group/name/vault-\$role)
+                vault read -field=alias identity/group/name/vault-\$role 2>/dev/null | grep -q \"\$accessor\" ||
+                    vault write identity/group-alias name=/vault/\$role mount_accessor=\$accessor canonical_id=\$gid >/dev/null
+            done
+            # group of the previous model (Keycloak group admins)
+            vault delete identity/group/name/admins >/dev/null 2>&1 || true
         "
-        ok "OIDC login via $issuer (client vault); Keycloak group admins → policy admin"
+        ok "OIDC login via $issuer (client vault); /vault/admin → policy admin, /vault/viewer → policy viewer"
         echo "  UI: https://vault.$domain → method OIDC, role default.  CLI: vault login -method=oidc"
         ;;
     put)

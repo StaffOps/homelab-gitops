@@ -76,8 +76,9 @@ resources:
           dataFrom:
               - extract:
                     key: {{ .Values.vault.prefix }}/oidc
-    # Realm keycloak.realm (environment.yaml): group admins, scope "groups" (claim groups), one confidential client per app.
-    # Users are created by hand in the admin console and added to the group admins.
+    # Realm keycloak.realm (environment.yaml): groups /<tool>/admin and /<tool>/viewer for every tool in
+    # keycloak.apps, scope "groups" (claim groups, full path), one client per app. Users are created by hand in
+    # the admin console and joined to the groups of the tools they need.
     - apiVersion: v1
       kind: ConfigMap
       metadata:
@@ -89,7 +90,12 @@ resources:
               displayName: {{ .Values.keycloak.realm }}
               loginWithEmailAllowed: true
               groups:
-                  - name: admins
+                  {{- range .Values.keycloak.apps }}
+                  - name: {{ . }}
+                    subGroups:
+                        - name: admin
+                        - name: viewer
+                  {{- end }}
               clientScopes:
                   - name: groups
                     protocol: openid-connect
@@ -102,7 +108,7 @@ resources:
                           protocolMapper: oidc-group-membership-mapper
                           config:
                               claim.name: groups
-                              full.path: "false"
+                              full.path: "true" # /argocd/admin, /grafana/viewer, ...
                               id.token.claim: "true"
                               access.token.claim: "true"
                               userinfo.token.claim: "true"
@@ -135,6 +141,30 @@ resources:
                         - roles
                         - groups
                   {{- end }}
+                  # Dependency-Track: the frontend (browser) runs the login, so a public client with PKCE
+                  - clientId: dependency-track
+                    name: dependency-track
+                    protocol: openid-connect
+                    publicClient: true
+                    standardFlowEnabled: true
+                    directAccessGrantsEnabled: false
+                    rootUrl: https://dependency-track.{{ $d }}
+                    redirectUris:
+                        - https://dependency-track.{{ $d }}/static/oidc-callback.html
+                        - https://dependency-track.{{ $d }}/static/oidc-callback.html*
+                    webOrigins:
+                        - https://dependency-track.{{ $d }}
+                    attributes:
+                        post.logout.redirect.uris: https://dependency-track.{{ $d }}/*
+                        pkce.code.challenge.method: S256
+                    defaultClientScopes:
+                        - web-origins
+                        - acr
+                        - basic
+                        - profile
+                        - email
+                        - roles
+                        - groups
     # Applies the realm after every sync of this app (Keycloak Healthy first). Never deletes objects it does
     # not list (managed: no-delete), so changes made in the console survive.
     - apiVersion: batch/v1

@@ -146,7 +146,7 @@ grafana:
     grafana.ini:
         server:
             root_url: https://grafana.{{ .Values.domain }}
-        # Login with Keycloak (realm keycloak.realm, client grafana); group admins → Grafana Admin, others Viewer
+        # Login with Keycloak (realm keycloak.realm, client grafana); groups /grafana/admin → Admin, /grafana/viewer → Viewer, others denied
         auth.generic_oauth:
             enabled: true
             name: Keycloak
@@ -159,7 +159,8 @@ grafana:
             signout_redirect_url: https://keycloak.{{ .Values.domain }}/realms/{{ .Values.keycloak.realm }}/protocol/openid-connect/logout?post_logout_redirect_uri=https%3A%2F%2Fgrafana.{{ .Values.domain }}%2Flogin
             use_pkce: true
             login_attribute_path: preferred_username
-            role_attribute_path: contains(groups[*], 'admins') && 'Admin' || 'Viewer'
+            role_attribute_path: contains(groups[*], '/grafana/admin') && 'Admin' || contains(groups[*], '/grafana/viewer') && 'Viewer'
+            role_attribute_strict: true # no matching group → login refused
             allow_assign_grafana_admin: true
         analytics:
             check_for_updates: false
