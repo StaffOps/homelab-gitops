@@ -2,11 +2,14 @@
 # the node advertises nvidia.com/gpu. GeForce GT 740 (Kepler, CC 3.0), host driver 470 (CUDA <= 11.4): the
 # GPU Operator does not support it, the device plugin only needs NVML. Workloads use
 # runtimeClassName: nvidia + resources.limits nvidia.com/gpu: 1.
+# nvidia-gpu-exporter: GPU metrics from nvidia-smi (DCGM exporter does not support Kepler / driver 470).
 repositories:
     - name: nvdp
       url: https://nvidia.github.io/k8s-device-plugin
     - name: bedag
       url: https://bedag.github.io/helm-charts
+    - name: nvidia-gpu-exporter
+      url: https://utkuozdemir.github.io/nvidia_gpu_exporter
 environments:
     default:
         values:
@@ -17,6 +20,9 @@ environments:
             - nvidia-device-plugin-raw:
                   enabled: true
                   version: 2.0.2
+            - nvidia-gpu-exporter:
+                  enabled: true
+                  version: 2.18.0 # nvidia_gpu_exporter 1.18.0
 ---
 templates:
     default: &default
@@ -33,6 +39,12 @@ releases:
     - chart: nvdp/nvidia-device-plugin
       name: nvidia-device-plugin
       condition: nvidia-device-plugin.enabled
+      <<: *default
+      needs:
+          - nvidia-device-plugin/nvidia-device-plugin-raw
+    - chart: nvidia-gpu-exporter/nvidia-gpu-exporter
+      name: nvidia-gpu-exporter
+      condition: nvidia-gpu-exporter.enabled
       <<: *default
       needs:
           - nvidia-device-plugin/nvidia-device-plugin-raw

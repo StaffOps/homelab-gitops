@@ -15,6 +15,14 @@ extraArgs:
     # Host header check (DNS-rebinding protection): requests arrive through the Gateway as mcp.<domain>
     - --allowed-hosts
     - mcp.{{ .Values.domain }}
+# Prometheus metrics (--metrics) on their own listener (--metrics-address=:9090, Service port "metrics"): the
+# MCP port enforces the Host check above, so a scrape by pod IP there gets 403. The HTTPRoute only targets the
+# MCP port, so metrics are not reachable through the Gateway.
+metrics:
+    enabled: true
+    port: 9090
+serviceMonitor:
+    enabled: true
 resources:
     requests:
         cpu: 10m

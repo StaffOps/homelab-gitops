@@ -1,0 +1,27 @@
+fullnameOverride: nvidia-gpu-exporter
+# Plain image = exec backend (runs the host's nvidia-smi, injected by the NVIDIA runtime). The -nvml flavor
+# is the upstream recommendation but targets current drivers; nvidia-smi is the safe path on Kepler / 470.
+image:
+    tag: 1.18.0
+# GPU access without allocating it: NO nvidia.com/gpu request (the device plugin hands out the only GPU
+# exclusively, to llm). The nvidia runtime + NVIDIA_VISIBLE_DEVICES=all / NVIDIA_DRIVER_CAPABILITIES=utility
+# (chart defaults, set explicitly) inject /dev/nvidia* and nvidia-smi; utility = nvidia-smi/NVML only.
+runtimeClassName: nvidia
+nvidiaVisibleDevices: all
+nvidiaDriverCapabilities: utility
+nodeSelector:
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+# Chart defaults kept: uid 65534 (image USER), runAsNonRoot, seccomp RuntimeDefault, no privilege escalation,
+# read-only root filesystem, all capabilities dropped, no hostPID/hostNetwork, no SA token.
+serviceMonitor:
+    enabled: true
+    interval: 30s
+prometheusRule:
+    enabled: true # collection failing/stale/slow, thermal/power-brake throttling, retired pages
+resources:
+    requests:
+        cpu: 10m
+        memory: 32Mi
+    limits:
+        memory: 64Mi

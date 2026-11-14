@@ -1,0 +1,30 @@
+# Prometheus scraping of the MCP servers that expose metrics on their MCP port (no Host check there).
+# PodMonitors: the raw Services carry only the chart's shared labels, the pods have app=<name>.
+#   kubernetes-mcp  k8s_mcp_* (HTTP requests, tool calls/duration)
+#   prometheus-mcp  prom_mcp_* (tool calls, Prometheus API calls) + Go runtime
+# grafana-mcp: ServiceMonitor from its chart (separate metrics port). No metrics endpoint: argocd-mcp,
+# dependency-track-mcp, keycloak-mcp (404); kubectl-mcp serves a stub (prometheus_client not in the image).
+- apiVersion: monitoring.coreos.com/v1
+  kind: PodMonitor
+  metadata:
+      name: kubernetes-mcp
+  spec:
+      selector:
+          matchLabels:
+              app: kubernetes-mcp
+      podMetricsEndpoints:
+          - port: http
+            path: /metrics
+            interval: 30s
+- apiVersion: monitoring.coreos.com/v1
+  kind: PodMonitor
+  metadata:
+      name: prometheus-mcp
+  spec:
+      selector:
+          matchLabels:
+              app: prometheus-mcp
+      podMetricsEndpoints:
+          - port: http
+            path: /metrics
+            interval: 30s

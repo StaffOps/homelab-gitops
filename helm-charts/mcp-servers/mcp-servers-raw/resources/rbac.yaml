@@ -13,7 +13,8 @@
       clusterRoleSelectors:
           - matchLabels:
                 homelab.rbac/aggregate-to-mcp-read: "true"
-  rules: [] # filled by the aggregation controller
+  # no "rules" here: the aggregation controller fills them, and a declared empty list would make Argo CD
+  # report drift and keep wiping them
 - apiVersion: rbac.authorization.k8s.io/v1
   kind: ClusterRole
   metadata:
