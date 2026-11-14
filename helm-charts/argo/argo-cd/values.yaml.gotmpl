@@ -106,10 +106,10 @@ controller:
     replicas: 1
     resources:
         requests:
-            cpu: 250m
-            memory: 1Gi
+            cpu: 400m
+            memory: 1536Mi
         limits:
-            memory: 2Gi # OOMKilled at 1Gi with ~20 apps
+            memory: 3Gi # OOMKilled at 1Gi with ~20 apps
     metrics:
         enabled: true
         serviceMonitor:

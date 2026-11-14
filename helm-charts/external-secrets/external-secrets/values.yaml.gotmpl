@@ -15,14 +15,14 @@ resources:
 webhook:
     resources:
         requests:
-            cpu: 25m
-            memory: 64Mi
-        limits:
-            memory: 128Mi
-certController:
-    resources:
-        requests:
-            cpu: 25m
+            cpu: 10m
             memory: 96Mi
         limits:
             memory: 192Mi
+certController:
+    resources:
+        requests:
+            cpu: 10m
+            memory: 256Mi
+        limits:
+            memory: 512Mi

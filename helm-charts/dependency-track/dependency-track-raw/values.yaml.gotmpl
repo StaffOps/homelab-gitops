@@ -17,10 +17,10 @@ resources:
               enablePodMonitor: true
           resources:
               requests:
-                  cpu: 50m
-                  memory: 256Mi
-              limits:
+                  cpu: 250m
                   memory: 1Gi
+              limits:
+                  memory: 2Gi
     # KEK that encrypts the secrets Dependency-Track stores in its database (Vault homelab/dependency-track: kek,
     # a base64 32-byte key: openssl rand -base64 32). Losing it makes those stored secrets unreadable.
     - apiVersion: external-secrets.io/v1

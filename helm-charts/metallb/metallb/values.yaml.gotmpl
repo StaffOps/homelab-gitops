@@ -7,19 +7,22 @@ prometheus:
     rbacPrometheus: false
     serviceAccount: ""
     namespace: ""
+# L2 only: no BGP backend (frr-k8s would add a DaemonSet of 6 containers)
+frrk8s:
+    enabled: false
 controller:
     resources:
         requests:
-            cpu: 25m
-            memory: 64Mi
-        limits:
+            cpu: 10m
             memory: 128Mi
+        limits:
+            memory: 256Mi
 speaker:
     frr:
         enabled: false # L2 only
     resources:
         requests:
-            cpu: 25m
-            memory: 64Mi
+            cpu: 10m
+            memory: 96Mi
         limits:
-            memory: 128Mi
+            memory: 192Mi

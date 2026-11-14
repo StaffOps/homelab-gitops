@@ -2,18 +2,43 @@ fullnameOverride: kyverno
 # Single node: one replica per controller
 admissionController:
     replicas: 1
+    container:
+        resources:
+            requests:
+                cpu: 20m
+                memory: 256Mi
+            limits:
+                memory: 512Mi
     serviceMonitor:
         enabled: true
 backgroundController:
     replicas: 1
+    resources:
+        requests:
+            cpu: 10m
+            memory: 160Mi
+        limits:
+            memory: 320Mi
     serviceMonitor:
         enabled: true
 cleanupController:
     replicas: 1
+    resources:
+        requests:
+            cpu: 10m
+            memory: 160Mi
+        limits:
+            memory: 320Mi
     serviceMonitor:
         enabled: true
 reportsController:
     replicas: 1
+    resources:
+        requests:
+            cpu: 200m
+            memory: 160Mi
+        limits:
+            memory: 320Mi
     serviceMonitor:
         enabled: true
 grafana:

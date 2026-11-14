@@ -1,2 +1,5 @@
 podSecurityStandard: baseline
 validationFailureAction: Audit
+# Audit-only policies must never block admission: with Fail, nothing could be created while Kyverno is down
+# (e.g. right after a node reboot, before its pods are Ready).
+failurePolicy: Ignore

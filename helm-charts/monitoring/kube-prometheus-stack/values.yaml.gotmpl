@@ -24,6 +24,14 @@ defaultRules:
         etcd: false
 prometheusOperator:
     fullnameOverride: prometheus-operator
+    # config-reloader sidecar of Prometheus and Alertmanager
+    prometheusConfigReloader:
+        resources:
+            requests:
+                cpu: 5m
+                memory: 32Mi
+            limits:
+                memory: 64Mi
     resources:
         requests:
             cpu: 50m
@@ -60,10 +68,10 @@ prometheus:
         externalUrl: https://prometheus.{{ .Values.domain }}
         resources:
             requests:
-                cpu: 200m
-                memory: 1Gi
+                cpu: 100m
+                memory: 1536Mi
             limits:
-                memory: 3Gi
+                memory: 4Gi
         storageSpec:
             volumeClaimTemplate:
                 spec:
@@ -78,7 +86,7 @@ alertmanager:
         resources:
             requests:
                 cpu: 10m
-                memory: 32Mi
+                memory: 64Mi
             limits:
                 memory: 128Mi
         storage:
@@ -159,17 +167,25 @@ grafana:
     resources:
         requests:
             cpu: 50m
-            memory: 192Mi
+            memory: 384Mi
         limits:
-            memory: 512Mi
+            memory: 768Mi
+    # dashboard/datasource sidecars (k8s-sidecar)
+    sidecar:
+        resources:
+            requests:
+                cpu: 10m
+                memory: 96Mi
+            limits:
+                memory: 192Mi
 kube-state-metrics:
     fullnameOverride: kube-state-metrics
     resources:
         requests:
             cpu: 10m
-            memory: 64Mi
+            memory: 96Mi
         limits:
-            memory: 128Mi
+            memory: 192Mi
 prometheus-node-exporter:
     fullnameOverride: node-exporter
     resources:

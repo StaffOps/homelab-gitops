@@ -21,8 +21,8 @@
                     key: token
       resources:
           requests:
-              cpu: 100m
-              memory: 256Mi
+              cpu: 20m
+              memory: 320Mi
           limits:
               memory: 1Gi
       observability:

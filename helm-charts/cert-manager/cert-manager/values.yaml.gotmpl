@@ -11,10 +11,10 @@ extraArgs:
     - --dns01-recursive-nameservers=1.1.1.1:53,8.8.8.8:53
 resources:
     requests:
-        cpu: 25m
-        memory: 64Mi
+        cpu: 10m
+        memory: 128Mi
     limits:
-        memory: 192Mi
+        memory: 256Mi
 prometheus:
     enabled: true
     servicemonitor:
@@ -23,13 +23,13 @@ webhook:
     resources:
         requests:
             cpu: 10m
-            memory: 32Mi
+            memory: 96Mi
         limits:
-            memory: 64Mi
+            memory: 192Mi
 cainjector:
     resources:
         requests:
             cpu: 10m
-            memory: 64Mi
-        limits:
             memory: 192Mi
+        limits:
+            memory: 384Mi

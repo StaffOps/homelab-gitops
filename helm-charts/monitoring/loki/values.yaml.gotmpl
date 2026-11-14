@@ -28,6 +28,12 @@ loki:
         delete_request_store: filesystem
 singleBinary:
     replicas: 1
+    resources:
+        requests:
+            cpu: 50m
+            memory: 384Mi
+        limits:
+            memory: 1Gi
     persistence:
         enabled: true
         storageClass: {{ .Values.storageClass }}
@@ -58,3 +64,11 @@ monitoring:
         enabled: true
     dashboards:
         enabled: true
+# rules sidecar (k8s-sidecar)
+sidecar:
+    resources:
+        requests:
+            cpu: 10m
+            memory: 128Mi
+        limits:
+            memory: 256Mi
