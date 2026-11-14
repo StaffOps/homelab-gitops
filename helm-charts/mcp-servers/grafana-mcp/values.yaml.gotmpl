@@ -8,6 +8,9 @@ disableWrite: true
 extraArgs:
     - -t
     - streamable-http
+    # Host header check (DNS-rebinding protection): requests arrive through the Gateway as mcp.<domain>
+    - --allowed-hosts
+    - mcp.{{ .Values.domain }}
 resources:
     requests:
         cpu: 10m

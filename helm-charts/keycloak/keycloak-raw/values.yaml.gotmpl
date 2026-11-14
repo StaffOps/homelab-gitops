@@ -202,6 +202,10 @@ resources:
                         - profile
                         - roles
                         - groups
+                        {{- if eq $id "keycloak-mcp" }}
+                        # Keycloak 26.8.2+: the Admin REST API only accepts tokens carrying this scope
+                        - kc-admin-api
+                        {{- end }}
                   {{- end }}
               # Service-account users of those clients: read access to the MCP servers
               users:

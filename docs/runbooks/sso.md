@@ -34,6 +34,9 @@ as a person. Create it once in the admin console:
    Tab *Advanced* → *OpenID Connect Compatibility Modes* → **Use refresh tokens for client credentials grant: On**
    → Save. Without it Keycloak 26.8 issues the token on a transient session that its own admin API rejects
    (401, introspection `active:false`).
+   Tab *Client scopes* → Add client scope → `kc-admin-api` → Add → **Default**. Since Keycloak 26.8.2 the
+   Admin REST API answers 401 to any token without this scope (only `admin-cli` and `security-admin-console`
+   get it on upgrade).
 3. Tab *Credentials* → copy the client secret →
    `scripts/vault.sh put keycloak-automation client-secret`.
 
