@@ -1,0 +1,54 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# Every Calico component exports every Calico metric family (zero-valued where unused): always filter on job.
+groups:
+    - name: calico
+      rules:
+          - alert: CalicoFelixNotInSync
+            # 1 = waiting for datastore, 2 = resync in progress, 3 = in sync
+            expr: felix_resync_state{job="calico-felix"} != 3
+            for: 15m
+            labels:
+                severity: warning
+            annotations:
+                summary: Felix on {{ $labels.pod }} is not in sync with the datastore (state {{ $value }})
+                description: Policy and routes on the node may be stale. Check calico-node logs and Typha.
+          - alert: CalicoFelixDataplaneFailures
+            expr: increase(felix_int_dataplane_failures{job="calico-felix"}[15m]) > 0
+            for: 15m
+            labels:
+                severity: warning
+            annotations:
+                summary: Felix on {{ $labels.pod }} keeps failing to program the dataplane
+                description: Felix retries failed dataplane updates; persistent failures mean policy/routes are not applied. Check calico-node logs.
+          - alert: CalicoFelixIptablesRestoreErrors
+            expr: increase(felix_iptables_restore_errors{job="calico-felix"}[15m]) > 0
+            for: 15m
+            labels:
+                severity: warning
+            annotations:
+                summary: iptables-restore keeps failing in Felix on {{ $labels.pod }}
+          - alert: CalicoTyphaNoStreamingClients
+            expr: sum(typha_connections_streaming{job="calico-typha"}) == 0
+            for: 10m
+            labels:
+                severity: warning
+            annotations:
+                summary: No Felix is streaming from Typha
+                description: Felix gets datastore updates only through Typha; with no client the node's policy goes stale.
+          - alert: CalicoIPPoolNearlyFull
+            expr: |
+                sum by (ippool) (ipam_allocations_in_use{job="calico-kube-controllers"})
+                  / sum by (ippool) (ipam_ippool_size{job="calico-kube-controllers"}) > 0.9
+            for: 15m
+            labels:
+                severity: warning
+            annotations:
+                summary: Calico IP pool {{ $labels.ippool }} is {{ $value | humanizePercentage }} allocated
+          - alert: TigeraOperatorComponentDegraded
+            expr: tigera_operator_component_status{job="tigera-operator", condition="Degraded"} == 1
+            for: 15m
+            labels:
+                severity: warning
+            annotations:
+                summary: tigera-operator reports {{ $labels.component }} Degraded
+                description: See `kubectl --context k8s01 get tigerastatus {{ $labels.component }} -o yaml`.

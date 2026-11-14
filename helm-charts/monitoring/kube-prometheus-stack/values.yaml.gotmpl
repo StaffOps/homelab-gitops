@@ -5,23 +5,28 @@ fullnameOverride: kps
 cleanPrometheusOperatorObjectNames: true # only safe on a fresh install (PVC names change)
 crds:
     enabled: false # prometheus-operator-crds installed by bootstrap.sh
-# kubeadm binds controller-manager, scheduler, etcd metrics and kube-proxy metrics to 127.0.0.1, out of
-# Prometheus' reach. Enabling these needs the bind addresses changed on the host (Ansible) first.
+# Control-plane scraping. kubeadm binds these to 127.0.0.1 by default; the host (homelab-ansible) must
+# listen on the node IP first, otherwise the targets are down (and their absent alerts fire):
+#   kube-controller-manager / kube-scheduler: --bind-address=0.0.0.0
+#   etcd: --listen-metrics-urls=http://127.0.0.1:2381,http://192.168.68.104:2381
+#   kube-proxy: metricsBindAddress 0.0.0.0:10249 (ConfigMap kube-proxy)
+# The chart's headless Services in kube-system select the static pods / DaemonSet by label (hostNetwork:
+# endpoints are the node IP), so no static `endpoints:` list. Chart defaults for kube >= 1.23: https on
+# 10257/10259 with the Prometheus ServiceAccount token (its ClusterRole grants GET on /metrics) and
+# insecureSkipVerify (self-signed serving certs for 127.0.0.1/localhost).
 kubeControllerManager:
-    enabled: false
+    enabled: true
 kubeScheduler:
-    enabled: false
+    enabled: true
+# Plain http on 10249 and 2381 needs no authentication: do not send the ServiceAccount token in clear.
 kubeProxy:
-    enabled: false
+    enabled: true
+    serviceMonitor:
+        authorization: null
 kubeEtcd:
-    enabled: false
-defaultRules:
-    rules:
-        kubeControllerManager: false
-        kubeSchedulerAlerting: false
-        kubeSchedulerRecording: false
-        kubeProxy: false
-        etcd: false
+    enabled: true
+    serviceMonitor:
+        authorization: null
 prometheusOperator:
     fullnameOverride: prometheus-operator
     # config-reloader sidecar of Prometheus and Alertmanager
