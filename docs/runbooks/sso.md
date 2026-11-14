@@ -23,6 +23,35 @@ Local logins stay as break-glass: Argo CD `admin`, Grafana `admin` (Vault `homel
 Add it to `keycloak.apps` (creates its two groups on the next sync), create its client in
 `keycloak-raw`, and map `/<tool>/admin` and `/<tool>/viewer` in the tool's own config. Add a row above.
 
+## Automation client (realm import)
+
+The realm import Job logs in as the master-realm client `keycloak-config-cli` (client_credentials), never
+as a person. Create it once in the admin console:
+
+1. Realm `master` → Clients → Create client → Client ID `keycloak-config-cli` → Next → *Client
+   authentication* on, *Service accounts roles* on, other flows off → Save.
+2. Tab *Service accounts roles* → Assign role → filter *realm roles* → `admin`.
+3. Tab *Credentials* → copy the client secret →
+   `scripts/vault.sh put keycloak-automation client-secret`.
+
+## MCP servers
+
+`https://mcp.staffops.space/<name>` (kubernetes, grafana, argocd, tempo, dependency-track, keycloak), all read-only
+(keycloak-mcp has write tools, but its service account only holds realm-management view/query roles). The Gateway rejects
+any request without a Keycloak JWT of realm `staffops` whose `groups` contain `/mcp/admin` or `/mcp/viewer`
+(gateway-raw: RequestAuthentication + AuthorizationPolicy). People join one of those groups; services use
+their own client with client_credentials (`hermes`, `backstage`, secrets in Vault `homelab/oidc`) and their
+service-account users are in `/mcp/viewer`:
+
+```bash
+curl -s https://keycloak.staffops.space/realms/staffops/protocol/openid-connect/token \
+  -d grant_type=client_credentials -d client_id=hermes -d client_secret=<secret> | jq -r .access_token
+# then: Authorization: Bearer <token> on https://mcp.staffops.space/kubernetes
+```
+
+New service: add it to the client list in `keycloak-raw` (clients and users), add its secret to
+`homelab/oidc`, sync. New MCP server: a Deployment/Service in `helm-charts/mcp-servers`, a rule in its route.
+
 ## First time
 
 1. Keycloak admin console (`https://keycloak.staffops.space/admin`, bootstrap admin from Vault

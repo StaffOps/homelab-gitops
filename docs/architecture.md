@@ -27,6 +27,7 @@ Argo CD reconciles everything from `main`; the operator only bootstraps, unseals
 | `velero` | velero | daily backup of stateful namespaces (objects + volumes) to Cloudflare R2 | external-secrets |
 | `kyverno` | kyverno | policy engine; Pod Security Standards baseline in Audit (PolicyReports) | — |
 | `nvidia-device-plugin` | nvidia-device-plugin | RuntimeClass `nvidia` + device plugin → `nvidia.com/gpu: 1` (GT 740, driver 470 on the host) | GPU setup in Ansible |
+| `mcp-servers` | mcp-servers | MCP servers at `mcp.staffops.space/<name>`: kubernetes, grafana, argocd, dependency-track, keycloak (+ tempo built-in), read-only, Keycloak JWT at the Gateway | keycloak, external-secrets |
 
 kubeadm provides the control plane, CoreDNS and kube-proxy; Ansible (`homelab-ansible`) installs Calico. No
 StorageClass, metrics API, LoadBalancer, ingress or Gateway API CRDs come with it (ADR 0006).

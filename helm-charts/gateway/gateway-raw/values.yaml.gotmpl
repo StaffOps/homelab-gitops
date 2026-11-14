@@ -61,3 +61,54 @@ resources:
                       requestRedirect:
                           scheme: https
                           statusCode: 301
+    # MCP host: every request needs a valid Keycloak JWT (realm keycloak.realm) whose groups claim holds
+    # /mcp/admin or /mcp/viewer. People get the group in Keycloak; services (hermes, backstage) use
+    # client_credentials and their service-account users are in /mcp/viewer. Other hosts are unaffected.
+    - apiVersion: security.istio.io/v1
+      kind: RequestAuthentication
+      metadata:
+          name: keycloak-jwt
+      spec:
+          targetRefs:
+              - kind: Gateway
+                group: gateway.networking.k8s.io
+                name: {{ $gw.name }}
+          jwtRules:
+              - issuer: https://keycloak.{{ .Values.domain }}/realms/{{ .Values.keycloak.realm }}
+                jwksUri: http://keycloak-http.keycloak.svc/realms/{{ .Values.keycloak.realm }}/protocol/openid-connect/certs
+                forwardOriginalToken: false
+    - apiVersion: security.istio.io/v1
+      kind: AuthorizationPolicy
+      metadata:
+          name: mcp-require-jwt
+      spec:
+          targetRefs:
+              - kind: Gateway
+                group: gateway.networking.k8s.io
+                name: {{ $gw.name }}
+          action: DENY
+          rules:
+              - from:
+                    - source:
+                          notRequestPrincipals: ["*"]
+                to:
+                    - operation:
+                          hosts: [mcp.{{ .Values.domain }}]
+    - apiVersion: security.istio.io/v1
+      kind: AuthorizationPolicy
+      metadata:
+          name: mcp-require-group
+      spec:
+          targetRefs:
+              - kind: Gateway
+                group: gateway.networking.k8s.io
+                name: {{ $gw.name }}
+          action: DENY
+          rules:
+              - to:
+                    - operation:
+                          hosts: [mcp.{{ .Values.domain }}]
+                when:
+                    - key: request.auth.claims[groups]
+                      notValues: [/mcp/admin, /mcp/viewer]
+

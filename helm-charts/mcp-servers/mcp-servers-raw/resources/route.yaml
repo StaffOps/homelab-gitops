@@ -1,0 +1,28 @@
+# https://mcp.<domain>/<name> → each server's MCP endpoint. Tempo's path is in monitoring-raw.
+- apiVersion: gateway.networking.k8s.io/v1
+  kind: HTTPRoute
+  metadata:
+      name: mcp-servers
+  spec:
+      parentRefs:
+          - name: {{ .Values.gateway.name }}
+            namespace: {{ .Values.gateway.namespace }}
+            sectionName: https
+      hostnames:
+          - mcp.{{ .Values.domain }}
+      rules:
+          {{- range $name, $b := dict "kubernetes" (dict "svc" "kubernetes-mcp" "port" 8080 "path" "/mcp") "grafana" (dict "svc" "grafana-mcp" "port" 8000 "path" "/mcp") "argocd" (dict "svc" "argocd-mcp" "port" 3000 "path" "/mcp") "dependency-track" (dict "svc" "dependency-track-mcp" "port" 8080 "path" "/mcp") "keycloak" (dict "svc" "keycloak-mcp" "port" 8000 "path" "/mcp/") }}
+          - matches:
+                - path:
+                      type: PathPrefix
+                      value: /{{ $name }}
+            filters:
+                - type: URLRewrite
+                  urlRewrite:
+                      path:
+                          type: ReplacePrefixMatch
+                          replacePrefixMatch: {{ $b.path }}
+            backendRefs:
+                - name: {{ $b.svc }}
+                  port: {{ $b.port }}
+          {{- end }}

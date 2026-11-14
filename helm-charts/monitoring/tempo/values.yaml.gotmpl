@@ -6,6 +6,10 @@ tempo:
     retention: 168h
     metricsGenerator:
         enabled: false
+    # Built-in MCP server at /api/mcp, published as https://mcp.<domain>/tempo (monitoring-raw)
+    queryFrontend:
+        mcp_server:
+            enabled: true
     receivers:
         otlp:
             protocols:

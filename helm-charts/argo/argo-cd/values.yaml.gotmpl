@@ -14,6 +14,7 @@ crds:
 configs:
     cm:
         admin.enabled: true # local admin kept as break-glass (Keycloak down)
+        accounts.mcp: apiKey # token for the Argo CD MCP server (Vault homelab/mcp: argocd-token)
         # Login with Keycloak (realm keycloak.realm, client argocd); the secret comes from Secret argocd-oidc
         # (ExternalSecret in argo-cd-raw, label part-of=argocd so Argo CD can reference it)
         oidc.config: |
@@ -73,6 +74,7 @@ configs:
         policy.csv: |
             g, /argocd/admin, role:admin
             g, /argocd/viewer, role:readonly
+            g, mcp, role:readonly
     params:
         create: true
         server.insecure: true # TLS terminates at the Gateway

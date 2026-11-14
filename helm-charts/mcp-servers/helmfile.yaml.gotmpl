@@ -1,0 +1,45 @@
+# MCP servers at https://mcp.<domain>/<name>, authenticated at the Gateway with Keycloak JWTs (gateway-raw:
+# RequestAuthentication + AuthorizationPolicy, groups /mcp/admin and /mcp/viewer). All read-only.
+#   /kubernetes  containers/kubernetes-mcp-server (in-cluster ServiceAccount, view role, no Secrets)
+#   /grafana     grafana/mcp-grafana (Grafana service-account token from Vault homelab/mcp)
+#   /argocd      argoproj-labs/mcp-for-argocd (Argo CD account "mcp", role:readonly, token from Vault)
+#   /tempo       Tempo's built-in MCP server (route in monitoring-raw)
+#   /dependency-track  fffinkel/dependency-track-mcp (DT API key of a VIEW_* team, Vault homelab/mcp)
+#   /keycloak    tetra-2023/keycloak-mcp (service client keycloak-mcp, realm-management view/query roles only)
+repositories:
+    - name: grafana-community
+      url: https://grafana-community.github.io/helm-charts
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - grafana-mcp:
+                  enabled: true
+                  version: 0.35.0 # mcp-grafana 2.3.0
+            - mcp-servers-raw:
+                  enabled: true
+                  version: 2.0.2
+                  kubernetesMcpImage: quay.io/containers/kubernetes_mcp_server:v0.1.3
+                  argocdMcpImage: ghcr.io/argoproj-labs/mcp-for-argocd:v0.9.0
+                  dependencyTrackMcpImage: ghcr.io/fffinkel/dependency-track-mcp:0.1.0
+                  keycloakMcpImage: ghcr.io/tetra-2023/keycloak-mcp:1.9.24
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: mcp-servers
+releases:
+    - chart: bedag/raw
+      name: mcp-servers-raw
+      condition: mcp-servers-raw.enabled
+      <<: *default
+      values:
+          - ./mcp-servers-raw/values.yaml.gotmpl
+    - chart: grafana-community/grafana-mcp
+      name: grafana-mcp
+      condition: grafana-mcp.enabled
+      <<: *default
+      values:
+          - ./grafana-mcp/values.yaml.gotmpl

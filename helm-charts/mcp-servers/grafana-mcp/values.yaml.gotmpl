@@ -1,0 +1,16 @@
+fullnameOverride: grafana-mcp
+grafana:
+    url: http://grafana.monitoring
+    apiKeySecret:
+        name: mcp-credentials # ExternalSecret in mcp-servers-raw (Vault homelab/mcp: grafana-token)
+        key: grafana-token
+disableWrite: true
+extraArgs:
+    - -t
+    - streamable-http
+resources:
+    requests:
+        cpu: 10m
+        memory: 64Mi
+    limits:
+        memory: 256Mi

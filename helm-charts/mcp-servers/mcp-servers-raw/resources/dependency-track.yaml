@@ -1,0 +1,67 @@
+# dependency-track-mcp: GET-only by design. Uses a Dependency-Track API key (team with VIEW_PORTFOLIO,
+# VIEW_VULNERABILITY, VIEW_POLICY_VIOLATION) from Vault homelab/mcp: dependency-track-api-key. The Gateway
+# strips the caller's Authorization header, so the server always uses this key.
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+      name: dependency-track-mcp
+  spec:
+      replicas: 1
+      selector:
+          matchLabels:
+              app: dependency-track-mcp
+      template:
+          metadata:
+              labels:
+                  app: dependency-track-mcp
+          spec:
+              automountServiceAccountToken: false
+              securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65532
+                  seccompProfile:
+                      type: RuntimeDefault
+              containers:
+                  - name: mcp
+                    image: {{ index .Values "mcp-servers-raw" "dependencyTrackMcpImage" }}
+                    env:
+                        - name: DTRACK_MCP_HTTP_ADDR
+                          value: 0.0.0.0:8080
+                        - name: DTRACK_URL
+                          value: http://dependency-track-api-server.dependency-track:8080
+                        - name: DTRACK_API_KEY
+                          valueFrom:
+                              secretKeyRef:
+                                  name: mcp-credentials
+                                  key: dependency-track-api-key
+                                  optional: true # set it in Vault once the DT team exists
+                    ports:
+                        - name: http
+                          containerPort: 8080
+                    readinessProbe:
+                        httpGet:
+                            path: /healthz
+                            port: http
+                    securityContext:
+                        allowPrivilegeEscalation: false
+                        readOnlyRootFilesystem: true
+                        capabilities:
+                            drop: [ALL]
+                    resources:
+                        requests:
+                            cpu: 10m
+                            memory: 32Mi
+                        limits:
+                            memory: 128Mi
+- apiVersion: v1
+  kind: Service
+  metadata:
+      name: dependency-track-mcp
+  spec:
+      selector:
+          app: dependency-track-mcp
+      ports:
+          - name: http
+            port: 8080
+            targetPort: http
+            appProtocol: http

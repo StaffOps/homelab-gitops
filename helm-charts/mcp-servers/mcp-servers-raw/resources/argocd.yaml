@@ -1,0 +1,67 @@
+# mcp-for-argocd, read-only, as Argo CD local account "mcp" (role:readonly). Callers are authenticated at the
+# Gateway, hence --allow-unauthenticated on the pod's listener.
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+      name: argocd-mcp
+  spec:
+      replicas: 1
+      selector:
+          matchLabels:
+              app: argocd-mcp
+      template:
+          metadata:
+              labels:
+                  app: argocd-mcp
+          spec:
+              automountServiceAccountToken: false
+              securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  seccompProfile:
+                      type: RuntimeDefault
+              containers:
+                  - name: mcp
+                    image: {{ index .Values "mcp-servers-raw" "argocdMcpImage" }}
+                    args: [http, --port, "3000", --allow-unauthenticated]
+                    env:
+                        - name: MCP_BIND_ADDRESS
+                          value: 0.0.0.0
+                        - name: MCP_READ_ONLY
+                          value: "true"
+                        - name: ARGOCD_BASE_URL
+                          value: http://argo-cd-server.argo
+                        - name: ARGOCD_API_TOKEN
+                          valueFrom:
+                              secretKeyRef:
+                                  name: mcp-credentials
+                                  key: argocd-token
+                    ports:
+                        - name: http
+                          containerPort: 3000
+                    readinessProbe:
+                        httpGet:
+                            path: /healthz
+                            port: http
+                    securityContext:
+                        allowPrivilegeEscalation: false
+                        capabilities:
+                            drop: [ALL]
+                    resources:
+                        requests:
+                            cpu: 10m
+                            memory: 96Mi
+                        limits:
+                            memory: 256Mi
+- apiVersion: v1
+  kind: Service
+  metadata:
+      name: argocd-mcp
+  spec:
+      selector:
+          app: argocd-mcp
+      ports:
+          - name: http
+            port: 3000
+            targetPort: http
+            appProtocol: http

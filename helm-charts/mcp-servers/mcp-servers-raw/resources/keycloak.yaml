@@ -1,0 +1,65 @@
+# keycloak-mcp (read and write tools; no read-only switch): it acts as the service client keycloak-mcp of
+# realm keycloak.realm, whose service account only has realm-management view-*/query-* roles (keycloak-raw).
+# Keycloak itself therefore refuses any write.
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+      name: keycloak-mcp
+  spec:
+      replicas: 1
+      selector:
+          matchLabels:
+              app: keycloak-mcp
+      template:
+          metadata:
+              labels:
+                  app: keycloak-mcp
+          spec:
+              automountServiceAccountToken: false
+              securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  seccompProfile:
+                      type: RuntimeDefault
+              containers:
+                  - name: mcp
+                    image: {{ index .Values "mcp-servers-raw" "keycloakMcpImage" }}
+                    env:
+                        - name: TRANSPORT
+                          value: http
+                        - name: KEYCLOAK_URL
+                          value: http://keycloak-http.keycloak.svc
+                        - name: KEYCLOAK_REALM
+                          value: {{ .Values.keycloak.realm }}
+                        - name: KEYCLOAK_CLIENT_ID
+                          value: keycloak-mcp
+                        - name: KEYCLOAK_CLIENT_SECRET
+                          valueFrom:
+                              secretKeyRef:
+                                  name: mcp-credentials
+                                  key: keycloak-mcp-client-secret
+                    ports:
+                        - name: http
+                          containerPort: 8000
+                    securityContext:
+                        allowPrivilegeEscalation: false
+                        capabilities:
+                            drop: [ALL]
+                    resources:
+                        requests:
+                            cpu: 10m
+                            memory: 96Mi
+                        limits:
+                            memory: 256Mi
+- apiVersion: v1
+  kind: Service
+  metadata:
+      name: keycloak-mcp
+  spec:
+      selector:
+          app: keycloak-mcp
+      ports:
+          - name: http
+            port: 8000
+            targetPort: http
+            appProtocol: http

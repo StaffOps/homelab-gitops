@@ -105,6 +105,9 @@
                     - appName: nvidia-device-plugin
                       path: nvidia-device-plugin
                       namespace: nvidia-device-plugin
+                    - appName: mcp-servers
+                      path: mcp-servers
+                      namespace: mcp-servers
       template:
           metadata:
               name: '{{`{{ .appName }}`}}'

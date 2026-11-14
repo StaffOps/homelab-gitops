@@ -61,6 +61,24 @@ resources:
               - backendRefs:
                     - name: keycloak-http
                       port: 80
+    # Secret of the master-realm client keycloak-config-cli used by the realm import Job
+    # (Vault homelab/keycloak-automation: client-secret). Create the client once: docs/runbooks/sso.md.
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: keycloak-automation
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: keycloak-automation
+          data:
+              - secretKey: client-secret
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/keycloak-automation
+                    property: client-secret
     # OIDC client secrets (Vault homelab/oidc: argocd, grafana, vault), consumed by the realm import below
     - apiVersion: external-secrets.io/v1
       kind: ExternalSecret
@@ -118,7 +136,7 @@ resources:
                     name: {{ $id }}
                     protocol: openid-connect
                     publicClient: false
-                    secret: $(env:{{ upper $id }}_CLIENT_SECRET)
+                    secret: $(env:{{ upper $id | replace "-" "_" }}_CLIENT_SECRET)
                     standardFlowEnabled: true
                     directAccessGrantsEnabled: false
                     rootUrl: {{ $c.url }}
@@ -165,6 +183,46 @@ resources:
                         - email
                         - roles
                         - groups
+                  # Services that call the MCP servers: client_credentials only (no browser login)
+                  {{- range $id := list "hermes" "backstage" "keycloak-mcp" }}
+                  - clientId: {{ $id }}
+                    name: {{ $id }}
+                    protocol: openid-connect
+                    publicClient: false
+                    secret: $(env:{{ upper $id | replace "-" "_" }}_CLIENT_SECRET)
+                    standardFlowEnabled: false
+                    directAccessGrantsEnabled: false
+                    serviceAccountsEnabled: true
+                    defaultClientScopes:
+                        - basic
+                        - profile
+                        - roles
+                        - groups
+                  {{- end }}
+              # Service-account users of those clients: read access to the MCP servers
+              users:
+                  {{- range $id := list "hermes" "backstage" }}
+                  - username: service-account-{{ $id }}
+                    enabled: true
+                    serviceAccountClientId: {{ $id }}
+                    groups:
+                        - /mcp/viewer
+                  {{- end }}
+                  # Keycloak MCP server: read-only admin API access to this realm
+                  - username: service-account-keycloak-mcp
+                    enabled: true
+                    serviceAccountClientId: keycloak-mcp
+                    clientRoles:
+                        realm-management:
+                            - view-realm
+                            - view-users
+                            - view-clients
+                            - view-events
+                            - view-identity-providers
+                            - query-users
+                            - query-groups
+                            - query-clients
+                            - query-realms
     # Applies the realm after every sync of this app (Keycloak Healthy first). Never deletes objects it does
     # not list (managed: no-delete), so changes made in the console survive.
     - apiVersion: batch/v1
@@ -199,22 +257,25 @@ resources:
                               value: "true"
                             - name: KEYCLOAK_AVAILABILITYCHECK_TIMEOUT
                               value: 300s
-                            - name: KEYCLOAK_USER
+                            # Logs in as the master-realm service client keycloak-config-cli (role admin), not
+                            # as a person: Vault homelab/keycloak-automation (client-secret)
+                            - name: KEYCLOAK_GRANTTYPE
+                              value: client_credentials
+                            - name: KEYCLOAK_CLIENTID
+                              value: keycloak-config-cli
+                            - name: KEYCLOAK_CLIENTSECRET
                               valueFrom:
                                   secretKeyRef:
-                                      name: keycloak-admin
-                                      key: username
-                            - name: KEYCLOAK_PASSWORD
-                              valueFrom:
-                                  secretKeyRef:
-                                      name: keycloak-admin
-                                      key: password
+                                      name: keycloak-automation
+                                      key: client-secret
                             - name: IMPORT_FILES_LOCATIONS
                               value: /config/*
                             - name: IMPORT_VARSUBSTITUTION_ENABLED
                               value: "true"
                             - name: IMPORT_MANAGED_GROUP
                               value: no-delete
+                            - name: IMPORT_MANAGED_USER
+                              value: no-delete # only the service-account users listed in the realm
                             - name: IMPORT_MANAGED_CLIENT
                               value: no-delete
                             - name: IMPORT_MANAGED_CLIENT_SCOPE
@@ -223,8 +284,8 @@ resources:
                               value: no-delete
                             - name: IMPORT_MANAGED_ROLE
                               value: no-delete
-                            {{- range $id := list "argocd" "grafana" "vault" }}
-                            - name: {{ upper $id }}_CLIENT_SECRET
+                            {{- range $id := list "argocd" "grafana" "vault" "hermes" "backstage" "keycloak-mcp" }}
+                            - name: {{ upper $id | replace "-" "_" }}_CLIENT_SECRET
                               valueFrom:
                                   secretKeyRef:
                                       name: keycloak-oidc-clients
