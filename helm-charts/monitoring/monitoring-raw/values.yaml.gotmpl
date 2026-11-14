@@ -183,6 +183,16 @@ resources:
                       replacement: $1:9484
                     - targetLabel: job
                       replacement: tigera-operator
+    # Grafana dashboard for the monolithic Loki (generated JSON, inserted as-is, so Grafana legend templates stay)
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+          name: loki-dashboard
+          namespace: monitoring
+          labels:
+              grafana_dashboard: "1"
+      data:
+          loki.json: {{ readFile "./loki.dashboard.json" | toJson }}
     # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates
     - apiVersion: monitoring.coreos.com/v1
       kind: PrometheusRule

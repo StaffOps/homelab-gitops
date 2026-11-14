@@ -57,13 +57,15 @@ test:
 monitoring:
     serviceMonitor:
         enabled: true
-    # Loki's own recording + alerting rules (PrometheusRule) and dashboards
+    # Loki's own recording + alerting rules (PrometheusRule). The chart's dashboards are off: they target the
+    # distributed mode (component containers, blooms, cloud object stores, boltdb) and stay mostly empty here;
+    # monitoring-raw ships a dashboard for this monolithic Loki instead (loki.dashboard.json).
     rules:
         enabled: true
     alerts:
         enabled: true
     dashboards:
-        enabled: true
+        enabled: false
 # rules sidecar (k8s-sidecar)
 sidecar:
     resources:
