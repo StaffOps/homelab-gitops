@@ -145,14 +145,14 @@ fi
 # applied by Argo CD itself once the seed — the root Application argo-cd — exists.
 seed_manifest() {
     (cd "$ROOT/$ARGO_DIR" && helmfile --selector name=argo-cd-raw template 2>/dev/null) |
-        yq 'select(.kind == "Application" and .metadata.name == "argo-cd")'
+        yq 'select(.kind == "Application" and .metadata.name == "argo-cd") | .metadata.namespace = "'"$NAMESPACE"'"'
 }
 apply_seed() {
     step "Seed: root Application argo-cd"
     local manifest
     manifest="$(seed_manifest)"
     [[ -n "$manifest" ]] || fail "could not render the root Application from argo-cd-raw"
-    k apply --server-side --field-manager=bootstrap -f - <<<"$manifest" >/dev/null &&
+    k -n "$NAMESPACE" apply --server-side --field-manager=bootstrap -f - <<<"$manifest" >/dev/null &&
         ok "Application argo-cd applied (Argo CD now syncs $ARGO_DIR from origin/$GIT_BRANCH)"
 }
 wait_argo() {
