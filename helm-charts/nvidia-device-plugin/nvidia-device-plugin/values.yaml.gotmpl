@@ -1,0 +1,16 @@
+fullnameOverride: nvidia-device-plugin
+# The plugin runs under the nvidia runtime so NVML (libnvidia-ml) is injected from the host driver
+runtimeClassName: nvidia
+deviceListStrategy: envvar
+failOnInitError: true
+# No GPU Feature Discovery / NFD for now (labels only, not needed for scheduling on one node)
+gfd:
+    enabled: false
+nfd:
+    enabled: false
+resources:
+    requests:
+        cpu: 10m
+        memory: 32Mi
+    limits:
+        memory: 128Mi

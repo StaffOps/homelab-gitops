@@ -102,6 +102,9 @@
                     - appName: kyverno
                       path: kyverno
                       namespace: kyverno
+                    - appName: nvidia-device-plugin
+                      path: nvidia-device-plugin
+                      namespace: nvidia-device-plugin
       template:
           metadata:
               name: '{{`{{ .appName }}`}}'

@@ -1,0 +1,38 @@
+# GPU: RuntimeClass "nvidia" (containerd runtime set up by Ansible, role gpu) + NVIDIA k8s-device-plugin, so
+# the node advertises nvidia.com/gpu. GeForce GT 740 (Kepler, CC 3.0), host driver 470 (CUDA <= 11.4): the
+# GPU Operator does not support it, the device plugin only needs NVML. Workloads use
+# runtimeClassName: nvidia + resources.limits nvidia.com/gpu: 1.
+repositories:
+    - name: nvdp
+      url: https://nvidia.github.io/k8s-device-plugin
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - nvidia-device-plugin:
+                  enabled: true
+                  version: 0.20.1
+            - nvidia-device-plugin-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: nvidia-device-plugin
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    # RuntimeClass nvidia (cluster-scoped)
+    - chart: bedag/raw
+      name: nvidia-device-plugin-raw
+      condition: nvidia-device-plugin-raw.enabled
+      <<: *default
+    - chart: nvdp/nvidia-device-plugin
+      name: nvidia-device-plugin
+      condition: nvidia-device-plugin.enabled
+      <<: *default
+      needs:
+          - nvidia-device-plugin/nvidia-device-plugin-raw

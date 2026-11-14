@@ -26,6 +26,7 @@ Argo CD reconciles everything from `main`; the operator only bootstraps, unseals
 | `dependency-track` | dependency-track | SBOM analysis (API server + frontend), PostgreSQL `dtrack-db` | cloudnative-pg, external-secrets |
 | `velero` | velero | daily backup of stateful namespaces (objects + volumes) to Cloudflare R2 | external-secrets |
 | `kyverno` | kyverno | policy engine; Pod Security Standards baseline in Audit (PolicyReports) | — |
+| `nvidia-device-plugin` | nvidia-device-plugin | RuntimeClass `nvidia` + device plugin → `nvidia.com/gpu: 1` (GT 740, driver 470 on the host) | GPU setup in Ansible |
 
 kubeadm provides the control plane, CoreDNS and kube-proxy; Ansible (`homelab-ansible`) installs Calico. No
 StorageClass, metrics API, LoadBalancer, ingress or Gateway API CRDs come with it (ADR 0006).
