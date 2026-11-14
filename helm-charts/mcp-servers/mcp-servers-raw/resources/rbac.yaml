@@ -1,0 +1,86 @@
+# Read access shared by the Kubernetes MCP servers (/kubernetes and /kubectl): everything except Secrets.
+# RBAC only adds, so "all but Secrets" is built from parts aggregated into ClusterRole mcp-read:
+#   - mcp-read-builtin (below): the core group listed resource by resource WITHOUT secrets (Secret exists only
+#     in the core group), and the built-in API groups whole (they change only with the Kubernetes version);
+#   - mcp-read-crd-<crd>: one per CustomResourceDefinition, created and deleted by the Kyverno GeneratingPolicy
+#     mcp-read-crds (helm-charts/kyverno/kyverno-raw), so CRDs installed later are readable without a change here.
+# Never nodes/proxy (GET on it allows exec through the kubelet) and no write verb anywhere.
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+      name: mcp-read
+  aggregationRule:
+      clusterRoleSelectors:
+          - matchLabels:
+                homelab.rbac/aggregate-to-mcp-read: "true"
+  rules: [] # filled by the aggregation controller
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+      name: mcp-read-builtin
+      labels:
+          homelab.rbac/aggregate-to-mcp-read: "true"
+  rules:
+      - apiGroups: [""]
+        resources:
+            - pods
+            - pods/log
+            - pods/status
+            - services
+            - services/status
+            - endpoints
+            - configmaps
+            - events
+            - namespaces
+            - namespaces/status
+            - nodes
+            - nodes/status
+            - persistentvolumes
+            - persistentvolumeclaims
+            - persistentvolumeclaims/status
+            - serviceaccounts
+            - replicationcontrollers
+            - replicationcontrollers/status
+            - limitranges
+            - resourcequotas
+            - resourcequotas/status
+            - podtemplates
+            - componentstatuses
+        verbs: [get, list, watch]
+      - apiGroups:
+            - admissionregistration.k8s.io
+            - apiextensions.k8s.io
+            - apiregistration.k8s.io
+            - apps
+            - autoscaling
+            - batch
+            - certificates.k8s.io
+            - coordination.k8s.io
+            - discovery.k8s.io
+            - events.k8s.io
+            - flowcontrol.apiserver.k8s.io
+            - generators.external-secrets.io # has a CRD name over 63 characters (see kyverno-raw mcp-read-crds)
+            - metrics.k8s.io
+            - networking.k8s.io
+            - node.k8s.io
+            - policy
+            - rbac.authorization.k8s.io
+            - resource.k8s.io
+            - scheduling.k8s.io
+            - storage.k8s.io
+        resources: ["*"]
+        verbs: [get, list, watch]
+{{- range $sa := list "kubernetes-mcp" "kubectl-mcp" }}
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+      name: {{ $sa }}-read
+  subjects:
+      - kind: ServiceAccount
+        name: {{ $sa }}
+        namespace: mcp-servers
+  roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: mcp-read
+{{- end }}

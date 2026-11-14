@@ -7,6 +7,7 @@
 #   /dependency-track  fffinkel/dependency-track-mcp (DT API key of a VIEW_* team, Vault homelab/mcp)
 #   /keycloak    tetra-2023/keycloak-mcp (service client keycloak-mcp, realm-management view/query roles only)
 #   /prometheus  tjhop/prometheus-mcp-server (Prometheus HTTP API: queries, targets, TSDB stats; admin tools off)
+#   /kubectl     rohitg00/kubectl-mcp-server (describe/explain, diagnostics, audits, cert-manager/Kyverno/Velero/KEDA/Istio/Rollouts; duplicates of /kubernetes removed)
 repositories:
     - name: grafana-community
       url: https://grafana-community.github.io/helm-charts
@@ -27,6 +28,7 @@ environments:
                   dependencyTrackMcpImage: ghcr.io/fffinkel/dependency-track-mcp:0.1.0
                   keycloakMcpImage: ghcr.io/tetra-2023/keycloak-mcp:1.9.24
                   prometheusMcpImage: ghcr.io/tjhop/prometheus-mcp-server:v0.18.0
+                  kubectlMcpImage: docker.io/rohitghumare64/kubectl-mcp-server:2.0.0
 ---
 templates:
     default: &default

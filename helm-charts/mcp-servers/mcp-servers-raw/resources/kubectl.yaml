@@ -1,0 +1,111 @@
+# kubectl-mcp-server (rohitg00): what kubernetes-mcp-server (/kubernetes) does not have: describe/explain,
+# pod crash and pending diagnosis, network/DNS/service-chain checks, security and RBAC audits, right-sizing,
+# and readers for cert-manager, Kyverno, Velero, KEDA, Istio and Argo Rollouts. Read-only (--read-only hides every tool that
+# changes state) and its ServiceAccount is bound to ClusterRole mcp-read (rbac.yaml: read-only, never Secrets).
+# Tools that duplicate /kubernetes (get, logs, top, api-resources, custom resources, node logs/stats) or read
+# Secrets are removed by launch.py before registration (MCP_DROP_TOOLS); the Helm toolset is off because
+# Helm releases live in Secrets (and Argo CD renders charts, it does not install releases).
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+      name: kubectl-mcp
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+      name: kubectl-mcp
+  data:
+      launch.py: |
+          # Remaps the tools in MCP_DROP_TOOLS to a toolset that is never enabled, so the server does not
+          # register them. Fails on an unknown name, so an upstream rename is caught at startup.
+          import os, sys
+          import kubectl_mcp_tool.toolsets as ts
+          drop = [t for t in os.environ.get("MCP_DROP_TOOLS", "").split(",") if t]
+          unknown = [t for t in drop if t not in ts.TOOL_TOOLSET]
+          if unknown:
+              sys.exit(f"MCP_DROP_TOOLS: unknown tools {unknown} (renamed upstream?)")
+          for t in drop:
+              ts.TOOL_TOOLSET[t] = "_dropped"
+          from kubectl_mcp_tool.__main__ import main
+          sys.argv[0] = "kubectl-mcp"
+          sys.exit(main())
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+      name: kubectl-mcp
+  spec:
+      replicas: 1
+      selector:
+          matchLabels:
+              app: kubectl-mcp
+      template:
+          metadata:
+              labels:
+                  app: kubectl-mcp
+          spec:
+              serviceAccountName: kubectl-mcp
+              securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 10001
+                  runAsGroup: 10001
+                  seccompProfile:
+                      type: RuntimeDefault
+              containers:
+                  - name: mcp
+                    image: {{ index .Values "mcp-servers-raw" "kubectlMcpImage" }}
+                    command: [python, /launch/launch.py]
+                    args: [--transport, http, --host, 0.0.0.0, --port, "8000", --read-only]
+                    env:
+                        - name: MCP_TOOLSETS
+                          value: core,diagnostics,security,cost,crds,certs,policy,backup,keda,istio,rollouts
+                        - name: MCP_DROP_TOOLS
+                          value: kubectl_get,kubectl_logs,kubectl_top,kubectl_generic,list_contexts,get_api_resources,node_logs,node_stats_summary,check_secrets_security,list_custom_resources,get_custom_resource
+                        # Auth is at the Gateway "mcp" (Keycloak JWT); the server itself listens without OAuth
+                        - name: MCP_ALLOW_UNAUTHENTICATED
+                          value: "true"
+                        - name: MCP_ALLOWED_HOSTS
+                          value: mcp.{{ .Values.domain }}
+                    ports:
+                        - name: http
+                          containerPort: 8000
+                    readinessProbe:
+                        httpGet:
+                            path: /health
+                            port: http
+                    securityContext:
+                        allowPrivilegeEscalation: false
+                        readOnlyRootFilesystem: true
+                        capabilities:
+                            drop: [ALL]
+                    volumeMounts:
+                        - name: launch
+                          mountPath: /launch
+                        - name: home
+                          mountPath: /home/mcp
+                        - name: tmp
+                          mountPath: /tmp
+                    resources:
+                        requests:
+                            cpu: 10m
+                            memory: 128Mi
+                        limits:
+                            memory: 512Mi
+              volumes:
+                  - name: launch
+                    configMap:
+                        name: kubectl-mcp
+                  - name: home
+                    emptyDir: {}
+                  - name: tmp
+                    emptyDir: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+      name: kubectl-mcp
+  spec:
+      selector:
+          app: kubectl-mcp
+      ports:
+          - name: http
+            port: 8000
+            targetPort: http
+            appProtocol: http
