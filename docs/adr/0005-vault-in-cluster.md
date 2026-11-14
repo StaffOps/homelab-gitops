@@ -26,3 +26,6 @@ the lab to a cloud project and needed a long-lived service account key on the cl
 - Losing `vault-init.json` and the Vault volume together loses every secret: keep an offline copy of the init
   file; secret values should also exist in the operator's password manager.
 - Vault is BUSL-licensed; OpenBao is a drop-in alternative if that matters later.
+- Auto-unseal (added later): a CronJob unseals Vault after restarts with the single unseal key kept in a
+  Kubernetes Secret created from the operator's machine. The key then sits on the same disk as Vault's data
+  (etcd encrypted at rest with secretbox): accepted for a homelab in exchange for surviving reboots unattended.

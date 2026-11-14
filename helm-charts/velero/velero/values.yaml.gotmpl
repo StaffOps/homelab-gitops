@@ -13,9 +13,6 @@ initContainers:
 credentials:
     useSecret: true
     existingSecret: velero-r2
-    # AWS_ENDPOINT_URL_S3 (R2 endpoint, from Vault) as env var of velero and node-agent: the AWS SDK uses it
-    # because the BackupStorageLocation sets no s3Url
-    extraSecretRef: velero-r2-endpoint
 snapshotsEnabled: false # local-path has no snapshots: volume data goes through the node agent
 deployNodeAgent: true
 configuration:
@@ -30,6 +27,11 @@ configuration:
               region: auto
               s3ForcePathStyle: "true"
               checksumAlgorithm: "" # R2 rejects the default CRC32 checksum header
+              # R2 endpoint from Vault homelab/velero (endpoint) via the Argo CD render env, never in git.
+              # Needed by Velero and by Kopia (volume data), which ignores AWS_ENDPOINT_URL_S3.
+              {{- with env "R2_ENDPOINT" }}
+              s3Url: {{ . }}
+              {{- end }}
     volumeSnapshotLocation: []
 schedules:
     daily:

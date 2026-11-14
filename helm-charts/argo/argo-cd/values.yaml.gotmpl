@@ -186,6 +186,13 @@ repoServer:
               # helmfile skips the charts' crds/ directory unless asked
               - name: HELMFILE_TEMPLATE_OPTIONS
                 value: --include-crds
+          # Values that must reach a manifest but not git (e.g. the R2 endpoint, which holds the Cloudflare
+          # account id): Secret argocd-render-env (ExternalSecret in argo-cd-raw), read as {{ env "NAME" }}.
+          # Changing one needs a hard refresh of the app: manifests are cached per commit.
+          envFrom:
+              - secretRef:
+                    name: argocd-render-env
+                    optional: true
           securityContext:
               runAsNonRoot: true
               runAsUser: 999

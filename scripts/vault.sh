@@ -6,6 +6,7 @@
 #   scripts/vault.sh init                first time only: init (1 key share), unseal, save keys locally
 #   scripts/vault.sh unseal              after every restart of vault-0 (Vault starts sealed)
 #   scripts/vault.sh configure           KV v2 mount, Kubernetes auth, policy + role for External Secrets
+#   scripts/vault.sh autounseal-secret   Secret vault-unseal (unseal key) for the auto-unseal CronJob
 #   scripts/vault.sh oidc                login with Keycloak (realm homelab, client vault): group admins → policy admin
 #   scripts/vault.sh put <name> k1 k2…   prompt for each key (hidden) and write secret/<prefix>/<name>
 #
@@ -93,6 +94,14 @@ case "$cmd" in
                 policies=external-secrets-read ttl=1h >/dev/null
         "
         ok "KV v2 at $KV_MOUNT/, Kubernetes auth, policy external-secrets-read, role external-secrets"
+        ;;
+    autounseal-secret)
+        # The key goes from the local init file to the cluster on stdin; it never touches git or a command line
+        [ -f "$INIT_FILE" ] || fail "no $INIT_FILE"
+        jq -j '.unseal_keys_b64[0]' "$INIT_FILE" |
+            k -n "$NS" create secret generic vault-unseal --from-file=key=/dev/stdin --dry-run=client -o yaml |
+            k apply -f - >/dev/null
+        ok "Secret $NS/vault-unseal written; CronJob vault-autounseal unseals vault-0 within 15 minutes of a restart"
         ;;
     oidc)
         # Needs the Keycloak realm (keycloak app synced) and secret/<prefix>/oidc with key "vault"

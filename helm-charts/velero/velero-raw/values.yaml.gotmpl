@@ -1,21 +1,4 @@
 resources:
-    # R2 S3 endpoint (Vault homelab/velero: endpoint), loaded as env by velero and node-agent
-    - apiVersion: external-secrets.io/v1
-      kind: ExternalSecret
-      metadata:
-          name: velero-r2-endpoint
-      spec:
-          refreshInterval: 1h
-          secretStoreRef:
-              kind: ClusterSecretStore
-              name: vault
-          target:
-              name: velero-r2-endpoint
-          data:
-              - secretKey: AWS_ENDPOINT_URL_S3
-                remoteRef:
-                    key: {{ .Values.vault.prefix }}/velero
-                    property: endpoint
     # Vault homelab/velero: access-key-id, secret-access-key (R2 API token, Object Read & Write on the bucket)
     - apiVersion: external-secrets.io/v1
       kind: ExternalSecret
