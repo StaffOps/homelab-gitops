@@ -5,6 +5,10 @@ grafana:
         name: mcp-credentials # ExternalSecret in mcp-servers-raw (Vault homelab/mcp: grafana-token)
         key: grafana-token
 disableWrite: true
+# No own bearer token: callers authenticate at the Gateway "mcp" (Keycloak JWT), which strips the
+# Authorization header before forwarding; a chart-generated token would reject every request with 401.
+serverAuth:
+    token: null
 extraArgs:
     - -t
     - streamable-http
