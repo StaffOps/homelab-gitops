@@ -1,5 +1,7 @@
-# Draft (loki.enabled: false in the helmfile): single binary, filesystem storage on local-path.
-deploymentMode: SingleBinary
+# Single binary, filesystem storage on local-path, 7 days retention. Push: http://loki:3100 (also OTLP at
+# /otlp). Logs arrive from the cluster's collector.
+fullnameOverride: loki
+deploymentMode: Monolithic
 loki:
     auth_enabled: false
     commonConfig:
@@ -48,4 +50,11 @@ test:
     enabled: false
 monitoring:
     serviceMonitor:
+        enabled: true
+    # Loki's own recording + alerting rules (PrometheusRule) and dashboards
+    rules:
+        enabled: true
+    alerts:
+        enabled: true
+    dashboards:
         enabled: true

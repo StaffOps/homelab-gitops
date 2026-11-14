@@ -1,0 +1,27 @@
+# Single binary, local storage on local-path, 7 days retention. Fed over OTLP (gRPC 4317, HTTP 4318; the chart also opens Jaeger)
+# from the otel-gateway, which also produces span metrics and the service graph (no metrics generator here).
+fullnameOverride: tempo
+tempo:
+    reportingEnabled: false
+    retention: 168h
+    metricsGenerator:
+        enabled: false
+    receivers:
+        otlp:
+            protocols:
+                grpc:
+                    endpoint: 0.0.0.0:4317
+                http:
+                    endpoint: 0.0.0.0:4318
+    resources:
+        requests:
+            cpu: 100m
+            memory: 256Mi
+        limits:
+            memory: 2Gi
+persistence:
+    enabled: true
+    storageClassName: {{ .Values.storageClass }}
+    size: 20Gi
+serviceMonitor:
+    enabled: true

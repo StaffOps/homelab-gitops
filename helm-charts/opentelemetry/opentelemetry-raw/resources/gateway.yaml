@@ -1,0 +1,188 @@
+# otel-gateway: the processing tier (gateway + process + span metrics in one). Receives OTLP from the agents
+# (in-cluster, no auth) and from outside clusters such as the VPS (port 4319, bearer token, via
+# https://otel.<domain>). Generates span metrics and the service graph, then exports traces to Tempo,
+# metrics to Prometheus (OTLP receiver) and logs to Loki.
+- apiVersion: opentelemetry.io/v1beta1
+  kind: OpenTelemetryCollector
+  metadata:
+      name: otel-gateway
+  spec:
+      mode: deployment
+      replicas: 1
+      image: {{ index .Values "opentelemetry-raw" "collectorImage" }}
+      serviceAccount: otel-gateway
+      env:
+          - name: GOMEMLIMIT
+            value: 800MiB
+          - name: OTEL_EXTERNAL_TOKEN
+            valueFrom:
+                secretKeyRef:
+                    name: otel-gateway-auth
+                    key: token
+      resources:
+          requests:
+              cpu: 100m
+              memory: 256Mi
+          limits:
+              memory: 1Gi
+      observability:
+          metrics:
+              enableMetrics: true
+      config:
+          extensions:
+              health_check:
+                  endpoint: 0.0.0.0:13133
+              bearertokenauth/external:
+                  scheme: Bearer
+                  token: ${env:OTEL_EXTERNAL_TOKEN}
+          receivers:
+              otlp:
+                  protocols:
+                      grpc:
+                          endpoint: 0.0.0.0:4317
+                      http:
+                          endpoint: 0.0.0.0:4318
+              otlp/external:
+                  protocols:
+                      http:
+                          endpoint: 0.0.0.0:4319
+                          auth:
+                              authenticator: bearertokenauth/external
+          processors:
+              memory_limiter:
+                  check_interval: 5s
+                  limit_percentage: 80
+                  spike_limit_percentage: 15
+              batch:
+                  send_batch_size: 2000
+                  send_batch_max_size: 5000
+                  timeout: 5s
+          connectors:
+              span_metrics:
+                  metrics_flush_interval: 30s
+                  aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
+                  histogram:
+                      unit: ms
+                      explicit:
+                          buckets: [2ms, 4ms, 8ms, 16ms, 32ms, 64ms, 128ms, 256ms, 512ms, 1024ms, 2048ms, 4096ms, 8192ms]
+                  exemplars:
+                      enabled: true
+                  dimensions:
+                      - name: http.request.method
+                      - name: http.response.status_code
+                      - name: http.route
+                      - name: rpc.method
+                      - name: db.system.name
+                  resource_metrics_key_attributes:
+                      - service.name
+                      - service.namespace
+                      - k8s.cluster.name
+                      - k8s.namespace.name
+              service_graph:
+                  latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+                  dimensions:
+                      - k8s.cluster.name
+                  store:
+                      ttl: 10s
+                      max_items: 10000
+          exporters:
+              otlp_grpc/tempo:
+                  endpoint: tempo.monitoring:4317
+                  tls:
+                      insecure: true
+                  sending_queue:
+                      enabled: true
+                      queue_size: 5000
+              otlp_http/prometheus:
+                  endpoint: http://kps-prometheus.monitoring:9090/api/v1/otlp
+                  sending_queue:
+                      enabled: true
+                      queue_size: 5000
+              otlp_http/loki:
+                  endpoint: http://loki.monitoring:3100/otlp
+                  sending_queue:
+                      enabled: true
+                      queue_size: 5000
+          service:
+              extensions: [health_check, bearertokenauth/external]
+              telemetry:
+                  metrics:
+                      level: normal
+                      readers:
+                          - pull:
+                                exporter:
+                                    prometheus:
+                                        host: 0.0.0.0
+                                        port: 8888
+              pipelines:
+                  traces:
+                      receivers: [otlp, otlp/external]
+                      processors: [memory_limiter, batch]
+                      exporters: [otlp_grpc/tempo, span_metrics, service_graph]
+                  metrics:
+                      receivers: [otlp, otlp/external]
+                      processors: [memory_limiter, batch]
+                      exporters: [otlp_http/prometheus]
+                  metrics/traces:
+                      receivers: [span_metrics, service_graph]
+                      processors: [memory_limiter, batch]
+                      exporters: [otlp_http/prometheus]
+                  logs:
+                      receivers: [otlp, otlp/external]
+                      processors: [memory_limiter, batch]
+                      exporters: [otlp_http/loki]
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+      name: otel-gateway
+# Bearer token of the external receiver (Vault homelab/otel: external-token); the VPS sends
+# "Authorization: Bearer <token>".
+- apiVersion: external-secrets.io/v1
+  kind: ExternalSecret
+  metadata:
+      name: otel-gateway-auth
+  spec:
+      refreshInterval: 1h
+      secretStoreRef:
+          kind: ClusterSecretStore
+          name: vault
+      target:
+          name: otel-gateway-auth
+      data:
+          - secretKey: token
+            remoteRef:
+                key: {{ .Values.vault.prefix }}/otel
+                property: external-token
+# External entry: only the authenticated receiver (4319) is published, at https://otel.<domain>
+- apiVersion: v1
+  kind: Service
+  metadata:
+      name: otel-gateway-external
+  spec:
+      selector:
+          app.kubernetes.io/component: opentelemetry-collector
+          app.kubernetes.io/instance: opentelemetry.otel-gateway
+      ports:
+          - name: otlp-http-external
+            port: 4319
+            targetPort: 4319
+            appProtocol: http
+- apiVersion: gateway.networking.k8s.io/v1
+  kind: HTTPRoute
+  metadata:
+      name: otel-gateway-external
+  spec:
+      parentRefs:
+          - name: {{ .Values.gateway.name }}
+            namespace: {{ .Values.gateway.namespace }}
+            sectionName: https
+      hostnames:
+          - otel.{{ .Values.domain }}
+      rules:
+          - matches:
+                - path:
+                      type: PathPrefix
+                      value: /v1/
+            backendRefs:
+                - name: otel-gateway-external
+                  port: 4319

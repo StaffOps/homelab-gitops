@@ -4,12 +4,16 @@
 repositories:
     - name: istio
       url: https://istio-release.storage.googleapis.com/charts
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
 environments:
     default:
         values:
             - ../environment.yaml
             - istio:
                   version: 1.30.8 # all four charts move together
+            - istio-raw:
+                  version: 2.0.2
 ---
 templates:
     default: &default
@@ -39,3 +43,10 @@ releases:
       <<: *default
       needs:
           - istio-system/istiod
+    # Scrape config (the Istio charts ship none): istiod, ztunnel and the Envoy of every Gateway
+    - chart: bedag/raw
+      name: istio-raw
+      namespace: istio-system
+      version: '{{ index .Values "istio-raw" "version" }}'
+      values:
+          - ./istio-raw/values.yaml.gotmpl

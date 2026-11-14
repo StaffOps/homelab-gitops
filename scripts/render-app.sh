@@ -14,7 +14,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHARTS="$ROOT/helm-charts"
-API_ARGS='--api-versions monitoring.coreos.com/v1 --api-versions gateway.networking.k8s.io/v1 --api-versions cert-manager.io/v1 --api-versions external-secrets.io/v1 --api-versions metallb.io/v1beta1'
+API_ARGS='--api-versions monitoring.coreos.com/v1 --api-versions monitoring.coreos.com/v1/PrometheusRule --api-versions monitoring.coreos.com/v1/ServiceMonitor --api-versions gateway.networking.k8s.io/v1 --api-versions cert-manager.io/v1 --api-versions external-secrets.io/v1 --api-versions metallb.io/v1beta1'
 
 fail() { echo "✘ $*" >&2; exit 1; }
 

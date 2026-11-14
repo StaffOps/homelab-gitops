@@ -18,8 +18,8 @@ Argo CD reconciles everything from `main`; the operator only bootstraps, unseals
 | `external-dns` | external-dns | Cloudflare records for HTTPRoutes | external-secrets, gateway |
 | `istio` | istio-system | Istio ambient (istiod, CNI, ztunnel), GatewayClass `istio` | Gateway API CRDs (bootstrap) |
 | `gateway` | gateway | Gateway `public` on `192.168.68.240` + wildcard certificate | istio, metallb, cert-manager |
-| `monitoring` | monitoring | kube-prometheus-stack, short names `kps-*` (Prometheus, Alertmanager, Grafana) | prometheus-operator CRDs |
-| `opentelemetry` | opentelemetry | OpenTelemetry Operator | cert-manager |
+| `monitoring` | monitoring | kube-prometheus-stack, short names `kps-*` (Prometheus with OTLP receiver, Alertmanager, Grafana), Loki 3.7, Tempo 3.1 | prometheus-operator CRDs |
+| `opentelemetry` | opentelemetry | OpenTelemetry Operator, collectors otel-agent / otel-logs / otel-gateway, OBI (eBPF) | cert-manager |
 | `cloudnative-pg` | cnpg-system | PostgreSQL operator (`Cluster` resources) | — |
 | `keycloak` | keycloak | identity provider (OIDC/SAML), PostgreSQL `keycloak-db` (CloudNativePG) | cloudnative-pg, external-secrets |
 | `keda` | keda | event-driven autoscaling (ScaledObject, ScaledJob) | — |
@@ -43,6 +43,20 @@ http :80 → 301 to https (HTTPRoute https-redirect)
 Records are public but point to a private address: the services are reachable only from the LAN (or a VPN
 into it). DNS-01 needs no inbound connectivity.
 
+## Telemetry
+
+```
+apps (SDK) / OBI ──OTLP──► otel-agent (DaemonSet, node-local Service) ──OTLP──► otel-gateway (Deployment)
+VPS ──OTLP/HTTP, Bearer token── https://otel.staffops.space ──────────────────────►┘
+otel-gateway: span metrics + service graph ─► Prometheus (/api/v1/otlp) · traces ─► Tempo · logs ─► Loki
+/var/log/pods + Kubernetes events ──► otel-logs (DaemonSet, events via leader election) ──► Loki (/otlp)
+```
+
+- Apps send OTLP to `otel-agent-collector.opentelemetry:4317` (gRPC) or `:4318` (HTTP).
+- OBI instruments only the namespaces in `helm-charts/opentelemetry/obi/values.yaml.gotmpl` (rule
+  `instrumented-namespaces`, today `staffops*`) and skips processes that already export OTLP.
+- Grafana: Loki and Tempo datasources linked both ways (trace → logs, log `trace_id` → trace).
+
 ## Secrets
 
 ```
@@ -61,9 +75,10 @@ Kubernetes Secrets keep working but nothing refreshes; alert `VaultSealed` fires
 | `homelab/cloudflare` | `api-token` | cert-manager, external-dns |
 | `homelab/grafana` | `admin-user`, `admin-password` | monitoring (Grafana) |
 | `homelab/keycloak` | `admin-user`, `admin-password` | keycloak (bootstrap admin) |
+| `homelab/otel` | `external-token` | otel-gateway external receiver (VPS) |
 | `homelab/oidc` | `argocd`, `grafana`, `vault` | Keycloak client secrets (keycloak, argo, monitoring) |
 | `homelab/dependency-track` | `kek` | dependency-track (encryption key of stored secrets) |
-| `homelab/velero` | `access-key-id`, `secret-access-key` | velero (R2 API token) |
+| `homelab/velero` | `access-key-id`, `secret-access-key`, `endpoint` | velero (R2 API token + S3 endpoint) |
 
 ## GitOps flow
 
@@ -73,5 +88,5 @@ Kubernetes Secrets keep working but nothing refreshes; alert `VaultSealed` fires
 (`helmfile template --include-crds`). Ordering between apps comes from retries and
 `SkipDryRunOnMissingResource`: an app whose CRDs are not there yet retries until they are.
 
-Exposed hostnames: `argocd`, `vault`, `grafana`, `prometheus`, `alertmanager`, `keycloak`, `dependency-track`
+Exposed hostnames: `argocd`, `vault`, `grafana`, `prometheus`, `alertmanager`, `keycloak`, `dependency-track`, `otel` (OTLP/HTTP for external clusters)
 (`.staffops.space`).

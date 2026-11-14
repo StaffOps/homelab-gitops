@@ -2,12 +2,13 @@
 # kube-state-metrics, node-exporter). Prometheus selects ServiceMonitors/PodMonitors/PrometheusRules from
 # every namespace. prometheus-operator CRDs are installed by bootstrap.sh (outside Argo CD) so every app
 # can ship its ServiceMonitor before this app syncs.
-# Loki is a draft (enabled: false) until a log shipper exists.
+# Loki (logs) and Tempo (traces) are single-binary on local-path; Grafana has both as datasources.
 repositories:
     - name: prometheus-community
       url: https://prometheus-community.github.io/helm-charts
-    - name: grafana
-      url: https://grafana.github.io/helm-charts
+    # Loki and Tempo charts moved here; the grafana repo stopped at Loki 3.6 / Tempo 2.9
+    - name: grafana-community
+      url: https://grafana-community.github.io/helm-charts
     - name: bedag
       url: https://bedag.github.io/helm-charts
 environments:
@@ -18,8 +19,11 @@ environments:
                   enabled: true
                   version: 93.3.0
             - loki:
-                  enabled: false
-                  version: 7.6.0
+                  enabled: true
+                  version: 21.2.3 # Loki 3.7.10
+            - tempo:
+                  enabled: true
+                  version: 3.2.1 # Tempo 3.1.1, single binary
             - monitoring-raw:
                   enabled: true
                   version: 2.0.2
@@ -40,7 +44,12 @@ releases:
       name: kube-prometheus-stack
       condition: kube-prometheus-stack.enabled
       <<: *default
-    - chart: grafana/loki
+    - chart: grafana-community/loki
       name: loki
       condition: loki.enabled
+      <<: *default
+    # OTLP on tempo:4317 (gRPC) / tempo:4318 (HTTP)
+    - chart: grafana-community/tempo
+      name: tempo
+      condition: tempo.enabled
       <<: *default

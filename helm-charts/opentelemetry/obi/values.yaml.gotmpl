@@ -1,0 +1,75 @@
+# OBI v1.0.0 (eBPF auto-instrumentation), Config v2. Only namespaces listed in the include rule are
+# instrumented; processes that already export OTLP (apps with an SDK) are skipped. Exports to the node's
+# otel-agent. Kubernetes metadata is added by OBI itself (it runs on the host network, so the agent cannot
+# match its connections to pods).
+fullnameOverride: obi
+preset: application
+contextPropagation:
+    enabled: true
+resources:
+    requests:
+        cpu: 50m
+        memory: 256Mi
+    limits:
+        memory: 1Gi
+config:
+    data:
+        file_format: "1.0"
+        log_level: info
+        tracer_provider:
+            processors:
+                - batch:
+                      exporter:
+                          otlp_grpc:
+                              endpoint: http://otel-agent-collector.opentelemetry:4317
+                              tls:
+                                  insecure: true
+        meter_provider:
+            readers:
+                - periodic:
+                      interval: 30000
+                      exporter:
+                          otlp_grpc:
+                              endpoint: http://otel-agent-collector.opentelemetry:4317
+                              tls:
+                                  insecure: true
+        extensions:
+            obi:
+                version: "2.0"
+                capture:
+                    policy:
+                        default_action: exclude
+                        match_order: first_match_wins
+                    rules:
+                        - action: exclude
+                          name: exclude-obi-and-collectors
+                          match:
+                              process:
+                                  exe_path_glob:
+                                      - '{*/obi,obi,*ebpf-instrument*,*otelcol*}'
+                        - action: exclude
+                          name: exclude-otlp-exporters # apps with an OTel SDK
+                          match:
+                              process:
+                                  exports_otlp:
+                                      port: 4317
+                                      protocol: protobuf
+                        - action: include
+                          name: instrumented-namespaces # add namespaces here
+                          match:
+                              kubernetes:
+                                  namespace_glob:
+                                      - staffops*
+                          refine:
+                              http:
+                                  routes:
+                                      incoming:
+                                          unmatched: heuristic
+                                          ignored_patterns: [/health, /healthz, /ready, /readyz, /live, /livez, /metrics, /ping]
+                enrich:
+                    enrichers:
+                        kubernetes:
+                            mode: autodetect
+                            cluster_name: {{ .Values.cluster.name }}
+                            metadata_cache:
+                                restrict_local_node: true

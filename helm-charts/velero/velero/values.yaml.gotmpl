@@ -13,6 +13,9 @@ initContainers:
 credentials:
     useSecret: true
     existingSecret: velero-r2
+    # AWS_ENDPOINT_URL_S3 (R2 endpoint, from Vault) as env var of velero and node-agent: the AWS SDK uses it
+    # because the BackupStorageLocation sets no s3Url
+    extraSecretRef: velero-r2-endpoint
 snapshotsEnabled: false # local-path has no snapshots: volume data goes through the node agent
 deployNodeAgent: true
 configuration:
@@ -26,7 +29,6 @@ configuration:
           config:
               region: auto
               s3ForcePathStyle: "true"
-              s3Url: {{ $b.endpoint }}
               checksumAlgorithm: "" # R2 rejects the default CRC32 checksum header
     volumeSnapshotLocation: []
 schedules:

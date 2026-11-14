@@ -48,7 +48,7 @@ scripts/vault.sh put grafana admin-user admin-password
 scripts/vault.sh put keycloak admin-user admin-password
 scripts/vault.sh put oidc argocd grafana vault      # random client secrets
 scripts/vault.sh put dependency-track kek            # openssl rand -base64 32
-scripts/vault.sh put velero access-key-id secret-access-key   # R2 token, runbooks/backup.md
+scripts/vault.sh put velero access-key-id secret-access-key endpoint   # R2 token, runbooks/backup.md
 ```
 
 External Secrets picks the values up within an hour; to speed it up force a sync

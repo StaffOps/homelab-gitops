@@ -9,10 +9,13 @@ Not backed up on purpose: everything Argo CD recreates from git, and Prometheus 
 
 ## One-time setup (Cloudflare dashboard)
 
-1. R2 → Create bucket `homelab-velero` (location automatic). R2 must be enabled on the account.
+1. R2 → Create bucket `staffops-k8s-local-velero` (location automatic). R2 must be enabled on the account.
 2. R2 → Manage API tokens → Create API token: permission **Object Read & Write**, specific bucket
-   `homelab-velero`, no expiry. Note the **Access Key ID** and **Secret Access Key** (shown once).
-3. `scripts/vault.sh put velero access-key-id secret-access-key` (paste both at the hidden prompt).
+   `staffops-k8s-local-velero`, no expiry. Note the **Access Key ID** and **Secret Access Key** (shown once).
+3. `scripts/vault.sh put velero access-key-id secret-access-key endpoint` (hidden prompts). `access-key-id` is the
+   32-character Access Key ID, `secret-access-key` the 64-character Secret Access Key, `endpoint` the bucket's
+   S3 API URL without the bucket path (`https://<account-id>.r2.cloudflarestorage.com`). The endpoint stays out
+   of git: it contains the account id.
 4. Check: `kubectl --context k8s01 -n velero get backupstoragelocation default` → `Available`.
 
 ## Manual backup
