@@ -286,13 +286,13 @@
     },
     {
       "type": "stat",
-      "title": "Volume used",
+      "title": "Node disk used",
       "id": 7,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "Root filesystem of the node, where local-path keeps the Loki volume (hostPath PVs report no kubelet volume stats)",
       "gridPos": {
         "x": 17,
         "y": 1,
@@ -305,7 +305,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(kubelet_volume_stats_used_bytes{namespace=\"monitoring\", persistentvolumeclaim=~\"storage-loki-[0-9]+\"} / kubelet_volume_stats_capacity_bytes{namespace=\"monitoring\", persistentvolumeclaim=~\"storage-loki-[0-9]+\"})",
+          "expr": "max(1 - node_filesystem_avail_bytes{job=\"node-exporter\", mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"node-exporter\", mountpoint=\"/\"})",
           "legendFormat": "",
           "refId": "A"
         }
@@ -1920,13 +1920,13 @@
     },
     {
       "type": "timeseries",
-      "title": "Volume (PVC)",
+      "title": "Disk: node root filesystem",
       "id": 39,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "The Loki volume is a local-path hostPath directory on this filesystem; kubelet exports no per-volume stats for hostPath PVs",
       "gridPos": {
         "x": 18,
         "y": 63,
@@ -1939,8 +1939,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(kubelet_volume_stats_used_bytes{namespace=\"monitoring\", persistentvolumeclaim=~\"storage-loki-[0-9]+\"})",
-          "legendFormat": "used",
+          "expr": "max(node_filesystem_size_bytes{job=\"node-exporter\", mountpoint=\"/\"} - node_filesystem_avail_bytes{job=\"node-exporter\", mountpoint=\"/\"})",
+          "legendFormat": "node used",
           "refId": "A"
         },
         {
@@ -1948,9 +1948,18 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(kubelet_volume_stats_capacity_bytes{namespace=\"monitoring\", persistentvolumeclaim=~\"storage-loki-[0-9]+\"})",
-          "legendFormat": "capacity",
+          "expr": "max(node_filesystem_size_bytes{job=\"node-exporter\", mountpoint=\"/\"})",
+          "legendFormat": "node size",
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(loki_ingester_wal_bytes_in_use{job=\"monitoring/loki\"})",
+          "legendFormat": "Loki WAL",
+          "refId": "C"
         }
       ],
       "fieldConfig": {
