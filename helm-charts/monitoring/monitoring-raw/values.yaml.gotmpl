@@ -99,9 +99,15 @@ resources:
               matchLabels:
                   k8s-app: calico-node
           podMetricsEndpoints:
-              - portNumber: 9091
-                interval: 30s
+              # The container declares no ports, so portNumber matches nothing: build the address from the pod IP
+              - interval: 30s
                 relabelings:
+                    - sourceLabels: [__meta_kubernetes_pod_container_name]
+                      regex: calico-node
+                      action: keep
+                    - sourceLabels: [__meta_kubernetes_pod_ip]
+                      targetLabel: __address__
+                      replacement: $1:9091
                     - targetLabel: job
                       replacement: calico-felix
     - apiVersion: monitoring.coreos.com/v1
@@ -166,9 +172,15 @@ resources:
               matchLabels:
                   k8s-app: tigera-operator
           podMetricsEndpoints:
-              - portNumber: 9484
-                interval: 60s
+              # The container declares no ports, so portNumber matches nothing: build the address from the pod IP
+              - interval: 60s
                 relabelings:
+                    - sourceLabels: [__meta_kubernetes_pod_container_name]
+                      regex: tigera-operator
+                      action: keep
+                    - sourceLabels: [__meta_kubernetes_pod_ip]
+                      targetLabel: __address__
+                      replacement: $1:9484
                     - targetLabel: job
                       replacement: tigera-operator
     # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates

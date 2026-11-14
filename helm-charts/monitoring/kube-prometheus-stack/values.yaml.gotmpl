@@ -186,12 +186,22 @@ grafana:
                 memory: 192Mi
 kube-state-metrics:
     fullnameOverride: kube-state-metrics
+    # kube_node_labels only exists for allow-listed labels; the CloudNativePG dashboard joins pods to the node zone
+    metricLabelsAllowlist:
+        - nodes=[topology.kubernetes.io/zone]
     resources:
         requests:
             cpu: 10m
             memory: 96Mi
         limits:
             memory: 192Mi
+# Only the Linux node-exporter dashboards: the AIX and macOS ones query metrics a Linux node never exports
+nodeExporter:
+    operatingSystems:
+        aix:
+            enabled: false
+        darwin:
+            enabled: false
 prometheus-node-exporter:
     fullnameOverride: node-exporter
     resources:
