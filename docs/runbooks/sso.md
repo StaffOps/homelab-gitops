@@ -31,6 +31,9 @@ as a person. Create it once in the admin console:
 1. Realm `master` → Clients → Create client → Client ID `keycloak-config-cli` → Next → *Client
    authentication* on, *Service accounts roles* on, other flows off → Save.
 2. Tab *Service accounts roles* → Assign role → filter *realm roles* → `admin`.
+   Tab *Advanced* → *OpenID Connect Compatibility Modes* → **Use refresh tokens for client credentials grant: On**
+   → Save. Without it Keycloak 26.8 issues the token on a transient session that its own admin API rejects
+   (401, introspection `active:false`).
 3. Tab *Credentials* → copy the client secret →
    `scripts/vault.sh put keycloak-automation client-secret`.
 

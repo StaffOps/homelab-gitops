@@ -193,6 +193,10 @@ resources:
                     standardFlowEnabled: false
                     directAccessGrantsEnabled: false
                     serviceAccountsEnabled: true
+                    attributes:
+                        # Keycloak 26.8 issues client_credentials tokens on a transient session that its own admin
+                        # API and introspection reject (401 / active:false); a real session fixes it
+                        client_credentials.use_refresh_token: "true"
                     defaultClientScopes:
                         - basic
                         - profile
