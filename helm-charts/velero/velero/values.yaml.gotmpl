@@ -1,0 +1,76 @@
+{{- $b := .Values.backup }}
+fullnameOverride: velero
+image:
+    tag: v1.18.2
+# CRDs come from the chart's crds/ (rendered with --include-crds); no kubectl upgrade Job
+upgradeCRDs: false
+initContainers:
+    - name: velero-plugin-for-aws
+      image: velero/velero-plugin-for-aws:v1.14.4
+      volumeMounts:
+          - mountPath: /target
+            name: plugins
+credentials:
+    useSecret: true
+    existingSecret: velero-r2
+snapshotsEnabled: false # local-path has no snapshots: volume data goes through the node agent
+deployNodeAgent: true
+configuration:
+    uploaderType: kopia
+    backupStorageLocation:
+        - name: default
+          provider: aws
+          bucket: {{ $b.bucket }}
+          prefix: {{ .Values.cluster.name }}
+          default: true
+          config:
+              region: auto
+              s3ForcePathStyle: "true"
+              s3Url: {{ $b.endpoint }}
+              checksumAlgorithm: "" # R2 rejects the default CRC32 checksum header
+    volumeSnapshotLocation: []
+schedules:
+    daily:
+        disabled: false
+        schedule: "0 3 * * *" # UTC
+        useOwnerReferencesInBackup: false
+        template:
+            ttl: {{ $b.ttl }}
+            storageLocation: default
+            defaultVolumesToFsBackup: true
+            includedNamespaces:
+                {{- toYaml $b.namespaces | nindent 16 }}
+metrics:
+    enabled: true
+    serviceMonitor:
+        enabled: true
+    nodeAgentPodMonitor:
+        enabled: true
+    prometheusRule:
+        enabled: true
+        spec:
+            - alert: VeleroBackupFailed
+              expr: increase(velero_backup_failure_total{schedule!=""}[1h]) > 0
+              labels:
+                  severity: warning
+              annotations:
+                  summary: Velero backup of schedule {{`{{ $labels.schedule }}`}} failed
+            - alert: VeleroBackupStale
+              expr: time() - velero_backup_last_successful_timestamp{schedule!=""} > 36 * 3600
+              labels:
+                  severity: warning
+              annotations:
+                  summary: No successful Velero backup of schedule {{`{{ $labels.schedule }}`}} for 36h
+resources:
+    requests:
+        cpu: 50m
+        memory: 128Mi
+    limits:
+        memory: 512Mi
+nodeAgent:
+    resources:
+        requests:
+            cpu: 50m
+            memory: 128Mi
+        limits:
+            memory: 1Gi

@@ -1,0 +1,35 @@
+# Velero: backups of the namespaces that hold state (environment.yaml backup.namespaces) to Cloudflare R2
+# (S3-compatible), including volume data through the node agent (Kopia file-system backup: local-path has no
+# snapshots). R2 credentials from Vault homelab/velero.
+repositories:
+    - name: vmware-tanzu
+      url: https://vmware-tanzu.github.io/helm-charts
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - velero:
+                  enabled: true
+                  version: 12.2.5 # Velero 1.18.2
+            - velero-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: velero
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    # R2 credentials (ExternalSecret → Secret velero-r2, key "cloud")
+    - chart: bedag/raw
+      name: velero-raw
+      condition: velero-raw.enabled
+      <<: *default
+    - chart: vmware-tanzu/velero
+      name: velero
+      condition: velero.enabled
+      <<: *default

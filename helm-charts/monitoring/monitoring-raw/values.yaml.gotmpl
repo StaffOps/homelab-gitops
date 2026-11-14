@@ -21,6 +21,23 @@ resources:
                 remoteRef:
                     key: {{ .Values.vault.prefix }}/grafana
                     property: admin-password
+    # Client secret of the Keycloak client grafana (Vault homelab/oidc: grafana)
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: grafana-oidc
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: grafana-oidc
+          data:
+              - secretKey: client-secret
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/oidc
+                    property: grafana
     {{- range $host, $svc := dict "grafana" (list "grafana" 80) "prometheus" (list "kps-prometheus" 9090) "alertmanager" (list "kps-alertmanager" 9093) }}
     - apiVersion: gateway.networking.k8s.io/v1
       kind: HTTPRoute

@@ -13,8 +13,23 @@ crds:
     keep: true
 configs:
     cm:
-        admin.enabled: true
-        timeout.reconciliation: 60s
+        admin.enabled: true # local admin kept as break-glass (Keycloak down)
+        # Login with Keycloak (realm homelab, client argocd); the secret comes from Secret argocd-oidc
+        # (ExternalSecret in argo-cd-raw, label part-of=argocd so Argo CD can reference it)
+        oidc.config: |
+            name: Keycloak
+            issuer: https://keycloak.{{ .Values.domain }}/realms/homelab
+            clientID: argocd
+            clientSecret: $argocd-oidc:clientSecret
+            requestedScopes:
+                - openid
+                - profile
+                - email
+                - groups
+        # Poll git every 15-25s (no webhook: GitHub cannot reach the LAN). Rendering is cached per commit, so
+        # polling only costs a git ls-remote per repo.
+        timeout.reconciliation: 15s
+        timeout.reconciliation.jitter: 10s
         resource.customizations.ignoreDifferences.all: |
             jsonPointers:
                 - /status
@@ -50,6 +65,12 @@ configs:
                   - CertificateSigningRequest
               clusters:
                   - '*'
+    # Keycloak group admins → role:admin; everyone else who logs in gets nothing
+    rbac:
+        policy.default: ""
+        scopes: "[groups]"
+        policy.csv: |
+            g, admins, role:admin
     params:
         create: true
         server.insecure: true # TLS terminates at the Gateway
@@ -138,6 +159,9 @@ server:
             memory: 256Mi
 repoServer:
     replicas: 1
+    # Resolved branch→commit is cached 1m by default, which would hide the 15s polling (configs.cm)
+    extraArgs:
+        - --revision-cache-expiration=15s
     metrics:
         enabled: true
         serviceMonitor:

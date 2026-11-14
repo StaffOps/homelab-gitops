@@ -22,3 +22,13 @@ vault:
     address: http://vault.vault.svc:8200
     kvMount: secret # KV v2
     prefix: homelab # secrets live at secret/homelab/<name>
+# Velero backups to Cloudflare R2 (S3-compatible). The endpoint holds the account id (not a credential); the
+# bucket is created by hand in the Cloudflare dashboard; credentials live in Vault homelab/velero.
+backup:
+    endpoint: https://<cloudflare-account-id>.r2.cloudflarestorage.com
+    bucket: homelab-velero
+    ttl: 720h # 30 days
+    namespaces: # namespaces whose objects and volumes are backed up daily
+        - vault
+        - keycloak
+        - dependency-track

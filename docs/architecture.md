@@ -20,10 +20,12 @@ Argo CD reconciles everything from `main`; the operator only bootstraps, unseals
 | `gateway` | gateway | Gateway `public` on `192.168.68.240` + wildcard certificate | istio, metallb, cert-manager |
 | `monitoring` | monitoring | kube-prometheus-stack, short names `kps-*` (Prometheus, Alertmanager, Grafana) | prometheus-operator CRDs |
 | `opentelemetry` | opentelemetry | OpenTelemetry Operator | cert-manager |
-| `minio` | minio | S3 endpoint (standalone) | external-secrets |
 | `cloudnative-pg` | cnpg-system | PostgreSQL operator (`Cluster` resources) | — |
 | `keycloak` | keycloak | identity provider (OIDC/SAML), PostgreSQL `keycloak-db` (CloudNativePG) | cloudnative-pg, external-secrets |
 | `keda` | keda | event-driven autoscaling (ScaledObject, ScaledJob) | — |
+| `dependency-track` | dependency-track | SBOM analysis (API server + frontend), PostgreSQL `dtrack-db` | cloudnative-pg, external-secrets |
+| `velero` | velero | daily backup of stateful namespaces (objects + volumes) to Cloudflare R2 | external-secrets |
+| `kyverno` | kyverno | policy engine; Pod Security Standards baseline in Audit (PolicyReports) | — |
 
 kubeadm provides the control plane, CoreDNS and kube-proxy; Ansible (`homelab-ansible`) installs Calico. No
 StorageClass, metrics API, LoadBalancer, ingress or Gateway API CRDs come with it (ADR 0006).
@@ -58,8 +60,10 @@ Kubernetes Secrets keep working but nothing refreshes; alert `VaultSealed` fires
 |-----------|------|---------|
 | `homelab/cloudflare` | `api-token` | cert-manager, external-dns |
 | `homelab/grafana` | `admin-user`, `admin-password` | monitoring (Grafana) |
-| `homelab/minio` | `root-user`, `root-password` | minio |
 | `homelab/keycloak` | `admin-user`, `admin-password` | keycloak (bootstrap admin) |
+| `homelab/oidc` | `argocd`, `grafana`, `vault` | Keycloak client secrets (keycloak, argo, monitoring) |
+| `homelab/dependency-track` | `kek` | dependency-track (encryption key of stored secrets) |
+| `homelab/velero` | `access-key-id`, `secret-access-key` | velero (R2 API token) |
 
 ## GitOps flow
 
@@ -69,5 +73,5 @@ Kubernetes Secrets keep working but nothing refreshes; alert `VaultSealed` fires
 (`helmfile template --include-crds`). Ordering between apps comes from retries and
 `SkipDryRunOnMissingResource`: an app whose CRDs are not there yet retries until they are.
 
-Exposed hostnames: `argocd`, `vault`, `grafana`, `prometheus`, `alertmanager`, `minio`, `console-minio`, `keycloak`
+Exposed hostnames: `argocd`, `vault`, `grafana`, `prometheus`, `alertmanager`, `keycloak`, `dependency-track`
 (`.staffops.space`).

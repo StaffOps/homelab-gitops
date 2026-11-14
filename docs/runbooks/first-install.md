@@ -35,7 +35,7 @@ Argo CD syncs `origin/main`, not the local checkout: push the layout before boot
 ```
 
 `local-path-provisioner`, `metrics-server`, `kubelet-csr-approver`, `metallb`, `vault` and `istio` sync on their own (Vault's
-volume binds once the StorageClass exists). `cert-manager`, `external-dns`, `monitoring`, `minio` and `keycloak`
+volume binds once the StorageClass exists). `cert-manager`, `external-dns`, `monitoring`, `keycloak`, `dependency-track` and `velero`
 stay degraded until their secrets exist (step 4) — expected.
 
 ## 4. Vault
@@ -45,8 +45,10 @@ scripts/vault.sh init                                   # saves ~/.config/homela
 scripts/vault.sh configure                              # KV v2, Kubernetes auth, role external-secrets
 scripts/vault.sh put cloudflare api-token
 scripts/vault.sh put grafana admin-user admin-password
-scripts/vault.sh put minio root-user root-password
 scripts/vault.sh put keycloak admin-user admin-password
+scripts/vault.sh put oidc argocd grafana vault      # random client secrets
+scripts/vault.sh put dependency-track kek            # openssl rand -base64 32
+scripts/vault.sh put velero access-key-id secret-access-key   # R2 token, runbooks/backup.md
 ```
 
 External Secrets picks the values up within an hour; to speed it up force a sync
@@ -64,3 +66,7 @@ dig +short argocd.staffops.space                                     # 192.168.6
 
 Then `https://argocd.staffops.space` (user `admin`, password in `argocd-initial-admin-secret`; change it and
 delete that Secret).
+
+## 6. Single sign-on
+
+Once `keycloak` is Healthy: [sso.md](sso.md#first-time) (Keycloak admin and user, `scripts/vault.sh oidc`).

@@ -1,0 +1,33 @@
+# Kyverno (policy engine) + the Pod Security Standards "baseline" policies in Audit mode: violations show up
+# in PolicyReports, nothing is blocked. Move a policy to Enforce in kyverno-policies once its reports are clean.
+repositories:
+    - name: kyverno
+      url: https://kyverno.github.io/kyverno/
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - kyverno:
+                  enabled: true
+                  version: 3.10.0 # Kyverno v1.20.0
+            - kyverno-policies:
+                  enabled: true
+                  version: 3.10.0
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: kyverno
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    - chart: kyverno/kyverno
+      name: kyverno
+      condition: kyverno.enabled
+      <<: *default
+    - chart: kyverno/kyverno-policies
+      name: kyverno-policies
+      condition: kyverno-policies.enabled
+      <<: *default
+      needs:
+          - kyverno/kyverno

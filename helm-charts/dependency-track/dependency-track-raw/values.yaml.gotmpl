@@ -1,0 +1,41 @@
+resources:
+    # PostgreSQL (CloudNativePG); the operator generates Secret dtrack-db-app (username, password)
+    - apiVersion: postgresql.cnpg.io/v1
+      kind: Cluster
+      metadata:
+          name: dtrack-db
+      spec:
+          instances: 1
+          storage:
+              storageClass: {{ .Values.storageClass }}
+              size: 10Gi
+          bootstrap:
+              initdb:
+                  database: dtrack
+                  owner: dtrack
+          monitoring:
+              enablePodMonitor: true
+          resources:
+              requests:
+                  cpu: 50m
+                  memory: 256Mi
+              limits:
+                  memory: 1Gi
+    # KEK that encrypts the secrets Dependency-Track stores in its database (Vault homelab/dependency-track: kek,
+    # a base64 32-byte key: openssl rand -base64 32). Losing it makes those stored secrets unreadable.
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: dependency-track-kek
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: dependency-track-kek
+          data:
+              - secretKey: kek
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/dependency-track
+                    property: kek

@@ -1,0 +1,28 @@
+resources:
+    # Vault homelab/velero: access-key-id, secret-access-key (R2 API token, Object Read & Write on the bucket)
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: velero-r2
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: velero-r2
+              template:
+                  data:
+                      cloud: |
+                          [default]
+                          aws_access_key_id={{`{{ .accessKeyId }}`}}
+                          aws_secret_access_key={{`{{ .secretAccessKey }}`}}
+          data:
+              - secretKey: accessKeyId
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/velero
+                    property: access-key-id
+              - secretKey: secretAccessKey
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/velero
+                    property: secret-access-key

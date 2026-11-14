@@ -6,12 +6,13 @@
 #   scripts/vault.sh init                first time only: init (1 key share), unseal, save keys locally
 #   scripts/vault.sh unseal              after every restart of vault-0 (Vault starts sealed)
 #   scripts/vault.sh configure           KV v2 mount, Kubernetes auth, policy + role for External Secrets
+#   scripts/vault.sh oidc                login with Keycloak (realm homelab, client vault): group admins → policy admin
 #   scripts/vault.sh put <name> k1 k2…   prompt for each key (hidden) and write secret/<prefix>/<name>
 #
 # Keys and root token: $VAULT_INIT_FILE (default ~/.config/homelab/vault-init.json, mode 600). Keep a copy
 # offline (password manager): losing it means losing every secret in Vault.
 # Secrets the platform expects (docs/runbooks/vault.md):
-#   put cloudflare api-token     put grafana admin-user admin-password     put minio root-user root-password
+#   put cloudflare api-token     put grafana admin-user admin-password
 set -euo pipefail
 
 CONTEXT="k8s01"
@@ -37,7 +38,9 @@ root_token() {
     [ -f "$INIT_FILE" ] || fail "no $INIT_FILE (run init, or restore it from your offline copy)"
     jq -r '.root_token' "$INIT_FILE"
 }
-sealed() { vexec vault status -format=json 2>/dev/null | jq -r '.sealed'; }
+# "vault status" exits 2 while sealed: never let that abort the script (set -e + pipefail)
+vstatus() { vexec vault status -format=json 2>/dev/null || true; }
+sealed() { vstatus | jq -r '.sealed'; }
 
 for t in kubectl jq; do command -v "$t" >/dev/null || fail "$t not found"; done
 [ "$(k get nodes -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)" = "k8s01" ] ||
@@ -56,7 +59,7 @@ case "$cmd" in
         fi
         ;;
     init)
-        initialized="$(vexec vault status -format=json 2>/dev/null | jq -r '.initialized')"
+        initialized="$(vstatus | jq -r '.initialized')"
         [ "$initialized" = "false" ] || fail "Vault is already initialized"
         [ ! -e "$INIT_FILE" ] || fail "$INIT_FILE already exists — refusing to overwrite it"
         mkdir -p "$(dirname "$INIT_FILE")"
@@ -69,7 +72,8 @@ case "$cmd" in
     unseal)
         [ "$(sealed)" = "true" ] || { ok "already unsealed"; exit 0; }
         [ -f "$INIT_FILE" ] || fail "no $INIT_FILE"
-        jq -r '.unseal_keys_b64[0]' "$INIT_FILE" | vexec vault operator unseal - >/dev/null
+        # "vault operator unseal -" does not read stdin; "vault write key=-" does
+        jq -j '.unseal_keys_b64[0]' "$INIT_FILE" | vexec vault write sys/unseal key=- >/dev/null
         [ "$(sealed)" = "false" ] && ok "unsealed" || fail "still sealed"
         ;;
     configure)
@@ -89,6 +93,32 @@ case "$cmd" in
                 policies=external-secrets-read ttl=1h >/dev/null
         "
         ok "KV v2 at $KV_MOUNT/, Kubernetes auth, policy external-secrets-read, role external-secrets"
+        ;;
+    oidc)
+        # Needs the Keycloak realm (keycloak app synced) and secret/<prefix>/oidc with key "vault"
+        [ "$(sealed)" = "false" ] || fail "Vault is sealed — run unseal first"
+        domain="$(yq '.domain' "$(dirname "$0")/../helm-charts/environment.yaml")"
+        issuer="https://keycloak.$domain/realms/homelab"
+        : | with_token "
+            set -e
+            secret=\$(vault kv get -field=vault $KV_MOUNT/$PREFIX/oidc)
+            vault auth list -format=json | grep -q '\"oidc/\"' || vault auth enable oidc
+            printf '%s' \"\$secret\" | vault write auth/oidc/config oidc_discovery_url=$issuer \
+                oidc_client_id=vault oidc_client_secret=- default_role=default >/dev/null
+            vault write auth/oidc/role/default role_type=oidc user_claim=preferred_username \
+                groups_claim=groups oidc_scopes=profile,email,groups token_policies=default token_ttl=8h \
+                allowed_redirect_uris=https://vault.$domain/ui/vault/auth/oidc/oidc/callback \
+                allowed_redirect_uris=http://localhost:8250/oidc/callback >/dev/null
+            printf '%s\n' 'path \"*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\", \"sudo\"] }' |
+                vault policy write admin - >/dev/null
+            vault write identity/group name=admins type=external policies=admin >/dev/null
+            gid=\$(vault read -field=id identity/group/name/admins)
+            accessor=\$(vault read -field=accessor sys/auth/oidc)
+            vault read -field=alias identity/group/name/admins 2>/dev/null | grep -q \"\$accessor\" ||
+                vault write identity/group-alias name=admins mount_accessor=\$accessor canonical_id=\$gid >/dev/null
+        "
+        ok "OIDC login via $issuer (client vault); Keycloak group admins → policy admin"
+        echo "  UI: https://vault.$domain → method OIDC, role default.  CLI: vault login -method=oidc"
         ;;
     put)
         name="${1:-}"

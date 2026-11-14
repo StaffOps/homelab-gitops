@@ -23,5 +23,12 @@
           automated:
               prune: false # never prune Argo CD's own objects automatically
               selfHeal: true
+          retry:
+              limit: 10
+              backoff:
+                  duration: 30s
+                  factor: 2
+                  maxDuration: 5m
           syncOptions:
               - ServerSideApply=true
+              - SkipDryRunOnMissingResource=true # ExternalSecret CRD arrives with the platform apps

@@ -1,0 +1,21 @@
+fullnameOverride: kyverno
+# Single node: one replica per controller
+admissionController:
+    replicas: 1
+    serviceMonitor:
+        enabled: true
+backgroundController:
+    replicas: 1
+    serviceMonitor:
+        enabled: true
+cleanupController:
+    replicas: 1
+    serviceMonitor:
+        enabled: true
+reportsController:
+    replicas: 1
+    serviceMonitor:
+        enabled: true
+grafana:
+    enabled: true
+    namespace: monitoring

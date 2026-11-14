@@ -84,9 +84,6 @@
                     - appName: opentelemetry
                       path: opentelemetry
                       namespace: opentelemetry
-                    - appName: minio
-                      path: minio
-                      namespace: minio
                     - appName: cloudnative-pg
                       path: cloudnative-pg
                       namespace: cnpg-system
@@ -96,6 +93,15 @@
                     - appName: keda
                       path: keda
                       namespace: keda
+                    - appName: dependency-track
+                      path: dependency-track
+                      namespace: dependency-track
+                    - appName: velero
+                      path: velero
+                      namespace: velero
+                    - appName: kyverno
+                      path: kyverno
+                      namespace: kyverno
       template:
           metadata:
               name: '{{`{{ .appName }}`}}'

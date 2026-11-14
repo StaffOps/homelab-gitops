@@ -1,0 +1,50 @@
+fullnameOverride: dependency-track
+database:
+    jdbcUrl: jdbc:postgresql://dtrack-db-rw:5432/dtrack?reWriteBatchedInserts=true
+    existingSecret:
+        name: dtrack-db-app
+        usernameKey: username
+        passwordKey: password
+fileStorage:
+    provider: local
+    local:
+        size: 10Gi
+        storageClassName: {{ .Values.storageClass }}
+secretManagement:
+    provider: database
+    database:
+        kek:
+            mode: config
+            existingSecret:
+                name: dependency-track-kek
+                key: kek
+apiServer:
+    topology: monolith
+    serviceMonitor:
+        enabled: true
+    web:
+        replicaCount: 1
+        resources:
+            requests:
+                cpu: 250m
+                memory: 1536Mi
+            limits:
+                memory: 4Gi
+frontend:
+    enabled: true
+    apiBaseUrl: https://dependency-track.{{ .Values.domain }}
+    resources:
+        requests:
+            cpu: 10m
+            memory: 64Mi
+        limits:
+            memory: 128Mi
+# /api → api-server, / → frontend
+httpRoute:
+    enabled: true
+    hostnames:
+        - dependency-track.{{ .Values.domain }}
+    parentRefs:
+        - name: {{ .Values.gateway.name }}
+          namespace: {{ .Values.gateway.namespace }}
+          sectionName: https

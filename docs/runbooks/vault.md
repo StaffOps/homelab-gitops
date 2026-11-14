@@ -23,8 +23,10 @@ so `https://vault.staffops.space` still answers and Vault can also be unsealed f
 |---------|---------|
 | `scripts/vault.sh put cloudflare api-token` | cert-manager, external-dns |
 | `scripts/vault.sh put grafana admin-user admin-password` | Grafana |
-| `scripts/vault.sh put minio root-user root-password` | MinIO |
 | `scripts/vault.sh put keycloak admin-user admin-password` | Keycloak (bootstrap admin, first start only) |
+| `scripts/vault.sh put oidc argocd grafana vault` | Keycloak clients ([sso.md](sso.md)) |
+| `scripts/vault.sh put dependency-track kek` | Dependency-Track (`openssl rand -base64 32`; keep a copy: losing it loses the secrets DT stores) |
+| `scripts/vault.sh put velero access-key-id secret-access-key` | Velero (R2 API token, see [backup.md](backup.md)) |
 
 `put` replaces the whole secret: pass every key of it each time. Adding an app with a secret: add a row here.
 

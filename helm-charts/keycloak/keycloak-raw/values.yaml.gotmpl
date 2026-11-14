@@ -1,4 +1,5 @@
 {{- $gw := .Values.gateway }}
+{{- $d := .Values.domain }}
 resources:
     # PostgreSQL for Keycloak (CloudNativePG). The operator generates the Secret keycloak-db-app
     # (username, password) for the owner role; nothing goes to Vault.
@@ -60,3 +61,155 @@ resources:
               - backendRefs:
                     - name: keycloak-http
                       port: 80
+    # OIDC client secrets (Vault homelab/oidc: argocd, grafana, vault), consumed by the realm import below
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: keycloak-oidc-clients
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: keycloak-oidc-clients
+          dataFrom:
+              - extract:
+                    key: {{ .Values.vault.prefix }}/oidc
+    # Realm "homelab": group admins, scope "groups" (claim groups), one confidential client per app.
+    # Users are created by hand in the admin console and added to the group admins.
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+          name: keycloak-realm-homelab
+      data:
+          homelab.yaml: |
+              realm: homelab
+              enabled: true
+              displayName: homelab
+              loginWithEmailAllowed: true
+              groups:
+                  - name: admins
+              clientScopes:
+                  - name: groups
+                    protocol: openid-connect
+                    attributes:
+                        include.in.token.scope: "true"
+                        display.on.consent.screen: "false"
+                    protocolMappers:
+                        - name: groups
+                          protocol: openid-connect
+                          protocolMapper: oidc-group-membership-mapper
+                          config:
+                              claim.name: groups
+                              full.path: "false"
+                              id.token.claim: "true"
+                              access.token.claim: "true"
+                              userinfo.token.claim: "true"
+              clients:
+                  {{- range $id, $c := dict "argocd" (dict "url" (printf "https://argocd.%s" $d) "callback" "/auth/callback") "grafana" (dict "url" (printf "https://grafana.%s" $d) "callback" "/login/generic_oauth") "vault" (dict "url" (printf "https://vault.%s" $d) "callback" "/ui/vault/auth/oidc/oidc/callback") }}
+                  - clientId: {{ $id }}
+                    name: {{ $id }}
+                    protocol: openid-connect
+                    publicClient: false
+                    secret: $(env:{{ upper $id }}_CLIENT_SECRET)
+                    standardFlowEnabled: true
+                    directAccessGrantsEnabled: false
+                    rootUrl: {{ $c.url }}
+                    redirectUris:
+                        - {{ $c.url }}{{ $c.callback }}
+                        {{- if eq $id "vault" }}
+                        - http://localhost:8250/oidc/callback
+                        {{- end }}
+                    webOrigins:
+                        - {{ $c.url }}
+                    attributes:
+                        post.logout.redirect.uris: {{ $c.url }}/*
+                        pkce.code.challenge.method: S256
+                    defaultClientScopes:
+                        - web-origins
+                        - acr
+                        - basic
+                        - profile
+                        - email
+                        - roles
+                        - groups
+                  {{- end }}
+    # Applies the realm after every sync of this app (Keycloak Healthy first). Never deletes objects it does
+    # not list (managed: no-delete), so changes made in the console survive.
+    - apiVersion: batch/v1
+      kind: Job
+      metadata:
+          name: keycloak-realm-import
+          annotations:
+              argocd.argoproj.io/hook: PostSync
+              argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+      spec:
+          backoffLimit: 6
+          ttlSecondsAfterFinished: 86400
+          template:
+              spec:
+                  restartPolicy: OnFailure
+                  securityContext:
+                      runAsNonRoot: true
+                      runAsUser: 1000
+                      seccompProfile:
+                          type: RuntimeDefault
+                  containers:
+                      - name: keycloak-config-cli
+                        image: docker.io/adorsys/keycloak-config-cli:6.5.1-26
+                        securityContext:
+                            allowPrivilegeEscalation: false
+                            capabilities:
+                                drop: [ALL]
+                        env:
+                            - name: KEYCLOAK_URL
+                              value: http://keycloak-http.keycloak.svc
+                            - name: KEYCLOAK_AVAILABILITYCHECK_ENABLED
+                              value: "true"
+                            - name: KEYCLOAK_AVAILABILITYCHECK_TIMEOUT
+                              value: 300s
+                            - name: KEYCLOAK_USER
+                              valueFrom:
+                                  secretKeyRef:
+                                      name: keycloak-admin
+                                      key: username
+                            - name: KEYCLOAK_PASSWORD
+                              valueFrom:
+                                  secretKeyRef:
+                                      name: keycloak-admin
+                                      key: password
+                            - name: IMPORT_FILES_LOCATIONS
+                              value: /config/*
+                            - name: IMPORT_VARSUBSTITUTION_ENABLED
+                              value: "true"
+                            - name: IMPORT_MANAGED_GROUP
+                              value: no-delete
+                            - name: IMPORT_MANAGED_CLIENT
+                              value: no-delete
+                            - name: IMPORT_MANAGED_CLIENT_SCOPE
+                              value: no-delete
+                            - name: IMPORT_MANAGED_REQUIRED_ACTION
+                              value: no-delete
+                            - name: IMPORT_MANAGED_ROLE
+                              value: no-delete
+                            {{- range $id := list "argocd" "grafana" "vault" }}
+                            - name: {{ upper $id }}_CLIENT_SECRET
+                              valueFrom:
+                                  secretKeyRef:
+                                      name: keycloak-oidc-clients
+                                      key: {{ $id }}
+                            {{- end }}
+                        volumeMounts:
+                            - name: realm
+                              mountPath: /config
+                        resources:
+                            requests:
+                                cpu: 50m
+                                memory: 256Mi
+                            limits:
+                                memory: 512Mi
+                  volumes:
+                      - name: realm
+                        configMap:
+                            name: keycloak-realm-homelab
