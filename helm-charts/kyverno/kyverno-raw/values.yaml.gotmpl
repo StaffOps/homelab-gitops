@@ -4,8 +4,8 @@ resources:
     #   - autogen is off, so Deployments/StatefulSets/... in git are never touched and Argo CD sees no drift
     #     (Pods belong to ReplicaSets, Argo CD does not diff them);
     #   - running Pods get the label when they are recreated (rollout restart);
-    #   - namespaces in Kyverno's resourceFilters (kube-system, kyverno, ...) are skipped by Kyverno itself.
-    # failurePolicy Ignore: Pods are still admitted while Kyverno is down (they just miss the label).
+    #   - kube-system and kyverno are no longer excluded (kyverno chart values: config), so every namespace is covered.
+    # failurePolicy Ignore: Pods are still admitted while Kyverno is down; the sweeper CronJob below labels them.
     - apiVersion: policies.kyverno.io/v1
       kind: MutatingPolicy
       metadata:
@@ -26,6 +26,79 @@ resources:
                 applyConfiguration:
                     expression: >-
                         Object{metadata: Object.metadata{labels: {"topology.kubernetes.io/zone": "{{ .Values.zone }}"}}}
+    # Pods that admission cannot label: static/mirror Pods (created by the kubelet, group system:nodes) and Pods
+    # created while Kyverno is down (failurePolicy Ignore). Every 5 minutes, label (or correct) every Pod whose zone
+    # differs; no match is a no-op.
+    - apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+          name: pod-zone-label-sweeper
+          namespace: kyverno
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+          name: pod-zone-label-sweeper
+      rules:
+          - apiGroups: [""]
+            resources: [pods]
+            verbs: [get, list, patch]
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+          name: pod-zone-label-sweeper
+      roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: pod-zone-label-sweeper
+      subjects:
+          - kind: ServiceAccount
+            name: pod-zone-label-sweeper
+            namespace: kyverno
+    - apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+          name: pod-zone-label-sweeper
+          namespace: kyverno
+      spec:
+          schedule: "*/5 * * * *"
+          concurrencyPolicy: Forbid
+          successfulJobsHistoryLimit: 1
+          failedJobsHistoryLimit: 3
+          jobTemplate:
+              spec:
+                  backoffLimit: 2
+                  activeDeadlineSeconds: 120
+                  ttlSecondsAfterFinished: 3600
+                  template:
+                      spec:
+                          serviceAccountName: pod-zone-label-sweeper
+                          restartPolicy: Never
+                          securityContext:
+                              runAsNonRoot: true
+                              runAsUser: 65534
+                              seccompProfile:
+                                  type: RuntimeDefault
+                          containers:
+                              - name: kubectl
+                                image: registry.k8s.io/kubectl:v1.37.2
+                                args:
+                                    - label
+                                    - pods
+                                    - --all-namespaces
+                                    - --selector=topology.kubernetes.io/zone!={{ .Values.zone }}
+                                    - topology.kubernetes.io/zone={{ .Values.zone }}
+                                    - --overwrite
+                                securityContext:
+                                    allowPrivilegeEscalation: false
+                                    readOnlyRootFilesystem: true
+                                    capabilities:
+                                        drop: [ALL]
+                                resources:
+                                    requests:
+                                        cpu: 10m
+                                        memory: 32Mi
+                                    limits:
+                                        memory: 128Mi
     # One read-only ClusterRole per CustomResourceDefinition, aggregated into ClusterRole mcp-read (Kubernetes MCP
     # servers, helm-charts/mcp-servers/mcp-servers-raw/resources/rbac.yaml). Existing CRDs on policy creation,
     # new ones on CREATE; synchronize deletes the role when its CRD is deleted.

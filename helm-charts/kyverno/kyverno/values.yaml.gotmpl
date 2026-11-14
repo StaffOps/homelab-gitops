@@ -1,4 +1,15 @@
 fullnameOverride: kyverno
+# Admission covers every namespace, kube-system and kyverno included, so the zone label (kyverno-raw
+# pod-zone-label) reaches all Pods. Safe only while every policy that matches Pods uses failurePolicy Ignore:
+# with Kyverno down, a Fail policy would block Pods in kube-system and Kyverno's own Pods.
+config:
+    excludeKyvernoNamespace: false
+    resourceFiltersExcludeNamespaces:
+        - kube-system
+        - kyverno
+    webhooks:
+        namespaceSelector:
+            matchExpressions: [] # replaces the chart default (NotIn kube-system)
 # Single node: one replica per controller
 admissionController:
     replicas: 1
