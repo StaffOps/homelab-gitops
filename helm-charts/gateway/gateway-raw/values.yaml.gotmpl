@@ -61,9 +61,32 @@ resources:
                       requestRedirect:
                           scheme: https
                           statusCode: 301
-    # MCP host: every request needs a valid Keycloak JWT (realm keycloak.realm) whose groups claim holds
+    # Gateway "mcp" (only mcp.<domain>): same wildcard certificate, its own Istio deployment and MetalLB IP
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      metadata:
+          name: {{ $gw.mcp.name }}
+      spec:
+          gatewayClassName: istio
+          addresses:
+              - type: IPAddress
+                value: {{ $gw.mcp.address }}
+          listeners:
+              - name: https
+                protocol: HTTPS
+                port: 443
+                hostname: mcp.{{ .Values.domain }}
+                tls:
+                    mode: Terminate
+                    certificateRefs:
+                        - name: wildcard-tls
+                allowedRoutes:
+                    namespaces:
+                        from: All
+    # Gateway "mcp": every request needs a valid Keycloak JWT (realm keycloak.realm) whose groups claim holds
     # /mcp/admin or /mcp/viewer. People get the group in Keycloak; services (hermes, backstage) use
-    # client_credentials and their service-account users are in /mcp/viewer. Other hosts are unaffected.
+    # client_credentials and their service-account users are in /mcp/viewer. Never target the Gateway
+    # "public" with a RequestAuthentication: it rejects every Bearer token that is not a staffops-realm JWT.
     - apiVersion: security.istio.io/v1
       kind: RequestAuthentication
       metadata:
@@ -72,7 +95,7 @@ resources:
           targetRefs:
               - kind: Gateway
                 group: gateway.networking.k8s.io
-                name: {{ $gw.name }}
+                name: {{ $gw.mcp.name }}
           jwtRules:
               - issuer: https://keycloak.{{ .Values.domain }}/realms/{{ .Values.keycloak.realm }}
                 jwksUri: http://keycloak-http.keycloak.svc/realms/{{ .Values.keycloak.realm }}/protocol/openid-connect/certs
@@ -85,15 +108,12 @@ resources:
           targetRefs:
               - kind: Gateway
                 group: gateway.networking.k8s.io
-                name: {{ $gw.name }}
+                name: {{ $gw.mcp.name }}
           action: DENY
           rules:
               - from:
                     - source:
                           notRequestPrincipals: ["*"]
-                to:
-                    - operation:
-                          hosts: [mcp.{{ .Values.domain }}]
     - apiVersion: security.istio.io/v1
       kind: AuthorizationPolicy
       metadata:
@@ -102,13 +122,10 @@ resources:
           targetRefs:
               - kind: Gateway
                 group: gateway.networking.k8s.io
-                name: {{ $gw.name }}
+                name: {{ $gw.mcp.name }}
           action: DENY
           rules:
-              - to:
-                    - operation:
-                          hosts: [mcp.{{ .Values.domain }}]
-                when:
+              - when:
                     - key: request.auth.claims[groups]
                       notValues: [/mcp/admin, /mcp/viewer]
 

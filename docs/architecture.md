@@ -17,7 +17,7 @@ Argo CD reconciles everything from `main`; the operator only bootstraps, unseals
 | `cert-manager` | cert-manager | Let's Encrypt issuers, DNS-01 on Cloudflare | external-secrets |
 | `external-dns` | external-dns | Cloudflare records for HTTPRoutes | external-secrets, gateway |
 | `istio` | istio-system | Istio ambient (istiod, CNI, ztunnel), GatewayClass `istio` | Gateway API CRDs (bootstrap) |
-| `gateway` | gateway | Gateway `public` on `192.168.68.240` + wildcard certificate | istio, metallb, cert-manager |
+| `gateway` | gateway | Gateway `public` on `192.168.68.240` + wildcard certificate; Gateway `mcp` on `192.168.68.241` (only `mcp.staffops.space`, Keycloak JWT required) | istio, metallb, cert-manager |
 | `monitoring` | monitoring | kube-prometheus-stack, short names `kps-*` (Prometheus with OTLP receiver, Alertmanager, Grafana), Loki 3.7, Tempo 3.1 | prometheus-operator CRDs |
 | `opentelemetry` | opentelemetry | OpenTelemetry Operator, collectors otel-agent / otel-logs / otel-gateway, OBI (eBPF) | cert-manager |
 | `cloudnative-pg` | cnpg-system | PostgreSQL operator (`Cluster` resources) | — |

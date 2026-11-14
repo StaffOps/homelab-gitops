@@ -5,7 +5,7 @@
       name: mcp-servers
   spec:
       parentRefs:
-          - name: {{ .Values.gateway.name }}
+          - name: {{ .Values.gateway.mcp.name }}
             namespace: {{ .Values.gateway.namespace }}
             sectionName: https
       hostnames:

@@ -55,14 +55,14 @@ resources:
                     - name: {{ index $svc 0 }}
                       port: {{ index $svc 1 }}
     {{- end }}
-    # Tempo's MCP server on the shared MCP host (auth at the Gateway, see gateway-raw)
+    # Tempo's MCP server on the MCP host (Gateway "mcp", JWT auth there, see gateway-raw)
     - apiVersion: gateway.networking.k8s.io/v1
       kind: HTTPRoute
       metadata:
           name: mcp-tempo
       spec:
           parentRefs:
-              - name: {{ $gw.name }}
+              - name: {{ $gw.mcp.name }}
                 namespace: {{ $gw.namespace }}
                 sectionName: https
           hostnames:

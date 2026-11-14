@@ -18,6 +18,12 @@ gateway:
     name: public
     namespace: gateway
     address: 192.168.68.240
+    # Second Gateway only for mcp.<domain>: it validates Keycloak JWTs on every request. Kept apart because
+    # Istio validates ANY "Authorization: Bearer" on its Gateway, which would break other hosts' tokens
+    # (Keycloak admin console = master-realm JWT, llm API key, Argo CD / Grafana tokens).
+    mcp:
+        name: mcp
+        address: 192.168.68.241
 # Vault (in-cluster) is the only secret source; External Secrets reads it with Kubernetes auth.
 vault:
     address: http://vault.vault.svc:8200
