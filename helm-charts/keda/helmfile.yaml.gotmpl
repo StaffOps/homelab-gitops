@@ -1,0 +1,21 @@
+# KEDA: event-driven autoscaling (ScaledObject / ScaledJob). Serves external.metrics.k8s.io; metrics-server
+# keeps metrics.k8s.io.
+repositories:
+    - name: kedacore
+      url: https://kedacore.github.io/charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - keda:
+                  enabled: true
+                  version: 2.21.0
+---
+releases:
+    - chart: kedacore/keda
+      name: keda
+      namespace: keda
+      condition: keda.enabled
+      version: '{{ .Values | get "keda" | get "version" }}'
+      values:
+          - ./keda/values.yaml.gotmpl

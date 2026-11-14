@@ -21,7 +21,7 @@ resources:
                 remoteRef:
                     key: {{ .Values.vault.prefix }}/grafana
                     property: admin-password
-    {{- range $host, $svc := dict "grafana" (list "kube-prometheus-stack-grafana" 80) "prometheus" (list "kube-prometheus-stack-prometheus" 9090) "alertmanager" (list "kube-prometheus-stack-alertmanager" 9093) }}
+    {{- range $host, $svc := dict "grafana" (list "grafana" 80) "prometheus" (list "kps-prometheus" 9090) "alertmanager" (list "kps-alertmanager" 9093) }}
     - apiVersion: gateway.networking.k8s.io/v1
       kind: HTTPRoute
       metadata:

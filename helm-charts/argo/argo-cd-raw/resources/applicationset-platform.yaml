@@ -73,12 +73,12 @@
                       ignoreDifferences:
                           - group: admissionregistration.k8s.io
                             kind: MutatingWebhookConfiguration
-                            name: kube-prometheus-stack-admission
+                            name: kps-admission
                             jqPathExpressions:
                                 - .webhooks[]?.clientConfig.caBundle
                           - group: admissionregistration.k8s.io
                             kind: ValidatingWebhookConfiguration
-                            name: kube-prometheus-stack-admission
+                            name: kps-admission
                             jqPathExpressions:
                                 - .webhooks[]?.clientConfig.caBundle
                     - appName: opentelemetry
@@ -93,6 +93,9 @@
                     - appName: keycloak
                       path: keycloak
                       namespace: keycloak
+                    - appName: keda
+                      path: keda
+                      namespace: keda
       template:
           metadata:
               name: '{{`{{ .appName }}`}}'

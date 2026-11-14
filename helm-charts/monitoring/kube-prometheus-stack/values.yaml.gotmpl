@@ -1,4 +1,8 @@
-fullnameOverride: kube-prometheus-stack
+# Short names. Prometheus, Alertmanager and their Services always carry the chart fullname, so it is "kps":
+# Prometheus/Alertmanager objects "kps" (pods prometheus-kps-0, alertmanager-kps-0), Services kps-prometheus
+# and kps-alertmanager. Sub-charts and the operator get plain names.
+fullnameOverride: kps
+cleanPrometheusOperatorObjectNames: true # only safe on a fresh install (PVC names change)
 crds:
     enabled: false # prometheus-operator-crds installed by bootstrap.sh
 # kubeadm binds controller-manager, scheduler, etcd metrics and kube-proxy metrics to 127.0.0.1, out of
@@ -19,6 +23,7 @@ defaultRules:
         kubeProxy: false
         etcd: false
 prometheusOperator:
+    fullnameOverride: prometheus-operator
     resources:
         requests:
             cpu: 50m
@@ -68,6 +73,7 @@ alertmanager:
                         requests:
                             storage: 1Gi
 grafana:
+    fullnameOverride: grafana
     admin:
         existingSecret: grafana-admin # ExternalSecret in monitoring-raw (Vault homelab/grafana)
         userKey: admin-user
@@ -90,6 +96,7 @@ grafana:
         limits:
             memory: 512Mi
 kube-state-metrics:
+    fullnameOverride: kube-state-metrics
     resources:
         requests:
             cpu: 10m
@@ -97,6 +104,7 @@ kube-state-metrics:
         limits:
             memory: 128Mi
 prometheus-node-exporter:
+    fullnameOverride: node-exporter
     resources:
         requests:
             cpu: 10m

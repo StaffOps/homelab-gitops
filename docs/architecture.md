@@ -18,11 +18,12 @@ Argo CD reconciles everything from `main`; the operator only bootstraps, unseals
 | `external-dns` | external-dns | Cloudflare records for HTTPRoutes | external-secrets, gateway |
 | `istio` | istio-system | Istio ambient (istiod, CNI, ztunnel), GatewayClass `istio` | Gateway API CRDs (bootstrap) |
 | `gateway` | gateway | Gateway `public` on `192.168.68.240` + wildcard certificate | istio, metallb, cert-manager |
-| `monitoring` | monitoring | kube-prometheus-stack (Prometheus, Alertmanager, Grafana) | prometheus-operator CRDs |
+| `monitoring` | monitoring | kube-prometheus-stack, short names `kps-*` (Prometheus, Alertmanager, Grafana) | prometheus-operator CRDs |
 | `opentelemetry` | opentelemetry | OpenTelemetry Operator | cert-manager |
 | `minio` | minio | S3 endpoint (standalone) | external-secrets |
 | `cloudnative-pg` | cnpg-system | PostgreSQL operator (`Cluster` resources) | — |
 | `keycloak` | keycloak | identity provider (OIDC/SAML), PostgreSQL `keycloak-db` (CloudNativePG) | cloudnative-pg, external-secrets |
+| `keda` | keda | event-driven autoscaling (ScaledObject, ScaledJob) | — |
 
 kubeadm provides the control plane, CoreDNS and kube-proxy; Ansible (`homelab-ansible`) installs Calico. No
 StorageClass, metrics API, LoadBalancer, ingress or Gateway API CRDs come with it (ADR 0006).
