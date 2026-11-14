@@ -1,0 +1,21 @@
+fullnameOverride: kubelet-csr-approver
+image:
+    tag: v1.2.15
+# Only the node of this cluster, only its LAN address.
+providerRegex: ^{{ .Values.cluster.name }}$
+providerIpPrefixes:
+    - 192.168.68.0/24
+# The CSR's DNS name is the bare hostname (k8s01), which cluster DNS cannot resolve.
+bypassDnsResolution: true
+replicas: 1
+leaderElection: true
+metrics:
+    enable: true
+    serviceMonitor:
+        enabled: true
+resources:
+    requests:
+        cpu: 10m
+        memory: 32Mi
+    limits:
+        memory: 128Mi

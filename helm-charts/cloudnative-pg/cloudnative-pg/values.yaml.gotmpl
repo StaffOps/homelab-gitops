@@ -1,0 +1,15 @@
+fullnameOverride: cnpg
+replicaCount: 1
+crds:
+    create: true
+monitoring:
+    podMonitorEnabled: true
+    grafanaDashboard:
+        create: true
+        namespace: monitoring
+resources:
+    requests:
+        cpu: 50m
+        memory: 128Mi
+    limits:
+        memory: 512Mi

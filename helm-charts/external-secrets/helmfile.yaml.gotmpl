@@ -1,0 +1,36 @@
+# External Secrets: every credential reaches the cluster from Vault (ClusterSecretStore vault).
+# Vault side (KV v2 mount, Kubernetes auth, policy and role external-secrets): scripts/vault.sh configure.
+repositories:
+    - name: external-secrets
+      url: https://charts.external-secrets.io
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - external-secrets:
+                  enabled: true
+                  version: 2.15.0
+            - external-secrets-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: external-secrets
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    - chart: external-secrets/external-secrets
+      name: external-secrets
+      condition: external-secrets.enabled
+      <<: *default
+    # ClusterSecretStore vault
+    - chart: bedag/raw
+      name: external-secrets-raw
+      condition: external-secrets-raw.enabled
+      <<: *default
+      needs:
+          - external-secrets/external-secrets

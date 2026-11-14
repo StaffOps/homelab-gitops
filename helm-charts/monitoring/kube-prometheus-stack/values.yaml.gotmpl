@@ -1,0 +1,105 @@
+fullnameOverride: kube-prometheus-stack
+crds:
+    enabled: false # prometheus-operator-crds installed by bootstrap.sh
+# kubeadm binds controller-manager, scheduler, etcd metrics and kube-proxy metrics to 127.0.0.1, out of
+# Prometheus' reach. Enabling these needs the bind addresses changed on the host (Ansible) first.
+kubeControllerManager:
+    enabled: false
+kubeScheduler:
+    enabled: false
+kubeProxy:
+    enabled: false
+kubeEtcd:
+    enabled: false
+defaultRules:
+    rules:
+        kubeControllerManager: false
+        kubeSchedulerAlerting: false
+        kubeSchedulerRecording: false
+        kubeProxy: false
+        etcd: false
+prometheusOperator:
+    resources:
+        requests:
+            cpu: 50m
+            memory: 128Mi
+        limits:
+            memory: 256Mi
+prometheus:
+    prometheusSpec:
+        # Select every ServiceMonitor/PodMonitor/PrometheusRule/Probe, not only the chart's own
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        ruleSelectorNilUsesHelmValues: false
+        probeSelectorNilUsesHelmValues: false
+        scrapeConfigSelectorNilUsesHelmValues: false
+        retention: 15d
+        retentionSize: 18GB
+        externalUrl: https://prometheus.{{ .Values.domain }}
+        resources:
+            requests:
+                cpu: 200m
+                memory: 1Gi
+            limits:
+                memory: 3Gi
+        storageSpec:
+            volumeClaimTemplate:
+                spec:
+                    storageClassName: {{ .Values.storageClass }}
+                    accessModes: [ReadWriteOnce]
+                    resources:
+                        requests:
+                            storage: 20Gi
+alertmanager:
+    alertmanagerSpec:
+        externalUrl: https://alertmanager.{{ .Values.domain }}
+        resources:
+            requests:
+                cpu: 10m
+                memory: 32Mi
+            limits:
+                memory: 128Mi
+        storage:
+            volumeClaimTemplate:
+                spec:
+                    storageClassName: {{ .Values.storageClass }}
+                    accessModes: [ReadWriteOnce]
+                    resources:
+                        requests:
+                            storage: 1Gi
+grafana:
+    admin:
+        existingSecret: grafana-admin # ExternalSecret in monitoring-raw (Vault homelab/grafana)
+        userKey: admin-user
+        passwordKey: admin-password
+    persistence:
+        enabled: true
+        type: pvc
+        storageClassName: {{ .Values.storageClass }}
+        size: 5Gi
+    grafana.ini:
+        server:
+            root_url: https://grafana.{{ .Values.domain }}
+        analytics:
+            check_for_updates: false
+            reporting_enabled: false
+    resources:
+        requests:
+            cpu: 50m
+            memory: 192Mi
+        limits:
+            memory: 512Mi
+kube-state-metrics:
+    resources:
+        requests:
+            cpu: 10m
+            memory: 64Mi
+        limits:
+            memory: 128Mi
+prometheus-node-exporter:
+    resources:
+        requests:
+            cpu: 10m
+            memory: 32Mi
+        limits:
+            memory: 64Mi

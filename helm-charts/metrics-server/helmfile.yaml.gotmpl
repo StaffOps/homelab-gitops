@@ -1,0 +1,20 @@
+# metrics-server: resource metrics API (kubectl top, HPA). kubeadm does not ship it.
+repositories:
+    - name: metrics-server
+      url: https://kubernetes-sigs.github.io/metrics-server/
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - metrics-server:
+                  enabled: true
+                  version: 3.14.0 # app v0.9.0
+---
+releases:
+    - chart: metrics-server/metrics-server
+      name: metrics-server
+      namespace: kube-system
+      condition: metrics-server.enabled
+      version: '{{ .Values | get "metrics-server" | get "version" }}'
+      values:
+          - ./metrics-server/values.yaml.gotmpl

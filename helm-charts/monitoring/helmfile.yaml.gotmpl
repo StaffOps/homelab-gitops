@@ -1,0 +1,46 @@
+# Monitoring: kube-prometheus-stack (Prometheus Operator, Prometheus, Alertmanager, Grafana,
+# kube-state-metrics, node-exporter). Prometheus selects ServiceMonitors/PodMonitors/PrometheusRules from
+# every namespace. prometheus-operator CRDs are installed by bootstrap.sh (outside Argo CD) so every app
+# can ship its ServiceMonitor before this app syncs.
+# Loki is a draft (enabled: false) until a log shipper exists.
+repositories:
+    - name: prometheus-community
+      url: https://prometheus-community.github.io/helm-charts
+    - name: grafana
+      url: https://grafana.github.io/helm-charts
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - kube-prometheus-stack:
+                  enabled: true
+                  version: 93.3.0
+            - loki:
+                  enabled: false
+                  version: 7.6.0
+            - monitoring-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: monitoring
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    # Grafana admin (ExternalSecret) and HTTPRoutes for Grafana, Prometheus and Alertmanager
+    - chart: bedag/raw
+      name: monitoring-raw
+      condition: monitoring-raw.enabled
+      <<: *default
+    - chart: prometheus-community/kube-prometheus-stack
+      name: kube-prometheus-stack
+      condition: kube-prometheus-stack.enabled
+      <<: *default
+    - chart: grafana/loki
+      name: loki
+      condition: loki.enabled
+      <<: *default

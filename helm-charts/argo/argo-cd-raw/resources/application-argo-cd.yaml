@@ -1,0 +1,27 @@
+# Root Application: Argo CD manages itself (releases argo-cd and argo-cd-raw of helm-charts/argo).
+# bootstrap.sh applies this same object as the seed on the first install, so it uses the default
+# project (AppProject platform is created afterwards by argo-cd-raw).
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+      name: argo-cd
+  spec:
+      project: default
+      source:
+          repoURL: {{ .Values.gitops.repoURL }}
+          targetRevision: {{ .Values.gitops.revision }}
+          path: helm-charts/argo
+          plugin:
+              name: helmfile
+              env:
+                  - name: HELMFILE_GLOBAL_OPTIONS
+                    value: --selector name=argo-cd --selector name=argo-cd-raw
+      destination:
+          server: https://kubernetes.default.svc
+          namespace: argo
+      syncPolicy:
+          automated:
+              prune: false # never prune Argo CD's own objects automatically
+              selfHeal: true
+          syncOptions:
+              - ServerSideApply=true

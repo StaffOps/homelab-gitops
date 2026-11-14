@@ -1,0 +1,21 @@
+# Shared Gateway "public" (Istio, Gateway API) on a fixed MetalLB IP, with a wildcard certificate for
+# *.<domain>. Apps attach HTTPRoutes to sectionName https; http only redirects to https.
+repositories:
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - gateway-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+releases:
+    - chart: bedag/raw
+      name: gateway-raw
+      condition: gateway-raw.enabled
+      version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+      namespace: gateway
+      values:
+          - ./gateway-raw/values.yaml.gotmpl

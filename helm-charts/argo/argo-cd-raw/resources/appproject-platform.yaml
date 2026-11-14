@@ -1,0 +1,18 @@
+# Project of the platform apps (ApplicationSet platform)
+- apiVersion: argoproj.io/v1alpha1
+  kind: AppProject
+  metadata:
+      name: platform
+  spec:
+      description: Platform add-ons of the homelab
+      sourceRepos:
+          - {{ .Values.gitops.repoURL }}
+      destinations:
+          - server: https://kubernetes.default.svc
+            namespace: '*'
+      clusterResourceWhitelist:
+          - group: '*'
+            kind: '*'
+      namespaceResourceWhitelist:
+          - group: '*'
+            kind: '*'

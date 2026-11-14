@@ -1,0 +1,36 @@
+# Vault (in-cluster, standalone, file storage on local-path): the only secret source of the lab.
+# External Secrets reads secret/<prefix>/* with Kubernetes auth (role external-secrets).
+# Not automated on purpose: init, unseal (after every Vault pod restart) and the KV/auth setup are done by
+# scripts/vault.sh — see docs/runbooks/vault.md.
+repositories:
+    - name: hashicorp
+      url: https://helm.releases.hashicorp.com
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - vault:
+                  enabled: true
+                  version: 0.34.1
+            - vault-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: vault
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    - chart: hashicorp/vault
+      name: vault
+      condition: vault.enabled
+      <<: *default
+    # HTTPRoute for the UI and the PrometheusRule (sealed / down)
+    - chart: bedag/raw
+      name: vault-raw
+      condition: vault-raw.enabled
+      <<: *default

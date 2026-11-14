@@ -1,0 +1,62 @@
+{{- $gw := .Values.gateway }}
+resources:
+    # PostgreSQL for Keycloak (CloudNativePG). The operator generates the Secret keycloak-db-app
+    # (username, password) for the owner role; nothing goes to Vault.
+    - apiVersion: postgresql.cnpg.io/v1
+      kind: Cluster
+      metadata:
+          name: keycloak-db
+      spec:
+          instances: 1
+          storage:
+              storageClass: {{ .Values.storageClass }}
+              size: 5Gi
+          bootstrap:
+              initdb:
+                  database: keycloak
+                  owner: keycloak
+          monitoring:
+              enablePodMonitor: true
+          resources:
+              requests:
+                  cpu: 50m
+                  memory: 256Mi
+              limits:
+                  memory: 1Gi
+    # Bootstrap admin (Vault homelab/keycloak: admin-user, admin-password). Keycloak creates it only on the
+    # first start against an empty database, as a temporary admin: create a permanent one afterwards.
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: keycloak-admin
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: keycloak-admin
+          data:
+              - secretKey: username
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/keycloak
+                    property: admin-user
+              - secretKey: password
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/keycloak
+                    property: admin-password
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+          name: keycloak
+      spec:
+          parentRefs:
+              - name: {{ $gw.name }}
+                namespace: {{ $gw.namespace }}
+                sectionName: https
+          hostnames:
+              - keycloak.{{ .Values.domain }}
+          rules:
+              - backendRefs:
+                    - name: keycloak-http
+                      port: 80

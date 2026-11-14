@@ -1,0 +1,22 @@
+# kubelet-csr-approver: approves the kubelet serving-certificate CSRs (serverTLSBootstrap, set by Ansible).
+# Ansible approves the first one at install; without this app the yearly renewal stays pending and
+# metrics-server stops scraping when the certificate expires.
+repositories:
+    - name: kubelet-csr-approver
+      url: https://postfinance.github.io/kubelet-csr-approver
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - kubelet-csr-approver:
+                  enabled: true
+                  version: 1.2.15
+---
+releases:
+    - chart: kubelet-csr-approver/kubelet-csr-approver
+      name: kubelet-csr-approver
+      namespace: kube-system
+      condition: kubelet-csr-approver.enabled
+      version: '{{ .Values | get "kubelet-csr-approver" | get "version" }}'
+      values:
+          - ./kubelet-csr-approver/values.yaml.gotmpl

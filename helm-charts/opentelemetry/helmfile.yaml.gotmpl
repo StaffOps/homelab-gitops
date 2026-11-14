@@ -1,0 +1,21 @@
+# OpenTelemetry Operator (OpenTelemetryCollector / Instrumentation CRDs). Its admission webhook
+# certificate comes from cert-manager (self-signed Issuer created by the chart).
+repositories:
+    - name: open-telemetry
+      url: https://open-telemetry.github.io/opentelemetry-helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - opentelemetry-operator:
+                  enabled: true
+                  version: 0.129.0
+---
+releases:
+    - chart: open-telemetry/opentelemetry-operator
+      name: opentelemetry-operator
+      condition: opentelemetry-operator.enabled
+      version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+      namespace: opentelemetry
+      values:
+          - ./opentelemetry-operator/values.yaml.gotmpl

@@ -1,0 +1,146 @@
+# Platform apps: one Application per list element. Only listed directories are deployed; anything else
+# under helm-charts/ is a draft.
+# Rendered once by helmfile (bedag/raw does not run tpl), so Argo CD expressions are escaped once:
+# {{`{{ .appName }}`}} reaches the ApplicationSet controller as {{ "{{ .appName }}" }}.
+#
+# Element fields:
+#   appName            Application name
+#   path               helmfile directory, relative to helm-charts/
+#   namespace          destination namespace
+#   selectors          optional list of helmfile selectors (default: every release of the helmfile)
+#   ignoreDifferences  optional, Argo CD format (adds RespectIgnoreDifferences=true)
+#
+# Removing an element deletes the Application but keeps its resources (preserveResourcesOnDeletion):
+# uninstalling is an explicit step, see docs/runbooks/argocd.md.
+- apiVersion: argoproj.io/v1alpha1
+  kind: ApplicationSet
+  metadata:
+      name: platform
+  spec:
+      goTemplate: true
+      goTemplateOptions: ["missingkey=error"]
+      syncPolicy:
+          preserveResourcesOnDeletion: true
+      generators:
+          - list:
+                elements:
+                    - appName: local-path-provisioner
+                      path: local-path-provisioner
+                      namespace: local-path-storage
+                    - appName: metrics-server
+                      path: metrics-server
+                      namespace: kube-system
+                    - appName: kubelet-csr-approver
+                      path: kubelet-csr-approver
+                      namespace: kube-system
+                    - appName: metallb
+                      path: metallb
+                      namespace: metallb-system
+                    - appName: vault
+                      path: vault
+                      namespace: vault
+                    - appName: external-secrets
+                      path: external-secrets
+                      namespace: external-secrets
+                    - appName: cert-manager
+                      path: cert-manager
+                      namespace: cert-manager
+                    - appName: external-dns
+                      path: external-dns
+                      namespace: external-dns
+                    - appName: istio
+                      path: istio
+                      namespace: istio-system
+                      # istiod switches the validating webhooks' failurePolicy at runtime
+                      ignoreDifferences:
+                          - group: admissionregistration.k8s.io
+                            kind: ValidatingWebhookConfiguration
+                            name: istio-validator-istio-system
+                            jsonPointers:
+                                - /webhooks/0/failurePolicy
+                          - group: admissionregistration.k8s.io
+                            kind: ValidatingWebhookConfiguration
+                            name: istiod-default-validator
+                            jsonPointers:
+                                - /webhooks/0/failurePolicy
+                    - appName: gateway
+                      path: gateway
+                      namespace: gateway
+                    - appName: monitoring
+                      path: monitoring
+                      namespace: monitoring
+                      # The admission Job of kube-prometheus-stack patches the webhook caBundle
+                      ignoreDifferences:
+                          - group: admissionregistration.k8s.io
+                            kind: MutatingWebhookConfiguration
+                            name: kube-prometheus-stack-admission
+                            jqPathExpressions:
+                                - .webhooks[]?.clientConfig.caBundle
+                          - group: admissionregistration.k8s.io
+                            kind: ValidatingWebhookConfiguration
+                            name: kube-prometheus-stack-admission
+                            jqPathExpressions:
+                                - .webhooks[]?.clientConfig.caBundle
+                    - appName: opentelemetry
+                      path: opentelemetry
+                      namespace: opentelemetry
+                    - appName: minio
+                      path: minio
+                      namespace: minio
+                    - appName: cloudnative-pg
+                      path: cloudnative-pg
+                      namespace: cnpg-system
+                    - appName: keycloak
+                      path: keycloak
+                      namespace: keycloak
+      template:
+          metadata:
+              name: '{{`{{ .appName }}`}}'
+              labels:
+                  type: platform
+              annotations:
+                  argocd.argoproj.io/manifest-generate-paths: .
+          spec:
+              project: platform
+              source:
+                  repoURL: {{ .Values.gitops.repoURL }}
+                  targetRevision: {{ .Values.gitops.revision }}
+                  path: 'helm-charts/{{`{{ .path }}`}}'
+                  plugin:
+                      name: helmfile
+              destination:
+                  server: https://kubernetes.default.svc
+                  namespace: '{{`{{ .namespace }}`}}'
+              syncPolicy:
+                  automated:
+                      prune: true
+                      selfHeal: true
+                  retry:
+                      limit: 10
+                      backoff:
+                          duration: 30s
+                          factor: 2
+                          maxDuration: 5m
+                  syncOptions:
+                      - CreateNamespace=true
+                      - ServerSideApply=true
+                      - SkipDryRunOnMissingResource=true
+      templatePatch: |
+          spec:
+              {{`{{- if hasKey . "selectors" }}`}}
+              source:
+                  plugin:
+                      env:
+                          - name: HELMFILE_GLOBAL_OPTIONS
+                            value: "{{`{{- range $i, $s := .selectors }}`}}{{`{{ if $i }}`}} {{`{{ end }}`}}--selector {{`{{ $s }}`}}{{`{{- end }}`}}"
+              {{`{{- end }}`}}
+              {{`{{- if hasKey . "ignoreDifferences" }}`}}
+              syncPolicy:
+                  syncOptions:
+                      - CreateNamespace=true
+                      - ServerSideApply=true
+                      - SkipDryRunOnMissingResource=true
+                      - RespectIgnoreDifferences=true
+              ignoreDifferences:
+                  {{`{{- toYaml .ignoreDifferences | nindent 18 }}`}}
+              {{`{{- end }}`}}

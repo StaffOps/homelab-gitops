@@ -1,0 +1,59 @@
+fullnameOverride: keycloak
+replicas: 1
+image:
+    tag: 26.8.2
+# Single node: no anti-affinity rules
+affinity: ""
+# Served at the root of keycloak.<domain> (the chart defaults to /auth)
+http:
+    relativePath: /
+# TLS terminates at the Gateway, which sends X-Forwarded-* headers
+proxy:
+    enabled: true
+    mode: xforwarded
+    http:
+        enabled: true
+# One replica: local caches instead of the clustered Infinispan stack
+cache:
+    stack: custom
+database:
+    vendor: postgres
+    hostname: keycloak-db-rw
+    port: 5432
+    database: keycloak
+    username: keycloak
+    existingSecret: keycloak-db-app
+    existingSecretKey: password
+dbchecker:
+    enabled: true # waits for keycloak-db-rw:5432 before starting
+command:
+    - /opt/keycloak/bin/kc.sh
+    - start
+extraEnv: |
+    - name: KC_HOSTNAME
+      value: https://keycloak.{{ .Values.domain }}
+    - name: KC_CACHE
+      value: local
+    - name: KC_BOOTSTRAP_ADMIN_USERNAME
+      valueFrom:
+          secretKeyRef:
+              name: keycloak-admin
+              key: username
+    - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+      valueFrom:
+          secretKeyRef:
+              name: keycloak-admin
+              key: password
+metrics:
+    enabled: true
+health:
+    enabled: true
+serviceMonitor:
+    enabled: true
+    interval: 30s
+resources:
+    requests:
+        cpu: 200m
+        memory: 768Mi
+    limits:
+        memory: 1536Mi

@@ -1,0 +1,30 @@
+provider:
+    name: cloudflare
+env:
+    - name: CF_API_TOKEN
+      valueFrom:
+          secretKeyRef:
+              name: cloudflare-api-token
+              key: api-token
+sources:
+    - gateway-httproute
+domainFilters:
+    - {{ .Values.domain }}
+policy: sync # deletes the records of removed routes (only those owned by this txtOwnerId)
+registry: txt
+txtOwnerId: {{ .Values.cluster.name }}
+txtPrefix: _extdns.
+interval: 1m
+logFormat: json
+logLevel: info
+# --cloudflare-proxied stays off (default): LAN addresses must not go through the Cloudflare proxy
+extraArgs:
+    - --cloudflare-dns-records-per-page=5000
+serviceMonitor:
+    enabled: true
+resources:
+    requests:
+        cpu: 10m
+        memory: 64Mi
+    limits:
+        memory: 128Mi

@@ -1,0 +1,25 @@
+prometheus:
+    serviceMonitor:
+        enabled: true
+    prometheusRule:
+        enabled: true
+    # The chart's RBAC proxy is not needed: Prometheus scrapes the metrics port directly
+    rbacPrometheus: false
+    serviceAccount: ""
+    namespace: ""
+controller:
+    resources:
+        requests:
+            cpu: 25m
+            memory: 64Mi
+        limits:
+            memory: 128Mi
+speaker:
+    frr:
+        enabled: false # L2 only
+    resources:
+        requests:
+            cpu: 25m
+            memory: 64Mi
+        limits:
+            memory: 128Mi

@@ -1,0 +1,19 @@
+resources:
+    # Apps declare ExternalSecrets with remoteRef.key "<prefix>/<name>" (e.g. homelab/cloudflare).
+    - apiVersion: external-secrets.io/v1
+      kind: ClusterSecretStore
+      metadata:
+          name: vault
+      spec:
+          provider:
+              vault:
+                  server: {{ .Values.vault.address }}
+                  path: {{ .Values.vault.kvMount }}
+                  version: v2
+                  auth:
+                      kubernetes:
+                          mountPath: kubernetes
+                          role: external-secrets
+                          serviceAccountRef:
+                              name: external-secrets
+                              namespace: external-secrets

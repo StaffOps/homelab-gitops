@@ -1,0 +1,19 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+groups:
+    - name: vault
+      rules:
+          - alert: VaultSealed
+            expr: vault_core_unsealed == 0
+            for: 5m
+            labels:
+                severity: critical
+            annotations:
+                summary: Vault is sealed — External Secrets cannot refresh secrets
+                description: Run `scripts/vault.sh unseal` (docs/runbooks/vault.md).
+          - alert: VaultDown
+            expr: absent(up{job=~".*vault.*"} == 1)
+            for: 10m
+            labels:
+                severity: critical
+            annotations:
+                summary: Vault metrics are not being scraped

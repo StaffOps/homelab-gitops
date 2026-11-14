@@ -1,0 +1,21 @@
+# local-path-provisioner: the default StorageClass `local-path` (environment.yaml storageClass). kubeadm
+# ships no provisioner; volumes are directories under nodePath on the node's disk (single node, no replication).
+repositories:
+    - name: containeroo
+      url: https://charts.containeroo.ch
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - local-path-provisioner:
+                  enabled: true
+                  version: 0.0.38 # app v0.0.37 (rancher/local-path-provisioner)
+---
+releases:
+    - chart: containeroo/local-path-provisioner
+      name: local-path-provisioner
+      namespace: local-path-storage
+      condition: local-path-provisioner.enabled
+      version: '{{ .Values | get "local-path-provisioner" | get "version" }}'
+      values:
+          - ./local-path-provisioner/values.yaml.gotmpl

@@ -1,0 +1,13 @@
+fullnameOverride: metrics-server
+# No --kubelet-insecure-tls: the kubelet runs with serverTLSBootstrap, so its serving certificate is signed by
+# the cluster CA (approved by helm-charts/kubelet-csr-approver).
+metrics:
+    enabled: true
+serviceMonitor:
+    enabled: true
+resources:
+    requests:
+        cpu: 50m
+        memory: 64Mi
+    limits:
+        memory: 256Mi

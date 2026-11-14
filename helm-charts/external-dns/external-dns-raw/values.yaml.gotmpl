@@ -1,0 +1,18 @@
+resources:
+    # Cloudflare API token (Zone:DNS:Edit on the lab zone)
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: cloudflare-api-token
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: cloudflare-api-token
+          data:
+              - secretKey: api-token
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/cloudflare
+                    property: api-token

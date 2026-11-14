@@ -1,0 +1,197 @@
+{{- /*
+Argo CD for the homelab (kubeadm single node). No secrets are needed to render this release: the git
+repository is public and Redis is the chart's internal one. TLS terminates at the shared Gateway.
+*/ -}}
+fullnameOverride: argo-cd
+global:
+    domain: &fqdn 'argocd.{{ .Values.domain }}'
+    logging:
+        format: json
+        level: info
+crds:
+    install: true
+    keep: true
+configs:
+    cm:
+        admin.enabled: true
+        timeout.reconciliation: 60s
+        resource.customizations.ignoreDifferences.all: |
+            jsonPointers:
+                - /status
+        resource.customizations.ignoreDifferences.gateway.networking.k8s.io_HTTPRoute: |
+            jqPathExpressions:
+                - .spec.parentRefs[]?.group
+                - .spec.parentRefs[]?.kind
+                - .spec.rules[]?.backendRefs[]?.group
+                - .spec.rules[]?.backendRefs[]?.kind
+                - .spec.rules[]?.backendRefs[]?.weight
+        resource.customizations.ignoreDifferences.external-secrets.io_ExternalSecret: |
+            jqPathExpressions:
+                - .spec.data[]?.remoteRef.conversionStrategy
+                - .spec.data[]?.remoteRef.decodingStrategy
+                - .spec.data[]?.remoteRef.metadataPolicy
+        resource.exclusions: |
+            - apiGroups:
+                  - cilium.io
+                  - kyverno.io
+                  - wgpolicyk8s.io
+              kinds:
+                  - CiliumIdentity
+                  - AdmissionReport
+                  - BackgroundScanReport
+                  - ClusterAdmissionReport
+                  - ClusterBackgroundScanReport
+                  - PolicyReport
+              clusters:
+                  - '*'
+            - apiGroups:
+                  - certificates.k8s.io
+              kinds:
+                  - CertificateSigningRequest
+              clusters:
+                  - '*'
+    params:
+        create: true
+        server.insecure: true # TLS terminates at the Gateway
+    cmp:
+        create: true
+        plugins:
+            # https://github.com/travisghansen/argo-cd-helmfile
+            helmfile:
+                init:
+                    command: [argo-cd-helmfile.sh]
+                    args: [init]
+                generate:
+                    command: [argo-cd-helmfile.sh]
+                    args: [generate]
+                discover:
+                    find:
+                        command: [argo-cd-helmfile.sh, discover]
+                parameters:
+                    dynamic:
+                        command: [argo-cd-helmfile.sh, parameters]
+                preserveFileMode: true
+redis:
+    enabled: true
+    metrics:
+        enabled: false
+    resources:
+        requests:
+            cpu: 50m
+            memory: 64Mi
+        limits:
+            memory: 128Mi
+controller:
+    replicas: 1
+    resources:
+        requests:
+            cpu: 250m
+            memory: 512Mi
+        limits:
+            memory: 1Gi
+    metrics:
+        enabled: true
+        serviceMonitor:
+            enabled: true
+        rules:
+            enabled: true
+            spec:
+                - alert: ArgoAppNotSynced
+                  expr: argocd_app_info{sync_status!="Synced"} == 1
+                  for: 15m
+                  labels:
+                      severity: warning
+                  annotations:
+                      summary: 'Application {{`{{ $labels.name }}`}} out of sync for 15m'
+                - alert: ArgoAppUnhealthy
+                  expr: argocd_app_info{health_status!~"Healthy|Progressing"} == 1
+                  for: 15m
+                  labels:
+                      severity: warning
+                  annotations:
+                      summary: 'Application {{`{{ $labels.name }}`}} is {{`{{ $labels.health_status }}`}}'
+dex:
+    enabled: false
+notifications:
+    enabled: false
+commitServer:
+    enabled: false
+server:
+    replicas: 1
+    metrics:
+        enabled: true
+        serviceMonitor:
+            enabled: true
+    httproute:
+        enabled: true
+        parentRefs:
+            - name: {{ .Values.gateway.name }}
+              namespace: {{ .Values.gateway.namespace }}
+              sectionName: https
+        hostnames:
+            - *fqdn
+    resources:
+        requests:
+            cpu: 50m
+            memory: 128Mi
+        limits:
+            memory: 256Mi
+repoServer:
+    replicas: 1
+    metrics:
+        enabled: true
+        serviceMonitor:
+            enabled: true
+    resources:
+        requests:
+            cpu: 100m
+            memory: 256Mi
+        limits:
+            memory: 512Mi
+    volumes:
+        - name: helmfile-cmp-tmp
+          emptyDir: {}
+    extraContainers:
+        # The plugin image ships helmfile, helm and the plugin script: no init container needed.
+        - name: helmfile-plugin
+          image: docker.io/travisghansen/argo-cd-helmfile:v0.3.13@sha256:1251e329f72cadaf55860b9029d13c887559b5f20287915f21d32d722aaeef2e
+          command: [/var/run/argocd/argocd-cmp-server]
+          env:
+              - name: HELMFILE_CACHE_CLEANUP
+                value: "true"
+              # helmfile skips the charts' crds/ directory unless asked
+              - name: HELMFILE_TEMPLATE_OPTIONS
+                value: --include-crds
+          securityContext:
+              runAsNonRoot: true
+              runAsUser: 999
+              allowPrivilegeEscalation: false
+              capabilities:
+                  drop: [ALL]
+              seccompProfile:
+                  type: RuntimeDefault
+          resources:
+              requests:
+                  cpu: 100m
+                  memory: 256Mi
+              limits:
+                  memory: 1Gi
+          volumeMounts:
+              - mountPath: /var/run/argocd
+                name: var-files
+              - mountPath: /home/argocd/cmp-server/plugins
+                name: plugins
+              - mountPath: /tmp
+                name: helmfile-cmp-tmp
+applicationSet:
+    replicas: 1
+    metrics:
+        enabled: true
+        serviceMonitor:
+            enabled: true
+    resources:
+        requests:
+            cpu: 50m
+            memory: 128Mi
+        limits:
+            memory: 256Mi

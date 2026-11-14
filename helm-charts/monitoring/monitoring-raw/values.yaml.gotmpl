@@ -1,0 +1,40 @@
+{{- $gw := .Values.gateway }}
+resources:
+    # Grafana admin credentials (Vault homelab/grafana: admin-user, admin-password)
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: grafana-admin
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: grafana-admin
+          data:
+              - secretKey: admin-user
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/grafana
+                    property: admin-user
+              - secretKey: admin-password
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/grafana
+                    property: admin-password
+    {{- range $host, $svc := dict "grafana" (list "kube-prometheus-stack-grafana" 80) "prometheus" (list "kube-prometheus-stack-prometheus" 9090) "alertmanager" (list "kube-prometheus-stack-alertmanager" 9093) }}
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+          name: {{ $host }}
+      spec:
+          parentRefs:
+              - name: {{ $gw.name }}
+                namespace: {{ $gw.namespace }}
+                sectionName: https
+          hostnames:
+              - {{ $host }}.{{ $.Values.domain }}
+          rules:
+              - backendRefs:
+                    - name: {{ index $svc 0 }}
+                      port: {{ index $svc 1 }}
+    {{- end }}

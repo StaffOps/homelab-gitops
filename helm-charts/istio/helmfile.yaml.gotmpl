@@ -1,0 +1,41 @@
+# Istio ambient mode on kubeadm + Calico (profile ambient; istio-cni chains onto Calico's conflist in the
+# default /etc/cni/net.d, so no platform override). Gateway API CRDs are installed by bootstrap.sh.
+# Workloads join the mesh with the namespace label istio.io/dataplane-mode=ambient.
+repositories:
+    - name: istio
+      url: https://istio-release.storage.googleapis.com/charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - istio:
+                  version: 1.30.8 # all four charts move together
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values.istio.version }}`}}'
+        namespace: istio-system
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+        set:
+            - name: profile
+              value: ambient
+releases:
+    - chart: istio/base
+      name: istio-base
+      <<: *default
+    - chart: istio/istiod
+      name: istiod
+      <<: *default
+      needs:
+          - istio-system/istio-base
+    - chart: istio/cni
+      name: istio-cni
+      <<: *default
+      needs:
+          - istio-system/istio-base
+    - chart: istio/ztunnel
+      name: ztunnel
+      <<: *default
+      needs:
+          - istio-system/istiod

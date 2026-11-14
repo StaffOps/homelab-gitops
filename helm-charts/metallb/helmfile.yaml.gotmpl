@@ -1,0 +1,36 @@
+# MetalLB (L2) gives LoadBalancer Services an IP from the home LAN pool (environment.yaml metallb.addresses).
+# kube-proxy runs in iptables mode, so strictARP is not needed (only IPVS requires it).
+repositories:
+    - name: metallb
+      url: https://metallb.github.io/metallb
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - metallb:
+                  enabled: true
+                  version: 0.16.2
+            - metallb-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: metallb-system
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    - chart: metallb/metallb
+      name: metallb
+      condition: metallb.enabled
+      <<: *default
+    # IPAddressPool + L2Advertisement
+    - chart: bedag/raw
+      name: metallb-raw
+      condition: metallb-raw.enabled
+      <<: *default
+      needs:
+          - metallb-system/metallb

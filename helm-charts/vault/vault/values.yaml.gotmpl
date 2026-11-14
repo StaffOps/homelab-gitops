@@ -1,0 +1,47 @@
+global:
+    enabled: true
+    tlsDisable: true # TLS terminates at the Gateway; in-cluster traffic is plain HTTP
+injector:
+    enabled: false # secrets reach workloads through External Secrets
+server:
+    standalone:
+        enabled: true
+        config: |
+            ui = true
+            listener "tcp" {
+                address = "[::]:8200"
+                cluster_address = "[::]:8201"
+                tls_disable = 1
+                telemetry {
+                    unauthenticated_metrics_access = true
+                }
+            }
+            storage "file" {
+                path = "/vault/data"
+            }
+            telemetry {
+                prometheus_retention_time = "30s"
+                disable_hostname = true
+            }
+    dataStorage:
+        enabled: true
+        size: 5Gi
+        storageClass: {{ .Values.storageClass }}
+    auditStorage:
+        enabled: false
+    resources:
+        requests:
+            cpu: 50m
+            memory: 128Mi
+        limits:
+            memory: 256Mi
+    # A sealed Vault is not ready: keep the pod in the Service endpoints anyway so the UI can unseal it
+    readinessProbe:
+        enabled: true
+        path: /v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204
+ui:
+    enabled: true
+serverTelemetry:
+    serviceMonitor:
+        enabled: true
+        interval: 60s

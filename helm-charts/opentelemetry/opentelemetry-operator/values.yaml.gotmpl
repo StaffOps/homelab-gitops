@@ -1,0 +1,23 @@
+manager:
+    collectorImage:
+        repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s
+    resources:
+        requests:
+            cpu: 25m
+            memory: 64Mi
+        limits:
+            memory: 256Mi
+    serviceMonitor:
+        enabled: true
+    prometheusRule:
+        enabled: true
+        defaultRules:
+            enabled: true
+admissionWebhooks:
+    certManager:
+        enabled: true # empty issuerRef: the chart creates its own self-signed Issuer
+# helm test pods (Argo CD ignores test hooks; pinned so no image floats)
+testFramework:
+    image:
+        repository: docker.io/library/busybox
+        tag: 1.38.0

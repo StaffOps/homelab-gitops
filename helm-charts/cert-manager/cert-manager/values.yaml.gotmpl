@@ -1,0 +1,35 @@
+crds:
+    enabled: true
+    keep: true
+enableCertificateOwnerRef: true
+global:
+    logLevel: 2
+extraArgs:
+    - --logging-format=json
+    # Check the DNS-01 TXT record on public resolvers, not on the LAN resolver (split DNS)
+    - --dns01-recursive-nameservers-only
+    - --dns01-recursive-nameservers=1.1.1.1:53,8.8.8.8:53
+resources:
+    requests:
+        cpu: 25m
+        memory: 64Mi
+    limits:
+        memory: 192Mi
+prometheus:
+    enabled: true
+    servicemonitor:
+        enabled: true
+webhook:
+    resources:
+        requests:
+            cpu: 10m
+            memory: 32Mi
+        limits:
+            memory: 64Mi
+cainjector:
+    resources:
+        requests:
+            cpu: 10m
+            memory: 64Mi
+        limits:
+            memory: 192Mi

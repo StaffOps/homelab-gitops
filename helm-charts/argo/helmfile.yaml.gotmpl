@@ -1,0 +1,38 @@
+# Argo CD, self-managed: bootstrap.sh installs release argo-cd once, then the root Application argo-cd
+# (argo-cd-raw/resources/application-argo-cd.yaml) syncs both releases of this directory from git.
+repositories:
+    - name: argo
+      url: https://argoproj.github.io/argo-helm
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        kubeContext: k8s01
+        values:
+            - ../environment.yaml
+            - argo-cd:
+                  enabled: true
+                  version: 10.18.0
+            - argo-cd-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: argo
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    - chart: argo/argo-cd
+      name: argo-cd
+      condition: argo-cd.enabled
+      <<: *default
+      wait: true
+    # Argo CD objects that need its CRDs: AppProject, root Application argo-cd, ApplicationSet platform
+    - chart: bedag/raw
+      name: argo-cd-raw
+      condition: argo-cd-raw.enabled
+      <<: *default
+      needs:
+          - argo/argo-cd

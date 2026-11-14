@@ -1,0 +1,24 @@
+# Values shared by every helmfile under helm-charts/ (loaded as `../environment.yaml`, or
+# `../../environment.yaml` from helm-charts/argo). Change the lab here, not in each app.
+cluster:
+    name: k8s01 # kube context and node name; bootstrap.sh refuses any other context
+domain: staffops.space # public zone on Cloudflare; every HTTPRoute uses <app>.<domain>
+acmeEmail: contact@staffops.space
+storageClass: local-path # default StorageClass from helm-charts/local-path-provisioner (single node)
+gitops:
+    repoURL: https://github.com/karlipegomes/homelab-gitops.git
+    revision: main
+# MetalLB L2 pool on the home LAN (outside the router's DHCP range)
+metallb:
+    addresses:
+        - 192.168.68.240-192.168.68.245
+# Shared Gateway (Istio, Gateway API). Every app attaches an HTTPRoute to it.
+gateway:
+    name: public
+    namespace: gateway
+    address: 192.168.68.240
+# Vault (in-cluster) is the only secret source; External Secrets reads it with Kubernetes auth.
+vault:
+    address: http://vault.vault.svc:8200
+    kvMount: secret # KV v2
+    prefix: homelab # secrets live at secret/homelab/<name>

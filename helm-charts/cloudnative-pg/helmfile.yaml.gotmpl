@@ -1,0 +1,22 @@
+# CloudNativePG operator: PostgreSQL clusters as `Cluster` resources (postgresql.cnpg.io/v1). Apps that need a
+# database declare their own Cluster in their <app>-raw release (e.g. keycloak). The PostgreSQL image is the
+# operator's default for this version (pinned by the operator release).
+repositories:
+    - name: cnpg
+      url: https://cloudnative-pg.github.io/charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - cloudnative-pg:
+                  enabled: true
+                  version: 0.29.1 # operator 1.30.1
+---
+releases:
+    - chart: cnpg/cloudnative-pg
+      name: cloudnative-pg
+      namespace: cnpg-system
+      condition: cloudnative-pg.enabled
+      version: '{{ .Values | get "cloudnative-pg" | get "version" }}'
+      values:
+          - ./cloudnative-pg/values.yaml.gotmpl

@@ -1,0 +1,36 @@
+# cert-manager: Let's Encrypt certificates via DNS-01 on Cloudflare (token from Vault homelab/cloudflare).
+# DNS-01 works for LAN-only hosts: nothing has to reach the cluster from the internet.
+repositories:
+    - name: jetstack
+      url: https://charts.jetstack.io
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - cert-manager:
+                  enabled: true
+                  version: v1.21.3
+            - cert-manager-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: cert-manager
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    - chart: jetstack/cert-manager
+      name: cert-manager
+      condition: cert-manager.enabled
+      <<: *default
+    # Cloudflare token (ExternalSecret), ClusterIssuers and the PrometheusRule
+    - chart: bedag/raw
+      name: cert-manager-raw
+      condition: cert-manager-raw.enabled
+      <<: *default
+      needs:
+          - cert-manager/cert-manager

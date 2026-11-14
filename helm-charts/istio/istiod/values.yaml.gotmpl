@@ -1,0 +1,15 @@
+autoscaleEnabled: false
+replicaCount: 1
+resources:
+    requests:
+        cpu: 100m
+        memory: 256Mi
+    limits:
+        memory: 1Gi
+global:
+    logAsJson: true
+    defaultPodDisruptionBudget:
+        enabled: false # single node: a PDB would only block drains
+meshConfig:
+    accessLogFile: /dev/stdout
+    accessLogEncoding: JSON
