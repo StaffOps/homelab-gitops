@@ -1,0 +1,28 @@
+resources:
+    # Label topology.kubernetes.io/zone=<zone> (environment.yaml) on every new Pod, so telemetry and
+    # topology-aware tooling see one zone for the lab. Only Pods are mutated, at CREATE:
+    #   - autogen is off, so Deployments/StatefulSets/... in git are never touched and Argo CD sees no drift
+    #     (Pods belong to ReplicaSets, Argo CD does not diff them);
+    #   - running Pods get the label when they are recreated (rollout restart);
+    #   - namespaces in Kyverno's resourceFilters (kube-system, kyverno, ...) are skipped by Kyverno itself.
+    # failurePolicy Ignore: Pods are still admitted while Kyverno is down (they just miss the label).
+    - apiVersion: policies.kyverno.io/v1
+      kind: MutatingPolicy
+      metadata:
+          name: pod-zone-label
+      spec:
+          failurePolicy: Ignore
+          autogen:
+              podControllers:
+                  controllers: []
+          matchConstraints:
+              resourceRules:
+                  - apiGroups: [""]
+                    apiVersions: [v1]
+                    operations: [CREATE]
+                    resources: [pods]
+          mutations:
+              - patchType: ApplyConfiguration
+                applyConfiguration:
+                    expression: >-
+                        Object{metadata: Object.metadata{labels: {"topology.kubernetes.io/zone": "{{ .Values.zone }}"}}}

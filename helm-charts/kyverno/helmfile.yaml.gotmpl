@@ -1,8 +1,11 @@
 # Kyverno (policy engine) + the Pod Security Standards "baseline" policies in Audit mode: violations show up
 # in PolicyReports, nothing is blocked. Move a policy to Enforce in kyverno-policies once its reports are clean.
+# kyverno-raw: the lab's own policies (mutations).
 repositories:
     - name: kyverno
       url: https://kyverno.github.io/kyverno/
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
 environments:
     default:
         values:
@@ -13,6 +16,9 @@ environments:
             - kyverno-policies:
                   enabled: true
                   version: 3.10.0
+            - kyverno-raw:
+                  enabled: true
+                  version: 2.0.2
 ---
 templates:
     default: &default
@@ -28,6 +34,12 @@ releases:
     - chart: kyverno/kyverno-policies
       name: kyverno-policies
       condition: kyverno-policies.enabled
+      <<: *default
+      needs:
+          - kyverno/kyverno
+    - chart: bedag/raw
+      name: kyverno-raw
+      condition: kyverno-raw.enabled
       <<: *default
       needs:
           - kyverno/kyverno
