@@ -1,0 +1,33 @@
+# Project of the apps of the VPS k3s (ADR 0008; ApplicationSet vps, repo homelab-gitops-apps, directory vps/).
+# Same guard rails as AppProject apps: only the apps repo as source; only the vps cluster as destination, never
+# its system or base namespaces (remoteClusters.vps.platformNamespaces); no cluster-scoped objects except the
+# app's own Namespace and PersistentVolume (the apps keep their data in hostPath PVs on the VPS). CRDs, RBAC,
+# webhooks and ClusterSecretStores are the base's: AppProject platform-vps, in this repository.
+- apiVersion: argoproj.io/v1alpha1
+  kind: AppProject
+  metadata:
+      name: vps
+  spec:
+      description: Apps of the VPS k3s (StaffOps/homelab-gitops-apps, vps/)
+      sourceRepos:
+          - {{ .Values.apps.repoURL }}
+      destinations:
+          - server: {{ .Values.remoteClusters.vps.server }}
+            namespace: '*'
+          {{- range .Values.remoteClusters.vps.platformNamespaces }}
+          - server: {{ $.Values.remoteClusters.vps.server }}
+            namespace: '!{{ . }}'
+          {{- end }}
+      clusterResourceWhitelist:
+          - group: ''
+            kind: Namespace
+          - group: ''
+            kind: PersistentVolume
+      namespaceResourceBlacklist:
+          - group: ''
+            kind: ResourceQuota
+          - group: ''
+            kind: LimitRange
+      namespaceResourceWhitelist:
+          - group: '*'
+            kind: '*'

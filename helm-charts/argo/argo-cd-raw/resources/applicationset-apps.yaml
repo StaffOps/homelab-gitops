@@ -28,6 +28,9 @@
                       exclude: true
                     - path: 'scripts/*'
                       exclude: true
+                    # apps of the VPS k3s: ApplicationSet vps (ADR 0008)
+                    - path: 'vps/*'
+                      exclude: true
       template:
           metadata:
               name: '{{`{{ .path.basename }}`}}'

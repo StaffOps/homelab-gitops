@@ -1,0 +1,21 @@
+# Project of the base of the VPS k3s (ADR 0008; ApplicationSet platform-vps): cert-manager, External Secrets,
+# external-dns, Alloy, kube-state-metrics. Argo CD is cluster-admin on the k3s and this base needs CRDs, webhooks
+# and ClusterRoles, so any kind is allowed; what contains it is the source (this repository only, reviewed
+# commits) and the destination (the vps cluster only, never this one).
+- apiVersion: argoproj.io/v1alpha1
+  kind: AppProject
+  metadata:
+      name: platform-vps
+  spec:
+      description: Base of the VPS k3s (helm-charts/vps/ in homelab-gitops)
+      sourceRepos:
+          - {{ .Values.gitops.repoURL }}
+      destinations:
+          - server: {{ .Values.remoteClusters.vps.server }}
+            namespace: '*'
+      clusterResourceWhitelist:
+          - group: '*'
+            kind: '*'
+      namespaceResourceWhitelist:
+          - group: '*'
+            kind: '*'

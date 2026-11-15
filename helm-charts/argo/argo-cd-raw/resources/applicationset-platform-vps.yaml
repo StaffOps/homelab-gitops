@@ -1,0 +1,54 @@
+# Base of the VPS k3s (ADR 0008): one Application vps-<appName> per list element, source helm-charts/vps/<path>,
+# destination the vps cluster. Explicit list like ApplicationSet platform: only listed directories are deployed.
+# Each element's namespace must also be in remoteClusters.vps.platformNamespaces (environment.yaml), so the
+# apps of AppProject vps cannot write there. Escaped once like applicationset-platform.yaml.
+#
+# Element fields: appName, path (relative to helm-charts/vps/), namespace.
+# Empty until the k3s is up and registered (cluster Secret argocd-cluster-vps).
+#
+# Removing an element deletes the Application but keeps its resources (preserveResourcesOnDeletion).
+- apiVersion: argoproj.io/v1alpha1
+  kind: ApplicationSet
+  metadata:
+      name: platform-vps
+  spec:
+      goTemplate: true
+      goTemplateOptions: ["missingkey=error"]
+      syncPolicy:
+          preserveResourcesOnDeletion: true
+      generators:
+          - list:
+                elements: []
+      template:
+          metadata:
+              name: 'vps-{{`{{ .appName }}`}}'
+              labels:
+                  type: platform
+                  cluster: vps
+              annotations:
+                  argocd.argoproj.io/manifest-generate-paths: .
+          spec:
+              project: platform-vps
+              source:
+                  repoURL: {{ .Values.gitops.repoURL }}
+                  targetRevision: {{ .Values.gitops.revision }}
+                  path: 'helm-charts/vps/{{`{{ .path }}`}}'
+                  plugin:
+                      name: helmfile
+              destination:
+                  server: {{ .Values.remoteClusters.vps.server }}
+                  namespace: '{{`{{ .namespace }}`}}'
+              syncPolicy:
+                  automated:
+                      prune: true
+                      selfHeal: true
+                  retry:
+                      limit: 10
+                      backoff:
+                          duration: 30s
+                          factor: 2
+                          maxDuration: 5m
+                  syncOptions:
+                      - CreateNamespace=true
+                      - ServerSideApply=true
+                      - SkipDryRunOnMissingResource=true

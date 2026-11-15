@@ -1,0 +1,68 @@
+# Apps of the VPS k3s (ADR 0008) from StaffOps/homelab-gitops-apps, directory vps/ (the base is ApplicationSet
+# platform-vps, in this repository). Same layout as the apps one
+# level down: vps/<app>/helmfile.yaml.gotmpl plus one directory per release, and vps/environment.yaml as the
+# contract of that cluster (no Istio, no Gateway API there: Traefik Ingress). One Application per release:
+# name = vps-<release> (release names repeat the platform's: cert-manager, external-secrets...), destination =
+# the vps cluster, namespace = the app directory. Escaped once like applicationset-apps.yaml.
+#
+# No ordering between Applications: CRDs from the base appear after a retry (SkipDryRunOnMissingResource).
+# Removing a release directory deletes its Application but keeps its resources (preserveResourcesOnDeletion).
+- apiVersion: argoproj.io/v1alpha1
+  kind: ApplicationSet
+  metadata:
+      name: vps
+  spec:
+      goTemplate: true
+      goTemplateOptions: ["missingkey=error"]
+      syncPolicy:
+          preserveResourcesOnDeletion: true
+      generators:
+          - git:
+                repoURL: {{ .Values.apps.repoURL }}
+                revision: {{ .Values.apps.revision }}
+                directories:
+                    - path: 'vps/*/*'
+                    - path: 'vps/_*/*'
+                      exclude: true
+                    - path: 'vps/.*/*'
+                      exclude: true
+                    - path: 'vps/*/.*'
+                      exclude: true
+      template:
+          metadata:
+              name: 'vps-{{`{{ .path.basename }}`}}'
+              labels:
+                  type: app
+                  cluster: vps
+                  app: '{{`{{ index .path.segments 1 }}`}}'
+              annotations:
+                  # relative to source.path (vps/<app>): the app itself and the cluster contract
+                  argocd.argoproj.io/manifest-generate-paths: '.;../environment.yaml'
+          spec:
+              project: vps
+              source:
+                  repoURL: {{ .Values.apps.repoURL }}
+                  targetRevision: {{ .Values.apps.revision }}
+                  path: 'vps/{{`{{ index .path.segments 1 }}`}}'
+                  plugin:
+                      name: helmfile
+                      env:
+                          - name: HELMFILE_GLOBAL_OPTIONS
+                            value: '--selector name={{`{{ .path.basename }}`}}'
+              destination:
+                  server: {{ .Values.remoteClusters.vps.server }}
+                  namespace: '{{`{{ index .path.segments 1 }}`}}'
+              syncPolicy:
+                  automated:
+                      prune: true
+                      selfHeal: true
+                  retry:
+                      limit: 10
+                      backoff:
+                          duration: 30s
+                          factor: 2
+                          maxDuration: 5m
+                  syncOptions:
+                      - CreateNamespace=true
+                      - ServerSideApply=true
+                      - SkipDryRunOnMissingResource=true

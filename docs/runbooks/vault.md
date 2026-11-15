@@ -187,6 +187,7 @@ add an app with a secret, add a row here.
 | `harbor` | `admin-password`, `secret-key`, `oidc-client-secret` | Harbor, Keycloak realm import | `secret-key`: exactly 16 characters, `openssl rand -hex 8`, keep it. `oidc-client-secret`: any random string, the Keycloak client `harbor` uses the same value |
 | `argo-workflows` | `oidc-client-secret`, `argocd-token` | Argo Workflows, Keycloak realm import | Token of the Argo CD account `argo-workflows`, see [argo-workflows.md](argo-workflows.md#secrets) |
 | `defectdojo` | `admin-password`, `secret-key`, `credential-aes-key` | DefectDojo | `admin-password`: local `admin`, `openssl rand -base64 24`, used only when the user is created. `secret-key`: Django `SECRET_KEY`, `openssl rand -hex 64`, keep it (sessions; the metrics password is derived from it). `credential-aes-key`: `openssl rand -hex 64`, keep a copy (losing it loses the secrets DefectDojo stores encrypted) |
+| `argocd-cluster-vps` | `token`, `ca-data` | Argo CD cluster Secret `vps` (ADR 0008) | `token`: long-lived token of the ServiceAccount Argo CD uses on the VPS k3s. `ca-data`: base64 of the k3s server CA |
 | `apps/<namespace>/<name>` | app-specific | Workload apps (homelab-gitops-apps) | [Write a secret for a workload app](#write-a-secret-for-a-workload-app) |
 
 Optional: `github` (`token`) for the Argo Workflows GitHub watcher, see

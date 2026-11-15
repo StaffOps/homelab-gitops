@@ -13,6 +13,25 @@ gitops:
 apps:
     repoURL: https://github.com/StaffOps/homelab-gitops-apps.git
     revision: main
+# Remote clusters managed by this Argo CD (ADR 0008). The VPS runs k3s and is reached over the Tailscale tailnet:
+# the API answers only on tailscale0. IP, not the MagicDNS name: CoreDNS forwards to the node's resolver, which
+# does not resolve *.ts.net. The IP is in the k3s certificate SANs. Credentials: Vault homelab/argocd-cluster-vps.
+# Two halves: the base (CRDs, operators, collectors) lives here in helm-charts/vps/<app> (ApplicationSet
+# platform-vps, AppProject platform-vps); the apps live in homelab-gitops-apps under vps/<app>/<release>
+# (ApplicationSet vps, AppProject vps), which may not touch the namespaces below.
+remoteClusters:
+    vps:
+        server: https://100.81.185.50:6443
+        # k3s system namespaces + one per base app; add one when an element joins ApplicationSet platform-vps
+        platformNamespaces:
+            - kube-system
+            - kube-public
+            - kube-node-lease
+            - default
+            - cert-manager
+            - external-secrets
+            - external-dns
+            - observability
 # Namespaces of the platform (system ones + every element of ApplicationSet platform). Used by AppProject apps (workload
 # apps may not deploy there) and by ClusterSecretStore vault (only these namespaces may read secret/homelab/*).
 # Add a namespace here when a platform app is added.
