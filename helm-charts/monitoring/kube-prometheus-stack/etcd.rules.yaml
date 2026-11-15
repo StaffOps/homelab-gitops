@@ -1,0 +1,20 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# etcdGRPCRequestsSlow from the etcd mixin (kube-prometheus-stack 93.3.0, rules-1.14/etcd.yaml), same threshold,
+# window and severity. Lab change: the Status method is excluded too (upstream excludes only Defragment). Status is a
+# maintenance call made ~0.03 times/s here, so its p99 comes from a handful of samples and kept the alert pending on
+# every deploy burst (measured 2026-11-15: Status p99 710 ms from noise, 5 ms the next hour; disk fdatasync p99
+# 2.7 ms with the official fio test). The chart's copy is disabled (defaultRules.disabled.etcdGRPCRequestsSlow).
+groups:
+    - name: etcd-lab
+      rules:
+          - alert: etcdGRPCRequestsSlow
+            expr: |
+                histogram_quantile(0.99, sum(rate(grpc_server_handling_seconds_bucket{job=~".*etcd.*", grpc_method!~"Defragment|Status", grpc_type="unary"}[5m])) without (grpc_type))
+                > 0.15
+            for: 10m
+            labels:
+                severity: critical
+            annotations:
+                description: 'etcd cluster "{{ $labels.job }}": 99th percentile of gRPC requests is {{ $value }}s on etcd instance {{ $labels.instance }} for {{ $labels.grpc_method }} method.'
+                runbook_url: https://runbooks.prometheus-operator.dev/runbooks/etcd/etcdgrpcrequestsslow
+                summary: etcd grpc requests are slow
