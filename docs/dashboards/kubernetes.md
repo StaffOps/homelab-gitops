@@ -191,8 +191,9 @@ lookups; informational only.
 Object state from the API: `kube_pod_*` (phase, ready, container waiting/terminated reasons, restarts, requests/limits),
 `kube_node_*` (conditions, capacity/allocatable, unschedulable), `kube_deployment_*`, `kube_statefulset_*`,
 `kube_daemonset_*`, `kube_job_*`, `kube_cronjob_*`, `kube_persistentvolume*`, `kube_certificatesigningrequest_*`
-(only while CSRs exist), `kube_lease_*`. Self-metrics (`kube_state_metrics_list_total`, `_watch_total`) were not scraped
-before this change.
+(only while CSRs exist), `kube_lease_*`. Self-metrics (port 8081, scraped since `selfMonitor`): `kube_state_metrics_watch_total{result}`, build info, shards.
+v2.20 does not export `kube_state_metrics_list_total`: the mixin alert KubeStateMetricsListErrors has no data here,
+KubeStateMetricsWatchErrors is the one that works (the add-ons panel shows watch errors).
 
 ### node-exporter (job `node-exporter`, 335 names)
 `node_cpu_seconds_total`, `node_load*`, `node_pressure_*` (PSI cpu/memory/io), `node_memory_*` (no swap configured),
@@ -243,8 +244,8 @@ requests, SERVFAIL ratio, CrashLoopBackOff, failed Jobs, pending CSRs...).
 ## Changes in `helm-charts/monitoring/kube-prometheus-stack/values.yaml.gotmpl`
 
 - `kube-state-metrics.selfMonitor.enabled: true` - scrapes the telemetry port 8081 (same ServiceMonitor, endpoint
-  `metrics`, job stays `kube-state-metrics`). Without it KubeStateMetricsListErrors/WatchErrors can never fire.
-  Pending scrape: check `kube_state_metrics_list_total` and `kube_state_metrics_watch_total` after sync.
+  `metrics`, job stays `kube-state-metrics`). Without it KubeStateMetricsWatchErrors can never fire.
+  Verified after sync: `kube_state_metrics_watch_total` scraped; `_list_total` does not exist in v2.20.
 - `kubeApiServer.serviceMonitor.metricRelabelings` - keeps the chart default bucket drop and additionally drops six
   apiserver histograms that no rule or dashboard here uses (`apiserver_watch_events_dispatch_duration_seconds`,
   `apiserver_watch_list_duration_seconds`, `apiserver_storage_list_duration_seconds`, `apiserver_request_body_size_bytes`,

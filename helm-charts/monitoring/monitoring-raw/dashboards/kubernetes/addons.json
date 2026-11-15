@@ -3020,13 +3020,13 @@
     },
     {
       "type": "stat",
-      "title": "kube-state-metrics list errors",
+      "title": "kube-state-metrics watch errors",
       "id": 43,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Share of failed LIST calls of kube-state-metrics to the API server over 5 min,\nformula of the kube-state-metrics mixin alert KubeStateMetricsListErrors (critical above 1 %,\nhttps://github.com/kubernetes/kube-state-metrics/tree/main/jsonnet/kube-state-metrics-mixin). Needs the telemetry port\nscraped (`kube-state-metrics.selfMonitor.enabled`, enabled in this change: **pending scrape** until it is synced).",
+      "description": "Share of failed WATCH calls of kube-state-metrics to the API server over 5 min,\nformula of the kube-state-metrics mixin alert KubeStateMetricsWatchErrors (critical above 1 %,\nhttps://github.com/kubernetes/kube-state-metrics/tree/main/jsonnet/kube-state-metrics-mixin). Telemetry port scraped\nthrough `kube-state-metrics.selfMonitor.enabled`. kube-state-metrics v2.20 exports only `kube_state_metrics_watch_total`\n(no `_list_total`), so the mixin's KubeStateMetricsListErrors alert has no data here; watch errors are the signal.",
       "gridPos": {
         "x": 12,
         "y": 54,
@@ -3039,7 +3039,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(sum(rate(kube_state_metrics_list_total{job=\"kube-state-metrics\", result=\"error\"}[5m])) or vector(0)) / sum(rate(kube_state_metrics_list_total{job=\"kube-state-metrics\"}[5m]))",
+          "expr": "(sum(rate(kube_state_metrics_watch_total{job=\"kube-state-metrics\", result=\"error\"}[5m])) or vector(0)) / sum(rate(kube_state_metrics_watch_total{job=\"kube-state-metrics\"}[5m]))",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
