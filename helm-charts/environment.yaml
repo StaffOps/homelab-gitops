@@ -87,6 +87,12 @@ backup:
         prefix: cnpg
         retention: 30d
         schedule: "0 0 2 * * *" # 6-field cron (seconds first), UTC; an hour before Velero
+        # Disaster recovery (docs/runbooks/disaster-recovery.md): uncomment BEFORE bootstrapping a rebuilt node, so every
+        # CloudNativePG Cluster is recovered from its R2 backups instead of starting empty (initdb).
+        # restore: true
+        # restoreTargetTime: "2026-11-15 10:00:00+00" # optional point in time; default: the latest WAL
+        # restoreFromSuffix: "" # suffix the backups were taken under ("" = original names, "-r1" after one recovery)
+        # serverSuffix: "-r1" # new WAL archive path from now on; never reuse one; keep it set after the recovery
 # Keycloak realm that holds the lab's users and OIDC clients (Argo CD, Grafana, Vault)
 keycloak:
     realm: staffops

@@ -1,3 +1,4 @@
+{{- $pg := .Values.backup.postgres }}
 # PostgreSQL for Harbor (CloudNativePG). The operator generates Secret harbor-db-app (username, password).
 - apiVersion: postgresql.cnpg.io/v1
   kind: Cluster
@@ -9,9 +10,28 @@
           storageClass: {{ .Values.storageClass }}
           size: 5Gi
       bootstrap:
+          {{- if ($pg | get "restore" false) }}
+          # Disaster recovery (backup.postgres.restore in environment.yaml): rebuild from the R2 backups
+          recovery:
+              source: origin
+              {{- with ($pg | get "restoreTargetTime" "") }}
+              recoveryTarget:
+                  targetTime: {{ . | quote }}
+              {{- end }}
+          {{- else }}
           initdb:
               database: registry
               owner: harbor
+          {{- end }}
+      {{- if ($pg | get "restore" false) }}
+      externalClusters:
+          - name: origin
+            plugin:
+                name: barman-cloud.cloudnative-pg.io
+                parameters:
+                    barmanObjectName: harbor-db-r2
+                    serverName: harbor-db{{ ($pg | get "restoreFromSuffix" "") }}
+      {{- end }}
       # metrics: one PodMonitor for every cluster (cloudnative-pg-raw); the per-cluster one is deprecated
       monitoring:
           enablePodMonitor: false
@@ -21,6 +41,9 @@
             isWALArchiver: true
             parameters:
                 barmanObjectName: harbor-db-r2
+                {{- with ($pg | get "serverSuffix" "") }}
+                serverName: harbor-db{{ . }}
+                {{- end }}
       resources:
           requests:
               cpu: 50m

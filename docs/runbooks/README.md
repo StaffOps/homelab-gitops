@@ -9,3 +9,4 @@
 | [argocd.md](argocd.md) | Argo CD broken or stuck, uninstalling an app |
 | [node.md](node.md) | node and cluster facts, kube context on the Mac, node reboot |
 | [argo-workflows.md](argo-workflows.md) | Argo Workflows, Events and Rollouts: access, Argo CD integration, watching GitHub repositories |
+| [disaster-recovery.md](disaster-recovery.md) | Rebuild the node with its data: what git restores, Vault from Velero, databases from R2, tokens to regenerate |

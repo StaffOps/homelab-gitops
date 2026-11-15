@@ -1,3 +1,4 @@
+{{- $pg := .Values.backup.postgres }}
 resources:
     # PostgreSQL (CloudNativePG); the operator generates Secret dtrack-db-app (username, password)
     - apiVersion: postgresql.cnpg.io/v1
@@ -10,9 +11,28 @@ resources:
               storageClass: {{ .Values.storageClass }}
               size: 10Gi
           bootstrap:
+              {{- if ($pg | get "restore" false) }}
+              # Disaster recovery (backup.postgres.restore in environment.yaml): rebuild from the R2 backups
+              recovery:
+                  source: origin
+                  {{- with ($pg | get "restoreTargetTime" "") }}
+                  recoveryTarget:
+                      targetTime: {{ . | quote }}
+                  {{- end }}
+              {{- else }}
               initdb:
                   database: dtrack
                   owner: dtrack
+              {{- end }}
+          {{- if ($pg | get "restore" false) }}
+          externalClusters:
+              - name: origin
+                plugin:
+                    name: barman-cloud.cloudnative-pg.io
+                    parameters:
+                        barmanObjectName: dtrack-db-r2
+                        serverName: dtrack-db{{ ($pg | get "restoreFromSuffix" "") }}
+          {{- end }}
           # metrics: one PodMonitor for every cluster (cloudnative-pg-raw); the per-cluster one is deprecated
           monitoring:
               enablePodMonitor: false
@@ -22,6 +42,9 @@ resources:
                 isWALArchiver: true
                 parameters:
                     barmanObjectName: dtrack-db-r2
+                    {{- with ($pg | get "serverSuffix" "") }}
+                    serverName: dtrack-db{{ . }}
+                    {{- end }}
           # Velero backs up this namespace but not the database files (inconsistent while running)
           inheritedMetadata:
               annotations:

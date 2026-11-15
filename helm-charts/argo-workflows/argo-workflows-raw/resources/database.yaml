@@ -1,3 +1,4 @@
+{{- $pg := .Values.backup.postgres }}
 # PostgreSQL for the workflow archive (CloudNativePG). The operator generates Secret workflows-db-app (username, password).
 - apiVersion: postgresql.cnpg.io/v1
   kind: Cluster
@@ -9,9 +10,28 @@
           storageClass: {{ .Values.storageClass }}
           size: 5Gi
       bootstrap:
+          {{- if ($pg | get "restore" false) }}
+          # Disaster recovery (backup.postgres.restore in environment.yaml): rebuild from the R2 backups
+          recovery:
+              source: origin
+              {{- with ($pg | get "restoreTargetTime" "") }}
+              recoveryTarget:
+                  targetTime: {{ . | quote }}
+              {{- end }}
+          {{- else }}
           initdb:
               database: argo
               owner: argo
+          {{- end }}
+      {{- if ($pg | get "restore" false) }}
+      externalClusters:
+          - name: origin
+            plugin:
+                name: barman-cloud.cloudnative-pg.io
+                parameters:
+                    barmanObjectName: workflows-db-r2
+                    serverName: workflows-db{{ ($pg | get "restoreFromSuffix" "") }}
+      {{- end }}
       # metrics: one PodMonitor for every cluster (cloudnative-pg-raw); the per-cluster one is deprecated
       monitoring:
           enablePodMonitor: false
@@ -21,6 +41,9 @@
             isWALArchiver: true
             parameters:
                 barmanObjectName: workflows-db-r2
+                {{- with ($pg | get "serverSuffix" "") }}
+                serverName: workflows-db{{ . }}
+                {{- end }}
       resources:
           requests:
               cpu: 50m

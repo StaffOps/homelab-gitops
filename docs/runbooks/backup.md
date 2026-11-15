@@ -48,7 +48,7 @@ velero --kubecontext k8s01 restore create --from-backup <backup> --include-names
 velero --kubecontext k8s01 restore describe <restore> --details
 ```
 
-Full rebuild: first-install up to Velero `Available` (Vault put of the R2 token included), then restore
+Full rebuild with data: [disaster-recovery.md](disaster-recovery.md). In short: first-install up to Velero `Available` (Vault put of the R2 token included), then restore
 `vault` first (unseal with the **old** unseal key from the offline copy of vault-init.json), then the rest.
 
 ## Caveats
