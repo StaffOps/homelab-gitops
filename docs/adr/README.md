@@ -12,3 +12,4 @@ New ADR: copy the newest one, next number, status `Accepted` once merged. Supers
 | [0004](0004-cloudflare-dns.md) | Cloudflare for DNS records and DNS-01 | Accepted |
 | [0005](0005-vault-in-cluster.md) | Vault in the cluster as the only secret source | Accepted |
 | [0006](0006-kubeadm-calico.md) | Upstream Kubernetes (kubeadm) with Calico instead of k3s | Accepted |
+| [0007](0007-separate-apps-repository.md) | Workload apps in a separate repository (homelab-gitops-apps) | Accepted |

@@ -96,8 +96,10 @@ if yq -e 'select(.kind == "ConfigMap" and .metadata.name == "argocd-cm")' "$REND
 fi
 # ApplicationSet templates must reach Argo CD as plain {{ ... }} expressions
 if yq -e 'select(.kind == "ApplicationSet")' "$RENDER" >/dev/null 2>&1; then
-    yq -N 'select(.kind == "ApplicationSet") | .spec.template.metadata.name' "$RENDER" | grep -q '{{ .appName }}' ||
-        { echo "✘ ApplicationSet template name is not '{{ .appName }}'" >&2; problems=$((problems + 1)); }
+    for name in $(yq -N 'select(.kind == "ApplicationSet") | .spec.template.metadata.name' "$RENDER" | tr -d ' '); do
+        echo "$name" | grep -qE '^\{\{\.[A-Za-z.]+\}\}$' ||
+            { echo "✘ ApplicationSet template name '$name' is not a plain Argo CD expression" >&2; problems=$((problems + 1)); }
+    done
 fi
 
 [ -n "$OUT" ] && cp "$RENDER" "$OUT" && echo && echo "Manifests saved to $OUT"

@@ -7,7 +7,7 @@ Argo CD reconciles everything from `main`; the operator only bootstraps, unseals
 
 | App (`helm-charts/…`) | Namespace | What | Depends on |
 |-----------------------|-----------|------|------------|
-| `argo` | argo | Argo CD (self-managed) + ApplicationSet `platform` | prometheus-operator CRDs (bootstrap) |
+| `argo` | argo | Argo CD (self-managed) + ApplicationSet `platform`; ApplicationSet/AppProject `apps` for the workload apps of [homelab-gitops-apps](https://github.com/StaffOps/homelab-gitops-apps) (ADR 0007) | prometheus-operator CRDs (bootstrap) |
 | `local-path-provisioner` | local-path-storage | default StorageClass `local-path` (node disk) | — |
 | `metrics-server` | kube-system | resource metrics API (`kubectl top`, HPA) | kubelet-csr-approver |
 | `kubelet-csr-approver` | kube-system | approves kubelet serving-certificate renewals | — |

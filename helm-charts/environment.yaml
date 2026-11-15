@@ -9,6 +9,10 @@ zone: k8s-local # topology.kubernetes.io/zone stamped on every Pod by Kyverno (h
 gitops:
     repoURL: https://github.com/StaffOps/homelab-gitops.git
     revision: main
+# Workload apps: separate repo, one helmfile directory per app with an app.yaml (ApplicationSet apps, AppProject apps)
+apps:
+    repoURL: https://github.com/StaffOps/homelab-gitops-apps.git
+    revision: main
 # MetalLB L2 pool on the home LAN (outside the router's DHCP range)
 metallb:
     addresses:

@@ -1,0 +1,71 @@
+# Workload apps from StaffOps/homelab-gitops-apps. Layout there: <app>/helmfile.yaml.gotmpl plus one directory per
+# release (<app>/<release>/values.yaml.gotmpl). The git directory generator matches */* and creates one
+# Application per release directory: name = release, source = the app's helmfile with --selector name=<release>,
+# namespace = the app directory. Directories starting with "_" (templates, drafts) and hidden ones are skipped.
+# Adding or removing an app needs no commit here. Escaped once like applicationset-platform.yaml.
+#
+# Removing a release directory deletes its Application but keeps its resources (preserveResourcesOnDeletion).
+- apiVersion: argoproj.io/v1alpha1
+  kind: ApplicationSet
+  metadata:
+      name: apps
+  spec:
+      goTemplate: true
+      goTemplateOptions: ["missingkey=error"]
+      syncPolicy:
+          preserveResourcesOnDeletion: true
+      generators:
+          - git:
+                repoURL: {{ .Values.apps.repoURL }}
+                revision: {{ .Values.apps.revision }}
+                directories:
+                    - path: '*/*'
+                    - path: '_*/*'
+                      exclude: true
+                    - path: '.*/*'
+                      exclude: true
+                    - path: '*/.*'
+                      exclude: true
+                    - path: 'scripts/*'
+                      exclude: true
+      template:
+          metadata:
+              name: '{{`{{ .path.basename }}`}}'
+              labels:
+                  type: app
+                  app: '{{`{{ index .path.segments 0 }}`}}'
+              annotations:
+                  # relative to source.path (the app directory): the app itself and the shared contract
+                  argocd.argoproj.io/manifest-generate-paths: '.;../environment.yaml'
+          spec:
+              project: apps
+              source:
+                  repoURL: {{ .Values.apps.repoURL }}
+                  targetRevision: {{ .Values.apps.revision }}
+                  path: '{{`{{ index .path.segments 0 }}`}}'
+                  plugin:
+                      name: helmfile
+                      env:
+                          - name: HELMFILE_GLOBAL_OPTIONS
+                            value: '--selector name={{`{{ .path.basename }}`}}'
+              destination:
+                  server: https://kubernetes.default.svc
+                  namespace: '{{`{{ index .path.segments 0 }}`}}'
+              syncPolicy:
+                  automated:
+                      prune: true
+                      selfHeal: true
+                  retry:
+                      limit: 10
+                      backoff:
+                          duration: 30s
+                          factor: 2
+                          maxDuration: 5m
+                  # Label used by platform policies (secret stores, quotas) to tell app namespaces apart
+                  managedNamespaceMetadata:
+                      labels:
+                          staffops.space/tier: apps
+                  syncOptions:
+                      - CreateNamespace=true
+                      - ServerSideApply=true
+                      - SkipDryRunOnMissingResource=true

@@ -15,6 +15,7 @@ Read first: [docs/architecture.md](docs/architecture.md), [docs/gitops-workflow.
 |------|-----|
 | Argo CD itself (`helm-charts/argo/**`) | commit + push to `main` → Application `argo-cd` syncs it |
 | Add / remove a platform app | element in `helm-charts/argo/argo-cd-raw/resources/applicationset-platform.yaml` → push |
+| Add / remove a workload app | in the repo `StaffOps/homelab-gitops-apps` (ApplicationSet `apps`, ADR 0007); nothing here |
 | An existing app (`helm-charts/<app>/`) | commit + push |
 | Lab-wide values (domain, IPs, Vault paths) | `helm-charts/environment.yaml` → push (every app re-renders) |
 | A secret value | `scripts/vault.sh put <name> <keys…>` — never in git |
