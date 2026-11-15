@@ -1,0 +1,1691 @@
+{
+  "id": null,
+  "uid": "hl-networking-metallb-external-dns",
+  "title": "MetalLB & external-dns",
+  "description": "LAN reachability: MetalLB L2 pool usage, IP announcements and ARP; external-dns Cloudflare sync freshness, records and errors. Curated for this lab; see docs/dashboards/networking.md.",
+  "tags": [
+    "networking",
+    "metallb",
+    "external-dns",
+    "dns"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "name": "Firing alerts",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\", namespace=~\"metallb-system|external-dns\"} or ALERTS{alertstate=\"firing\", alertname=~\"MetalLB.*\"}",
+        "step": "60s",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{alertname}} ({{severity}}) {{namespace}} {{pod}}",
+        "tagKeys": "severity,alertname",
+        "useValueForTime": false
+      },
+      {
+        "name": "Container restarts",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "orange",
+        "expr": "changes(kube_pod_container_status_restarts_total{namespace=~\"metallb-system|external-dns\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Restart",
+        "textFormat": "{{namespace}}/{{pod}} container {{container}} restarted",
+        "tagKeys": "namespace,pod",
+        "useValueForTime": false
+      },
+      {
+        "name": "L2 announcement",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "purple",
+        "expr": "sum by (ip) (increase(metallb_layer2_gratuitous_sent{job=\"metallb\"}[2m])) > 0",
+        "step": "60s",
+        "titleFormat": "Gratuitous ARP",
+        "textFormat": "speaker (re)announced {{ip}}",
+        "tagKeys": "ip",
+        "useValueForTime": false
+      },
+      {
+        "name": "DNS records changed",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "blue",
+        "expr": "changes(external_dns_registry_endpoints_total{job=\"external-dns\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "DNS change",
+        "textFormat": "external-dns changed records in Cloudflare (registry endpoints count moved)",
+        "tagKeys": "",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "templating": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "type": "text",
+      "title": "How to read this dashboard",
+      "description": "Reading guide for this dashboard.",
+      "options": {
+        "mode": "markdown",
+        "content": "**What this is.** Two pieces that make a hostname reachable from the LAN:\n- **MetalLB** (L2 mode) hands LoadBalancer Services an IP from pool `lan` = 192.168.68.240–245 (6 addresses) and answers **ARP** for\n  it from the node (speaker). Today: `gateway/public-istio` → .240, `gateway/mcp-istio` → .241.\n- **external-dns** watches HTTPRoutes and keeps Cloudflare **A records** (`<app>.staffops.space` → Gateway IP, not proxied) plus TXT\n  ownership records (`_extdns.` prefix, owner `k8s01`) in sync every minute (policy `sync`: it also deletes records of removed routes).\n\n**Healthy looks like:** pool usage 2/6, every LoadBalancer IP announced, config loaded and not stale, external-dns last successful sync\nunder ~2 minutes ago, source records = verified records, 0 errors.\n\n**When something goes red:** IP not announced / pool full → `kubectl --context k8s01 -n metallb-system logs ds/metallb-speaker`,\nfree an IP or grow the pool (`helm-charts/environment.yaml`); stale config → bad IPAddressPool/L2Advertisement; external-dns sync\nold or errors → Cloudflare token (Vault `homelab/cloudflare`) or API problem: `kubectl --context k8s01 -n external-dns logs deploy/external-dns`.\nNote: Cloudflare API calls are **not** instrumented by external-dns (only Kubernetes API calls are), so failures show up as soft errors\nand an old *last successful sync*. Details: `docs/dashboards/networking.md`."
+      },
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 9
+      }
+    },
+    {
+      "type": "row",
+      "title": "Overview",
+      "id": 2,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "gauge",
+      "title": "Pool lan usage",
+      "description": "Addresses in use / usable addresses of pool lan (metallb_allocator_addresses_in_use_total / _total, https://metallb.io/prometheus-metrics/). Thresholds 75/85/95% = alerts MetalLBAddressPoolUsage75/85/95Percent of the MetalLB chart (https://github.com/metallb/metallb/blob/v0.16.2/charts/metallb/templates/prometheusrules.yaml); 100% = MetalLBAddressPoolExhausted: new LoadBalancer Services stay pending.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pool) (metallb_allocator_addresses_in_use_total{job=\"metallb-controller-monitor-service\"}) / sum by (pool) (metallb_allocator_addresses_total{job=\"metallb-controller-monitor-service\"})",
+          "refId": "A",
+          "legendFormat": "{{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.75
+              },
+              {
+                "color": "orange",
+                "value": 0.85
+              },
+              {
+                "color": "red",
+                "value": 0.95
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "id": 3,
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 4,
+        "h": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Addresses in use / total",
+      "description": "Absolute count behind the gauge (https://metallb.io/prometheus-metrics/).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(metallb_allocator_addresses_in_use_total{job=\"metallb-controller-monitor-service\"})",
+          "refId": "A",
+          "legendFormat": "in use"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(metallb_allocator_addresses_total{job=\"metallb-controller-monitor-service\"})",
+          "refId": "B",
+          "legendFormat": "total"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 4,
+      "gridPos": {
+        "x": 4,
+        "y": 10,
+        "w": 4,
+        "h": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "IPs announced (L2)",
+      "description": "LoadBalancer IPs the speaker currently answers ARP for (metallb_speaker_announced == 1). Must equal the number of LoadBalancer Services with an IP; fewer = an IP is assigned but unreachable on the LAN.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(metallb_speaker_announced{job=\"metallb\"} == 1) or vector(0)",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 5,
+      "gridPos": {
+        "x": 8,
+        "y": 10,
+        "w": 3,
+        "h": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "MetalLB config",
+      "description": "metallb_k8s_client_config_loaded_bool (1 = loaded) and _stale_bool (1 = latest config failed to load) of controller and speaker (https://metallb.io/prometheus-metrics/). Alerts MetalLBConfigNotLoaded / MetalLBStaleConfig.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min(metallb_k8s_client_config_loaded_bool{job=~\"metallb|metallb-controller-monitor-service\"}) - max(metallb_k8s_client_config_stale_bool{job=~\"metallb|metallb-controller-monitor-service\"})",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "LOADED",
+                  "color": "green"
+                },
+                "0": {
+                  "text": "STALE / NOT LOADED",
+                  "color": "red"
+                },
+                "-1": {
+                  "text": "NOT LOADED + STALE",
+                  "color": "red"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 6,
+      "gridPos": {
+        "x": 11,
+        "y": 10,
+        "w": 3,
+        "h": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "external-dns: last successful sync",
+      "description": "Seconds since external-dns last synced successfully with Cloudflare (time() - external_dns_controller_last_sync_timestamp_seconds, https://kubernetes-sigs.github.io/external-dns/v0.23.0/docs/monitoring/metrics/). The loop runs every 1 min here (values: interval 1m), so > 2 min (yellow) means a missed run and > 5 min (red) means it keeps failing — derived from the configured interval.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max(external_dns_controller_last_sync_timestamp_seconds{job=\"external-dns\"})",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 120
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 7,
+      "gridPos": {
+        "x": 14,
+        "y": 10,
+        "w": 5,
+        "h": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "external-dns: consecutive soft errors",
+      "description": "external_dns_controller_consecutive_soft_errors (https://kubernetes-sigs.github.io/external-dns/v0.23.0/docs/monitoring/metrics/): reconcile loops in a row that failed with a retryable error (e.g. Cloudflare API rate limit or timeout). Resets to 0 on the next success.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(external_dns_controller_consecutive_soft_errors{job=\"external-dns\"})",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 8,
+      "gridPos": {
+        "x": 19,
+        "y": 10,
+        "w": 5,
+        "h": 5
+      }
+    },
+    {
+      "type": "row",
+      "title": "MetalLB",
+      "id": 9,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "LoadBalancer Services and their IPs",
+      "description": "Every Service of type LoadBalancer with the IP MetalLB assigned (kube-state-metrics kube_service_status_load_balancer_ingress) and whether the speaker announces it (metallb_speaker_announced). A Service missing here is pending (no IP).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)",
+          "refId": "A",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (ip) (metallb_speaker_announced{job=\"metallb\"})",
+          "refId": "B",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Announced"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "NO",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "YES",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "ip",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Value #A": true
+            },
+            "renameByName": {
+              "namespace": "Namespace",
+              "service": "Service",
+              "ip": "IP",
+              "Value #B": "Announced"
+            }
+          }
+        }
+      ],
+      "id": 10,
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Pool usage over time",
+      "description": "Addresses in use per pool and pool size (https://metallb.io/prometheus-metrics/).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pool) (metallb_allocator_addresses_in_use_total{job=\"metallb-controller-monitor-service\"})",
+          "refId": "A",
+          "legendFormat": "in use {{pool}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pool) (metallb_allocator_addresses_total{job=\"metallb-controller-monitor-service\"})",
+          "refId": "B",
+          "legendFormat": "total {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 11,
+      "gridPos": {
+        "x": 8,
+        "y": 16,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "ARP requests & responses per IP",
+      "description": "ARP who-has requests the speaker received for each service IP and replies it sent (metallb_layer2_requests_received / _responses_sent; L2 panels of the community MetalLB dashboard https://grafana.com/grafana/dashboards/20162). Requests without responses = the speaker does not own the IP; no requests at all just means LAN clients have it cached.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (ip) (increase(metallb_layer2_requests_received{job=\"metallb\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "requests {{ip}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (ip) (increase(metallb_layer2_responses_sent{job=\"metallb\"}[$__rate_interval]))",
+          "refId": "B",
+          "legendFormat": "responses {{ip}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 12,
+      "gridPos": {
+        "x": 16,
+        "y": 16,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Gratuitous ARP sent",
+      "description": "Unsolicited ARP announcements per IP (metallb_layer2_gratuitous_sent, https://grafana.com/grafana/dashboards/20162). Sent when the speaker takes over an IP (startup, Service change) so LAN devices update their ARP cache. Bursts = (re)announcement events.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (ip) (increase(metallb_layer2_gratuitous_sent{job=\"metallb\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{ip}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 13,
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Kubernetes updates & errors",
+      "description": "Kubernetes object updates processed by controller and speaker and the ones that failed (metallb_k8s_client_updates_total / _update_errors_total, https://metallb.io/prometheus-metrics/). Errors = invalid MetalLB config or API problems.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job) (increase(metallb_k8s_client_updates_total{job=~\"metallb|metallb-controller-monitor-service\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "updates {{job}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job) (increase(metallb_k8s_client_update_errors_total{job=~\"metallb|metallb-controller-monitor-service\"}[$__rate_interval]))",
+          "refId": "B",
+          "legendFormat": "errors {{job}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "errors.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 14,
+      "gridPos": {
+        "x": 8,
+        "y": 23,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Config loaded / stale",
+      "description": "metallb_k8s_client_config_loaded_bool and _stale_bool per pod over time (https://metallb.io/prometheus-metrics/).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod) (metallb_k8s_client_config_loaded_bool{job=~\"metallb|metallb-controller-monitor-service\"})",
+          "refId": "A",
+          "legendFormat": "loaded {{pod}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod) (metallb_k8s_client_config_stale_bool{job=~\"metallb|metallb-controller-monitor-service\"})",
+          "refId": "B",
+          "legendFormat": "stale {{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 15,
+      "gridPos": {
+        "x": 16,
+        "y": 23,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "row",
+      "title": "external-dns (Cloudflare)",
+      "id": 16,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Endpoints: sources vs registry",
+      "description": "Hostnames external-dns wants (external_dns_source_endpoints_total, from HTTPRoutes) vs endpoints in the registry (external_dns_registry_endpoints_total: what exists in Cloudflare, including TXT ownership records) (https://kubernetes-sigs.github.io/external-dns/v0.23.0/docs/monitoring/metrics/; 'Number of Endpoints' panels of the community dashboard https://grafana.com/grafana/dashboards/15038). Registry > source is normal (A + TXT per name).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(external_dns_source_endpoints_total{job=\"external-dns\"})",
+          "refId": "A",
+          "legendFormat": "source"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(external_dns_registry_endpoints_total{job=\"external-dns\"})",
+          "refId": "B",
+          "legendFormat": "registry"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 17,
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Records by type: source / registry / verified",
+      "description": "Records per type wanted by sources, present in the registry, and verified in both (external_dns_source_records, external_dns_registry_records, external_dns_controller_verified_records, https://kubernetes-sigs.github.io/external-dns/v0.23.0/docs/monitoring/metrics/). Source A records not verified = hostnames that are not (yet) in Cloudflare.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (record_type) (external_dns_source_records{job=\"external-dns\"})",
+          "refId": "A",
+          "legendFormat": "source {{record_type}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (record_type) (external_dns_registry_records{job=\"external-dns\"})",
+          "refId": "B",
+          "legendFormat": "registry {{record_type}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (record_type) (external_dns_controller_verified_records{job=\"external-dns\"})",
+          "refId": "C",
+          "legendFormat": "verified {{record_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 18,
+      "gridPos": {
+        "x": 8,
+        "y": 31,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Errors",
+      "description": "Source errors (reading HTTPRoutes/Gateways) and registry errors (reading/writing Cloudflare records) (external_dns_source_errors_total, external_dns_registry_errors_total, https://kubernetes-sigs.github.io/external-dns/v0.23.0/docs/monitoring/metrics/) plus consecutive soft errors. All 0 normally.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(external_dns_source_errors_total{job=\"external-dns\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "source errors"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(external_dns_registry_errors_total{job=\"external-dns\"}[$__rate_interval]))",
+          "refId": "B",
+          "legendFormat": "registry errors"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(external_dns_controller_consecutive_soft_errors{job=\"external-dns\"})",
+          "refId": "C",
+          "legendFormat": "consecutive soft errors"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 19,
+      "gridPos": {
+        "x": 16,
+        "y": 31,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Sync freshness",
+      "description": "Seconds since the last attempted (last_reconcile) and last successful (last_sync) sync with Cloudflare (https://kubernetes-sigs.github.io/external-dns/v0.23.0/docs/monitoring/metrics/; 'Timestamp of last … sync' panels of https://grafana.com/grafana/dashboards/15038). Both saw-tooth up to ~60 s; a growing *successful* line while *attempted* stays low = every run fails.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max(external_dns_controller_last_reconcile_timestamp_seconds{job=\"external-dns\"})",
+          "refId": "A",
+          "legendFormat": "since last attempt"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max(external_dns_controller_last_sync_timestamp_seconds{job=\"external-dns\"})",
+          "refId": "B",
+          "legendFormat": "since last success"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 120
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 20,
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Loops with changes vs no-op",
+      "description": "Reconcile loops per interval that ended with nothing to change (external_dns_controller_no_op_runs_total, https://kubernetes-sigs.github.io/external-dns/v0.23.0/docs/monitoring/metrics/). Normally every loop is a no-op; dips mean records were created/updated/deleted (see annotation 'DNS records changed').",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(external_dns_controller_no_op_runs_total{job=\"external-dns\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "no-op runs"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 21,
+      "gridPos": {
+        "x": 8,
+        "y": 38,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rejected / skipped endpoints",
+      "description": "Endpoints external-dns refused: invalid configuration (external_dns_source_invalid_endpoints), duplicates (external_dns_source_deduplicated_endpoints) and records owned by another txtOwnerId (external_dns_registry_skipped_records_owner_mismatch_per_sync) (https://kubernetes-sigs.github.io/external-dns/v0.23.0/docs/monitoring/metrics/). Gauges exported only when non-zero: empty = nothing rejected.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (record_type, source_type) (external_dns_source_invalid_endpoints{job=\"external-dns\"})",
+          "refId": "A",
+          "legendFormat": "invalid {{record_type}} {{source_type}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (record_type, source_type) (external_dns_source_deduplicated_endpoints{job=\"external-dns\"})",
+          "refId": "B",
+          "legendFormat": "duplicate {{record_type}} {{source_type}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (record_type, foreign_owner) (external_dns_registry_skipped_records_owner_mismatch_per_sync{job=\"external-dns\"})",
+          "refId": "C",
+          "legendFormat": "owner mismatch {{record_type}} {{foreign_owner}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 22,
+      "gridPos": {
+        "x": 16,
+        "y": 38,
+        "w": 8,
+        "h": 7
+      }
+    }
+  ],
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "weekStart": ""
+}

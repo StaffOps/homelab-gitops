@@ -59,6 +59,8 @@ otel-gateway: span metrics + service graph ─► Prometheus (/api/v1/otlp) · t
 - OBI instruments only the namespaces in `helm-charts/opentelemetry/obi/values.yaml.gotmpl` (rule
   `instrumented-namespaces`, today `staffops*`) and skips processes that already export OTLP.
 - Grafana: Loki and Tempo datasources linked both ways (trace → logs, log `trace_id` → trace).
+- Dashboards: one per service, in folders by tool group (Kubernetes, Networking & Ingress, Security & Identity,
+  Observability, GitOps & Platform, Databases, AI & GPU) — catalog in [dashboards/README.md](dashboards/README.md).
 
 ## Secrets
 

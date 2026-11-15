@@ -183,16 +183,28 @@ resources:
                       replacement: $1:9484
                     - targetLabel: job
                       replacement: tigera-operator
-    # Grafana dashboard for the monolithic Loki (generated JSON, inserted as-is, so Grafana legend templates stay)
+    # Grafana dashboards: one ConfigMap per JSON file under dashboards/<folder>/ (folder titles below). The
+    # Grafana sidecar loads every ConfigMap labelled grafana_dashboard and files it under the folder named by the
+    # grafana_folder annotation. JSON is inserted as-is (no tpl), so Grafana templates like legend formats stay.
+    # Catalog of every dashboard: docs/dashboards/README.md
+    {{- $folders := dict "kubernetes" "Kubernetes" "networking" "Networking & Ingress" "security" "Security & Identity" "observability" "Observability" "platform" "GitOps & Platform" "data" "Databases" "ai" "AI & GPU" }}
+    {{- range $dir, $title := $folders }}
+    {{- range $f := readDir (printf "./dashboards/%s" $dir) }}
+    {{- if hasSuffix ".json" $f }}
     - apiVersion: v1
       kind: ConfigMap
       metadata:
-          name: loki-dashboard
+          name: dashboard-{{ $dir }}-{{ base $f | trimSuffix ".json" }}
           namespace: monitoring
           labels:
               grafana_dashboard: "1"
+          annotations:
+              grafana_folder: {{ $title | quote }}
       data:
-          loki.json: {{ readFile "./loki.dashboard.json" | toJson }}
+          {{ base $f }}: {{ readFile $f | toJson }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
     # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates
     - apiVersion: monitoring.coreos.com/v1
       kind: PrometheusRule

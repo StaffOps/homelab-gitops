@@ -1,0 +1,2788 @@
+{
+  "id": null,
+  "uid": "hl-networking-gateway",
+  "title": "Ingress / Gateway",
+  "description": "Istio Gateway API gateways public (192.168.68.240) and mcp (192.168.68.241): traffic, errors, latency per backend and host, upstream health, TLS/certificate, mcp JWT authorization, proxy health. Curated for this lab; see docs/dashboards/networking.md.",
+  "tags": [
+    "networking",
+    "istio",
+    "gateway",
+    "envoy"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "name": "Firing alerts",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\", namespace=~\"gateway|istio-system\"} or ALERTS{alertstate=\"firing\", alertname=~\"Certificate.*\", name=\"wildcard\"}",
+        "step": "60s",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{alertname}} ({{severity}}) {{namespace}} {{pod}}",
+        "tagKeys": "severity,alertname",
+        "useValueForTime": false
+      },
+      {
+        "name": "Container restarts",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "orange",
+        "expr": "changes(kube_pod_container_status_restarts_total{namespace=~\"gateway\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Restart",
+        "textFormat": "{{namespace}}/{{pod}} container {{container}} restarted",
+        "tagKeys": "namespace,pod",
+        "useValueForTime": false
+      },
+      {
+        "name": "Wildcard certificate renewed",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "green",
+        "expr": "changes(certmanager_certificate_expiration_timestamp_seconds{exported_namespace=\"gateway\", name=\"wildcard\"}[5m]) > 0",
+        "step": "60s",
+        "titleFormat": "Certificate renewed",
+        "textFormat": "cert-manager renewed gateway/wildcard",
+        "tagKeys": "",
+        "useValueForTime": false
+      },
+      {
+        "name": "Gateway listener config pushed",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "blue",
+        "expr": "sum by (pod) (changes(envoy_listener_manager_lds_update_success{job=\"istio-system/gateway-envoy\"}[2m])) > 0",
+        "step": "60s",
+        "titleFormat": "LDS update",
+        "textFormat": "{{pod}} received new listener config from istiod",
+        "tagKeys": "pod",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "gateway",
+        "label": "Gateway",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(kube_deployment_spec_replicas{namespace=\"gateway\"}, deployment)",
+          "refId": "gw"
+        },
+        "definition": "label_values(kube_deployment_spec_replicas{namespace=\"gateway\"}, deployment)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1,
+        "regex": "",
+        "hide": 0
+      }
+    ]
+  },
+  "links": [],
+  "panels": [
+    {
+      "type": "text",
+      "title": "How to read this dashboard",
+      "description": "Reading guide for this dashboard.",
+      "options": {
+        "mode": "markdown",
+        "content": "**What this is.** Every HTTPS request from the LAN to `*.staffops.space` enters through an Istio **Gateway**:\n`public` (192.168.68.240, all apps) or `mcp` (192.168.68.241, only `mcp.staffops.space`, Keycloak JWT required).\nEach Gateway is an Envoy Deployment in namespace `gateway` (`public-istio`, `mcp-istio`), reachable thanks to a MetalLB IP,\nterminating TLS with the wildcard certificate from cert-manager and routing by HTTPRoute to the app's Service.\n\n**Healthy looks like:** both gateways UP, success rate (non-5xx) at 100%, p95 latency in the tens/hundreds of ms, no Envoy\nresponse flags other than occasional `DC`/`DR` (client went away), certificate with > 30 days left.\n\n**When something goes red:**\n- *5xx for one backend* → check that app (pods, logs); `UH`/`UF` flags mean Envoy found no healthy endpoint / could not connect.\n- *5xx for every backend* → gateway itself: pod status, `istioctl proxy-status`, config rejected panel, istiod (Mesh dashboard).\n- *401/403 on `mcp`* → JWT missing/invalid or user not in `/mcp/*` group (RBAC panel).\n- *Certificate < 14 days* → cert-manager renewal failing (`kubectl --context k8s01 -n gateway describe certificate wildcard`).\n\nPrometheus metrics have no hostname label: traffic is split by **backend Service** (one per hostname here). The *Access logs*\nrow uses the gateway JSON access log in Loki, which has the real `authority` (host) and `route_name`.\nPanels marked *pending scrape* fill after the Envoy stats change is deployed. Details: `docs/dashboards/networking.md`."
+      },
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 9
+      }
+    },
+    {
+      "type": "row",
+      "title": "Overview",
+      "id": 2,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Gateway pods",
+      "description": "Is each gateway Envoy scraped and alive? `up` of the PodMonitor gateway-envoy (job istio-system/gateway-envoy). DOWN means Prometheus cannot reach the pod: the gateway is probably down and its hostnames are unreachable.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "up{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\"}",
+          "refId": "A",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 3,
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Requests/s",
+      "description": "Requests per second through the selected gateways (all backends). Formula from the Istio Mesh dashboard (https://github.com/istio/istio/blob/1.30.8/manifests/addons/dashboards/istio-mesh.libsonnet): sum(rate(istio_requests_total)). Only requests that reached a backend are counted (the http→https 301 redirect is not).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 4,
+      "gridPos": {
+        "x": 5,
+        "y": 10,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Success rate (non-5xx)",
+      "description": "Share of requests not answered with 5xx. Formula and thresholds from the Istio Mesh dashboard (https://github.com/istio/istio/blob/1.30.8/manifests/addons/dashboards/istio-mesh.libsonnet): red < 95%, yellow < 100%. 4xx count as success (client errors such as 401 without a token).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\", response_code!~\"5..\"}[$__rate_interval])) / sum(rate(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.95
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "decimals": 2,
+          "noValue": "no traffic"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 5,
+      "gridPos": {
+        "x": 9,
+        "y": 10,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "5xx/s",
+      "description": "Server errors per second (response_code 5xx) seen by the gateways (https://istio.io/latest/docs/reference/config/metrics/). 0 is normal.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\", response_code=~\"5..\"}[$__rate_interval])) or vector(0)",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.001
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 6,
+      "gridPos": {
+        "x": 13,
+        "y": 10,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "p95 latency",
+      "description": "95th percentile of request duration (gateway → backend → gateway, ms), all backends. histogram_quantile over istio_request_duration_milliseconds_bucket as in the Istio Mesh dashboard (https://github.com/istio/istio/blob/1.30.8/manifests/addons/dashboards/istio-mesh.libsonnet).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(istio_request_duration_milliseconds_bucket{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\"}[$__rate_interval])))",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "decimals": 0,
+          "noValue": "no traffic"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 7,
+      "gridPos": {
+        "x": 16,
+        "y": 10,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Wildcard cert: days left",
+      "description": "Days until *.staffops.space expires (certmanager_certificate_expiration_timestamp_seconds, https://cert-manager.io/docs/devops-tips/prometheus-metrics/). Let's Encrypt certs last 90 days and cert-manager renews 30 days before expiry, so it should stay between 30 and 90. Red under 14 days = alert CertificateExpiringSoon (helm-charts/cert-manager).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(certmanager_certificate_expiration_timestamp_seconds{exported_namespace=\"gateway\", name=\"wildcard\"} - time()) / 86400",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 14
+              },
+              {
+                "color": "green",
+                "value": 30
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 8,
+      "gridPos": {
+        "x": 20,
+        "y": 10,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "LoadBalancer IP",
+      "description": "IP that MetalLB gave each gateway Service (kube-state-metrics kube_service_status_load_balancer_ingress). Expected: public-istio 192.168.68.240, mcp-istio 192.168.68.241. Missing = Service pending, hostnames unreachable.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_service_status_load_balancer_ingress{namespace=\"gateway\", service=~\"$gateway\"}",
+          "refId": "A",
+          "legendFormat": "{{service}} → {{ip}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "name",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 9,
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 6,
+        "h": 3
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Certificate ready",
+      "description": "cert-manager Ready condition of Certificate gateway/wildcard (https://cert-manager.io/docs/devops-tips/prometheus-metrics/). Not ready = alert CertificateNotReady.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "certmanager_certificate_ready_status{exported_namespace=\"gateway\", name=\"wildcard\", condition=\"True\"}",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "NOT READY",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "READY",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 10,
+      "gridPos": {
+        "x": 6,
+        "y": 14,
+        "w": 4,
+        "h": 3
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Next renewal",
+      "description": "When cert-manager will renew the wildcard certificate (certmanager_certificate_renewal_timestamp_seconds, https://cert-manager.io/docs/devops-tips/prometheus-metrics/).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "certmanager_certificate_renewal_timestamp_seconds{exported_namespace=\"gateway\", name=\"wildcard\"} * 1000",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeFromNow",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 11,
+      "gridPos": {
+        "x": 10,
+        "y": 14,
+        "w": 4,
+        "h": 3
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Active downstream connections",
+      "description": "Open client connections per gateway (envoy_server_total_connections, https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/statistics). Browsers keep HTTP/2 connections open, so a handful is normal; a sudden jump to hundreds is a client storm.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "envoy_server_total_connections{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\"}",
+          "refId": "A",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 12,
+      "gridPos": {
+        "x": 14,
+        "y": 14,
+        "w": 6,
+        "h": 3
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Config rejected by Envoy (range)",
+      "description": "xDS updates (clusters CDS + listeners LDS) that Envoy refused in the time range (https://www.envoyproxy.io/docs/envoy/latest/configuration/upstream/cluster_manager/cds#statistics, https://www.envoyproxy.io/docs/envoy/latest/configuration/listeners/lds#statistics). Anything > 0 means istiod sent config the proxy could not apply: routes may be stale. Check `istioctl proxy-status` and istiod logs.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(envoy_cluster_manager_cds_update_rejected{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\"}[$__range]) + increase(envoy_listener_manager_lds_update_rejected{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\"}[$__range]))",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 13,
+      "gridPos": {
+        "x": 20,
+        "y": 14,
+        "w": 4,
+        "h": 3
+      }
+    },
+    {
+      "type": "row",
+      "title": "Traffic by backend (istio_requests_total)",
+      "id": 14,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests/s by gateway and status code",
+      "description": "Request rate per gateway and HTTP status code (https://istio.io/latest/docs/reference/config/metrics/). Normal: mostly 2xx/3xx; 401/403 on mcp-istio are clients without a valid token. code 0 = no response was sent (client reset, see flags).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (source_workload, response_code) (rate(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{source_workload}} {{response_code}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests/s by backend",
+      "description": "Request rate per destination Service (≈ per hostname). Which app is getting traffic? (https://istio.io/latest/docs/reference/config/metrics/)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (destination_service_namespace, destination_service_name) (rate(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{destination_service_namespace}}/{{destination_service_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 16,
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx ratio by backend",
+      "description": "Share of 5xx answers per backend. Same formula as the Istio Mesh/Service dashboards' success rate inverted (https://github.com/istio/istio/blob/1.30.8/manifests/addons/dashboards/istio-mesh.libsonnet); red line at 5% mirrors their red < 95% success threshold. A single backend high = that app; every backend high = the gateway or the node.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (destination_service_name) (rate(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\", response_code=~\"5..\"}[$__rate_interval])) / sum by (destination_service_name) (rate(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{destination_service_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.0001
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 17,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "4xx/s by backend and code",
+      "description": "Client errors per backend and code (https://istio.io/latest/docs/reference/config/metrics/). 401/403 on MCP backends = JWT/group checks of the mcp Gateway; 404 = wrong path; 400 bursts on Keycloak usually mean expired login sessions. Not an outage by itself.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (destination_service_name, response_code) (rate(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\", response_code=~\"4..\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{destination_service_name}} {{response_code}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 18,
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 latency by backend",
+      "description": "95th percentile request duration per backend (ms), histogram_quantile over istio_request_duration_milliseconds_bucket (https://github.com/istio/istio/blob/1.30.8/manifests/addons/dashboards/istio-mesh.libsonnet). Compare against the app's normal: Argo CD UI and Keycloak are slower (hundreds of ms) than Vault/Grafana API calls. Long-poll/streaming endpoints inflate it.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, destination_service_name) (rate(istio_request_duration_milliseconds_bucket{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\"}[$__rate_interval])))",
+          "refId": "A",
+          "legendFormat": "{{destination_service_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 19,
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Backends summary (time range)",
+      "description": "Per backend over the whole time range: requests, success rate (non-5xx) and p95 latency. Like the 'HTTP/gRPC Workloads' table of the Istio Mesh dashboard (https://github.com/istio/istio/blob/1.30.8/manifests/addons/dashboards/istio-mesh.libsonnet), same success thresholds.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (destination_service_namespace, destination_service_name) (increase(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\"}[$__range]))",
+          "refId": "A",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (destination_service_namespace, destination_service_name) (increase(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\", response_code!~\"5..\"}[$__range])) / sum by (destination_service_namespace, destination_service_name) (increase(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\"}[$__range]))",
+          "refId": "B",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, destination_service_namespace, destination_service_name) (increase(istio_request_duration_milliseconds_bucket{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\"}[$__range])))",
+          "refId": "C",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requests"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success rate"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.95
+                    },
+                    {
+                      "color": "green",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95 (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Requests",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "destination_service_namespace": "Namespace",
+              "destination_service_name": "Backend Service",
+              "Value #A": "Requests",
+              "Value #B": "Success rate",
+              "Value #C": "p95 (ms)"
+            }
+          }
+        }
+      ],
+      "id": 20,
+      "gridPos": {
+        "x": 12,
+        "y": 34,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Upstream health (gateway → backend)",
+      "id": 21,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Envoy response flags by backend",
+      "description": "Requests that Envoy tagged with a response flag (https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage#config-access-log-format-response-flags). Key flags: **UH** no healthy upstream (no ready pod), **UF** upstream connection failure, **UT** upstream timeout, **URX** retry limit hit, **NR** no route, **UC/UR** upstream closed/reset, **DC/DR** client disconnected/reset (usually harmless: browser closed a tab). Any U* flag for a backend means the app side is failing.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (destination_service_name, response_flags) (rate(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\", response_flags!=\"-\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{destination_service_name}} {{response_flags}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 22,
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Healthy endpoints of routed backends",
+      "description": "Healthy endpoints (ready pods) Envoy knows for each backend that received gateway traffic in the last hour (envoy_cluster_membership_healthy, https://www.envoyproxy.io/docs/envoy/latest/configuration/upstream/cluster_manager/cluster_stats; the cluster name outbound|port||<service> is mapped to the Service and joined with istio_requests_total so the ~150 clusters of unrouted Services stay out). 0 → requests fail with 503 UH. **Pending scrape**: this stat only exists once the istiod `meshConfig.defaultConfig.proxyStatsMatcher` change (helm-charts/istio/istiod) is synced and the gateway Deployments are restarted (https://istio.io/latest/docs/ops/configuration/telemetry/envoy-stats/).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "label_replace(sum by (cluster_name) (envoy_cluster_membership_healthy{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\", cluster_name=~\"outbound.*\"}), \"destination_service\", \"$1\", \"cluster_name\", \"outbound\\\\|[0-9]+\\\\|[^|]*\\\\|(.+)\") and on (destination_service) sum by (destination_service) (increase(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=~\"$gateway\"}[1h])) > 0",
+          "refId": "A",
+          "legendFormat": "{{destination_service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 23,
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Upstream connect failures & timeouts",
+      "description": "Failed or timed-out TCP connections from the gateway to backend pods (envoy_cluster_upstream_cx_connect_fail / _connect_timeout, https://www.envoyproxy.io/docs/envoy/latest/configuration/upstream/cluster_manager/cluster_stats). Should be 0; > 0 means pods crash, refuse connections or a NetworkPolicy blocks the gateway. **Pending scrape**: this stat only exists once the istiod `meshConfig.defaultConfig.proxyStatsMatcher` change (helm-charts/istio/istiod) is synced and the gateway Deployments are restarted (https://istio.io/latest/docs/ops/configuration/telemetry/envoy-stats/).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (cluster_name) (rate(envoy_cluster_upstream_cx_connect_fail{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\", cluster_name=~\"outbound.*\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "fail {{cluster_name}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (cluster_name) (rate(envoy_cluster_upstream_cx_connect_timeout{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\", cluster_name=~\"outbound.*\"}[$__rate_interval]))",
+          "refId": "B",
+          "legendFormat": "timeout {{cluster_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 24,
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Upstream request timeouts, retries & overflow",
+      "description": "Requests that hit the route timeout (upstream_rq_timeout), were retried (upstream_rq_retry), or were rejected by the circuit breaker (upstream_rq_pending_overflow) (https://www.envoyproxy.io/docs/envoy/latest/configuration/upstream/cluster_manager/cluster_stats). All 0 normally; timeouts point at a slow backend, overflow at a backend that cannot keep up. **Pending scrape**: this stat only exists once the istiod `meshConfig.defaultConfig.proxyStatsMatcher` change (helm-charts/istio/istiod) is synced and the gateway Deployments are restarted (https://istio.io/latest/docs/ops/configuration/telemetry/envoy-stats/).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (cluster_name) (rate(envoy_cluster_upstream_rq_timeout{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\", cluster_name=~\"outbound.*\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "timeout {{cluster_name}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (cluster_name) (rate(envoy_cluster_upstream_rq_retry{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\", cluster_name=~\"outbound.*\"}[$__rate_interval]))",
+          "refId": "B",
+          "legendFormat": "retry {{cluster_name}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (cluster_name) (rate(envoy_cluster_upstream_rq_pending_overflow{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\", cluster_name=~\"outbound.*\"}[$__rate_interval]))",
+          "refId": "C",
+          "legendFormat": "overflow {{cluster_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 25,
+      "gridPos": {
+        "x": 12,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "TLS & client connections",
+      "id": 26,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "TLS handshakes and errors",
+      "description": "Successful TLS handshakes vs TLS connection errors on the HTTPS listeners (listener ssl.handshake / ssl.connection_error, https://www.envoyproxy.io/docs/envoy/latest/configuration/listeners/stats — TLS statistics). Errors without handshakes = clients that don't trust the cert, speak plain HTTP to 443, or ask for an unknown SNI. **Pending scrape**: this stat only exists once the istiod `meshConfig.defaultConfig.proxyStatsMatcher` change (helm-charts/istio/istiod) is synced and the gateway Deployments are restarted (https://istio.io/latest/docs/ops/configuration/telemetry/envoy-stats/).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (rate(envoy_listener_ssl_handshake{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "handshakes {{pod}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (rate(envoy_listener_ssl_connection_error{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\"}[$__rate_interval]))",
+          "refId": "B",
+          "legendFormat": "errors {{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "errors.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 27,
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Downstream connections per gateway",
+      "description": "Open client connections per gateway pod (envoy_server_total_connections, https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/statistics). Each LAN client with HTTP/2 keeps one or a few. Overflow (listener downstream_cx_overflow) is not configured here.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "envoy_server_total_connections{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\"}",
+          "refId": "A",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 28,
+      "gridPos": {
+        "x": 12,
+        "y": 60,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
+      "type": "row",
+      "title": "mcp Gateway authorization (Keycloak JWT)",
+      "id": 29,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "RBAC decisions on mcp",
+      "description": "Envoy RBAC filter results on the mcp Gateway (envoy_http_rbac, https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rbac_filter#statistics): **allowed** passed both AuthorizationPolicies (valid JWT + /mcp/admin or /mcp/viewer group), **denied** were rejected with 403. Requests with an invalid token are rejected earlier with 401 by the JWT filter (see the 4xx panel). A burst of denied = a client lost its group or is misconfigured.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (authz_enforce_result) (rate(envoy_http_rbac{job=\"istio-system/gateway-envoy\", pod=~\"mcp-istio-.*\", authz_enforce_result!=\"\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{authz_enforce_result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "denied"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "allowed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 30,
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "401/403 on mcp by backend",
+      "description": "Requests refused on the mcp Gateway per MCP server: 401 = missing/invalid JWT, 403 = valid JWT without an /mcp/* group (https://istio.io/latest/docs/reference/config/metrics/).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (destination_service_name, response_code) (rate(istio_requests_total{job=\"istio-system/gateway-envoy\", source_workload=\"mcp-istio\", response_code=~\"401|403\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{destination_service_name}} {{response_code}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 31,
+      "gridPos": {
+        "x": 12,
+        "y": 68,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
+      "type": "row",
+      "title": "Access logs by host (Loki)",
+      "id": 32,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 75,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by host",
+      "description": "Requests per hostname (authority) from the gateway JSON access log (meshConfig.accessLogEncoding JSON). LogQL count_over_time on json-parsed lines (https://grafana.com/docs/loki/latest/query/metric_queries/). Includes 301 redirects on port 80.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (authority) (count_over_time({k8s_namespace_name=\"gateway\", k8s_container_name=\"istio-proxy\", k8s_deployment_name=~\"$gateway\"} |= \"response_code\" | json | __error__=\"\" [$__auto]))",
+          "refId": "A",
+          "queryType": "range",
+          "legendFormat": "{{authority}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 33,
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 duration by host",
+      "description": "95th percentile of the access-log `duration` field (ms) per hostname, LogQL quantile_over_time with unwrap (https://grafana.com/docs/loki/latest/query/metric_queries/). Same idea as the Prometheus latency panel but split by host instead of backend Service.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.95, {k8s_namespace_name=\"gateway\", k8s_container_name=\"istio-proxy\", k8s_deployment_name=~\"$gateway\"} |= \"response_code\" | json | __error__=\"\" | unwrap duration [$__auto]) by (authority)",
+          "refId": "A",
+          "queryType": "range",
+          "legendFormat": "{{authority}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 34,
+      "gridPos": {
+        "x": 12,
+        "y": 76,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Errors by host / route (time range)",
+      "description": "Count of access-log lines with status ≥ 500 or a response flag over the time range, grouped by host, HTTPRoute rule (route_name = namespace.route.rule), status and flag (https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage#config-access-log-format-response-flags). Start here to find *which* route fails.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (authority, route_name, response_code, response_flags) (count_over_time({k8s_namespace_name=\"gateway\", k8s_container_name=\"istio-proxy\", k8s_deployment_name=~\"$gateway\"} |= \"response_code\" | json | __error__=\"\" | response_code >= 500 or response_flags != \"-\" [$__range]))",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Count",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "authority": "Host",
+              "route_name": "Route",
+              "response_code": "Status",
+              "response_flags": "Flags",
+              "Value": "Count",
+              "Value #A": "Count"
+            }
+          }
+        }
+      ],
+      "id": 35,
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Recent failing requests",
+      "description": "Raw access-log lines with status ≥ 500 or a response flag (newest first). Fields: authority (host), path, response_code, response_flags (https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage#config-access-log-format-response-flags), upstream_host (backend pod), duration (ms), upstream_transport_failure_reason.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{k8s_namespace_name=\"gateway\", k8s_container_name=\"istio-proxy\", k8s_deployment_name=~\"$gateway\"} |= \"response_code\" | json | __error__=\"\" | response_code >= 500 or response_flags != \"-\"",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "prettifyLogMessage": false,
+        "showLabels": false,
+        "showCommonLabels": false
+      },
+      "id": 36,
+      "gridPos": {
+        "x": 12,
+        "y": 84,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "row",
+      "title": "Gateway proxy health",
+      "id": 37,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 93,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "xDS connection to istiod",
+      "description": "Each gateway keeps one gRPC connection to istiod to receive config (envoy_cluster_upstream_cx_active for cluster xds-grpc, as in the Istio Control Plane dashboard). 0 = the gateway runs on its last config and won't see new routes/endpoints.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "envoy_cluster_upstream_cx_active{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\", cluster_name=\"xds-grpc\"}",
+          "refId": "A",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 38,
+      "gridPos": {
+        "x": 0,
+        "y": 94,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Config updates applied",
+      "description": "Successful listener (LDS) and cluster (CDS) updates per gateway (https://www.envoyproxy.io/docs/envoy/latest/configuration/listeners/lds#statistics, https://www.envoyproxy.io/docs/envoy/latest/configuration/upstream/cluster_manager/cds#statistics). Steps follow HTTPRoute/Service changes; constant churn means something keeps changing config.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (increase(envoy_listener_manager_lds_update_success{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "LDS {{pod}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (increase(envoy_cluster_manager_cds_update_success{job=\"istio-system/gateway-envoy\", pod=~\"($gateway)-.*\"}[$__rate_interval]))",
+          "refId": "B",
+          "legendFormat": "CDS {{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 39,
+      "gridPos": {
+        "x": 8,
+        "y": 94,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Gateway memory & CPU",
+      "description": "Working-set memory (left) and CPU cores (right) of each gateway's istio-proxy container (cAdvisor). Envoy grows with the number of routes/clusters; a steady climb with flat traffic is a leak.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"gateway\", container=\"istio-proxy\", pod=~\"($gateway)-.*\"})",
+          "refId": "A",
+          "legendFormat": "mem {{pod}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"gateway\", container=\"istio-proxy\", pod=~\"($gateway)-.*\"}[$__rate_interval]))",
+          "refId": "B",
+          "legendFormat": "cpu {{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "cpu.*"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "cores"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 40,
+      "gridPos": {
+        "x": 16,
+        "y": 94,
+        "w": 8,
+        "h": 7
+      }
+    }
+  ],
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "weekStart": ""
+}

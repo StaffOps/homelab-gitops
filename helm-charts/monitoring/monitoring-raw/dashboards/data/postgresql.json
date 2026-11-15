@@ -1,0 +1,2864 @@
+{
+  "id": null,
+  "uid": "hl-data-postgresql",
+  "title": "PostgreSQL / Clusters",
+  "description": "Curated view of every CloudNativePG cluster of the lab side by side (keycloak-db, dtrack-db): up, connections vs max_connections, long transactions, wraparound, locks, throughput, cache hit ratio, deadlocks, database growth, WAL and the metrics collector. Queries come from the official CloudNativePG dashboard, the CNPG default monitoring queries and the CNPG alert rules (sources in each panel). Full per-cluster view: 'CloudNativePG / Official'.",
+  "tags": [
+    "data",
+    "postgresql",
+    "cloudnativepg"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "schemaVersion": 41,
+  "version": 1,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "weekStart": "",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "name": "Firing alerts",
+        "expr": "ALERTS{alertstate=\"firing\", namespace=~\"keycloak|dependency-track|cnpg-system\"}",
+        "step": "60s",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{alertname}} ({{severity}}) in {{namespace}}",
+        "tagKeys": "severity",
+        "useValueForTime": false
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "name": "Container restarts",
+        "expr": "changes(kube_pod_container_status_restarts_total{namespace=~\"keycloak|dependency-track|cnpg-system\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Restart: {{pod}}",
+        "textFormat": "container {{container}} of {{namespace}}/{{pod}} restarted",
+        "tagKeys": "",
+        "useValueForTime": false
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "purple",
+        "name": "PostgreSQL (re)started",
+        "expr": "changes(cnpg_pg_postmaster_start_time[5m]) > 0",
+        "step": "60s",
+        "titleFormat": "PostgreSQL started: {{namespace}}/{{pod}}",
+        "textFormat": "postmaster start time changed (restart or failover)",
+        "tagKeys": "",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "cluster",
+        "label": "Cluster",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(cnpg_collector_postgres_version, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery",
+          "qryType": 1
+        },
+        "definition": "label_values(cnpg_collector_postgres_version, cluster)",
+        "refresh": 2,
+        "regex": "",
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "hide": 0,
+        "options": [],
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "allValue": ".*"
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "CloudNativePG monitoring (1.30)",
+      "url": "https://cloudnative-pg.io/documentation/1.30/monitoring/",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "doc"
+    },
+    {
+      "title": "PostgreSQL statistics views",
+      "url": "https://www.postgresql.org/docs/18/monitoring-stats.html",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "doc"
+    },
+    {
+      "title": "Related",
+      "type": "dashboards",
+      "tags": [
+        "data"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "text",
+      "title": "How to read this dashboard",
+      "description": "Reading guide for this dashboard.",
+      "options": {
+        "mode": "markdown",
+        "content": "**What runs here.** The CloudNativePG operator (namespace `cnpg-system`, operator 1.30.1) runs two PostgreSQL 18\nclusters, each a **single instance** on a `local-path` volume: `keycloak/keycloak-db` (Keycloak) and\n`dependency-track/dtrack-db` (Dependency-Track). No replicas (no failover: a node or Pod problem means downtime), no\nseparate WAL volume, **no CNPG backups** — the data is only protected by Velero's daily file-level copy of the volume.\nMetrics come from the instance manager exporter on port 9187 (`cnpg_*`), scraped through the PodMonitor the operator creates.\n\n**Healthy looks like:** up, connections well below 80 % of `max_connections` (100), longest transaction seconds not minutes,\nXID age far below 300 M, 0 blocked backends, 0 deadlocks, 0 collector errors, WAL `.ready` files at 0.\n\n**When something is red:** `kubectl --context k8s01 cnpg status <cluster> -n <ns>` (plugin) or\n`kubectl --context k8s01 -n <ns> get cluster <cluster> -o yaml`; logs with\n`kubectl --context k8s01 -n <ns> logs <cluster>-1 -c postgres`. Long transaction / blocked → find the session in\n`pg_stat_activity` (`kubectl cnpg psql`). Connections near max → the app's pool size (Dependency-Track keeps ~15).\n⚠ `cnpg_cache_hits` / `cnpg_cache_miss` are the *exporter's* query-cache counters, not PostgreSQL's buffer cache: the\nbuffer cache hit ratio below is computed from `pg_stat_database`.",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        }
+      },
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 10
+      }
+    },
+    {
+      "type": "row",
+      "title": "Is PostgreSQL OK?",
+      "collapsed": false,
+      "panels": [],
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Up",
+      "description": "1 when the instance manager can query PostgreSQL (cnpg_collector_up). 0 or no value = the database is down (the CNPG chart's alert CNPGClusterOffline fires when no instance reports up for 5 min). Source: https://cloudnative-pg.io/documentation/1.30/monitoring/; https://github.com/cloudnative-pg/charts/tree/main/charts/cluster/prometheus_rules.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod) (cnpg_collector_up{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 0
+                },
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 3,
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Connections used",
+      "description": "Connections in use as a share of max_connections, per instance. Warning at 80 %, critical at 95 % (CNPG chart alerts CNPGClusterHighConnections*). At 100 % new connections are refused. Source: https://github.com/cloudnative-pg/charts/tree/main/charts/cluster/prometheus_rules; https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "100 * sum by (namespace, pod) (cnpg_backends_total{pod=~\"($cluster)-[0-9]+\"}) / max by (namespace, pod) (cnpg_pg_settings_setting{name=\"max_connections\",pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 4,
+      "gridPos": {
+        "x": 4,
+        "y": 11,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Longest transaction",
+      "description": "Age of the oldest open transaction per instance. Long transactions hold locks and stop VACUUM from cleaning dead rows (table bloat). The CNPG sample alert LongRunningTransaction fires above 300 s. Source: https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.30.1/docs/src/samples/monitoring/prometheusrule.yaml; https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod) (cnpg_backends_max_tx_duration_seconds{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 5,
+      "gridPos": {
+        "x": 8,
+        "y": 11,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "XID age (wraparound)",
+      "description": "Transactions since the oldest unfrozen transaction ID in any database. PostgreSQL must freeze rows before ~2.1 billion or it stops accepting writes; autovacuum normally keeps this far below 200 M (autovacuum_freeze_max_age). CNPG sample alert PGDatabaseXidAge: > 300 M. Source: https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.30.1/docs/src/samples/monitoring/prometheusrule.yaml; https://www.postgresql.org/docs/18/routine-vacuuming.html#VACUUM-FOR-WRAPAROUND.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod) (cnpg_pg_database_xid_age{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 200000000
+              },
+              {
+                "color": "red",
+                "value": 300000000
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 6,
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Blocked backends",
+      "description": "Backends currently waiting for a lock held by another backend (CNPG default query backends_waiting). Brief non-zero values are normal under write contention; a persistent value means a blocking session. The CNPG sample alert BackendsWaiting uses > 300. Source: https://github.com/cloudnative-pg/charts/blob/cloudnative-pg-v0.29.1/charts/cloudnative-pg/values.yaml (monitoringQueriesConfigMap); https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.30.1/docs/src/samples/monitoring/prometheusrule.yaml.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod) (cnpg_backends_waiting_total{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 7,
+      "gridPos": {
+        "x": 16,
+        "y": 11,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Collector errors",
+      "description": "1 when the last metrics collection of the instance failed (a monitoring query errored): the other panels may then show stale or missing data. Source: https://cloudnative-pg.io/documentation/1.30/monitoring/.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod) (cnpg_collector_last_collection_error{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "OK",
+                  "color": "green",
+                  "index": 0
+                },
+                "1": {
+                  "text": "ERROR",
+                  "color": "red",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 8,
+      "gridPos": {
+        "x": 20,
+        "y": 11,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Uptime",
+      "description": "Time since PostgreSQL started on each instance (pg_postmaster_start_time). A small value = recent restart (Pod restart, OOM, operator rolling update). Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max by (namespace, pod) (cnpg_pg_postmaster_start_time{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 3600
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 9,
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "PostgreSQL version",
+      "description": "Server version reported by each instance. Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod, full) (cnpg_collector_postgres_version{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}: {{full}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "name",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 10,
+      "gridPos": {
+        "x": 4,
+        "y": 15,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Application DB size",
+      "description": "Size of each application database (pg_database_size). Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, datname) (cnpg_pg_database_size_bytes{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"})",
+          "legendFormat": "{{datname}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 11,
+      "gridPos": {
+        "x": 8,
+        "y": 15,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Volume used (node disk)",
+      "description": "Used share of the PGDATA volume. With `local-path` the volume is a directory on the node disk, so this is the **node filesystem** usage (the 5Gi request is not enforced). CNPG chart alerts CNPGClusterLowDiskSpace: warning > 70 %, critical > 90 %. Source: https://github.com/cloudnative-pg/charts/tree/main/charts/cluster/prometheus_rules; https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (persistentvolumeclaim) (1 - kubelet_volume_stats_available_bytes{persistentvolumeclaim=~\"($cluster)-[0-9]+\"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{persistentvolumeclaim}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 12,
+      "gridPos": {
+        "x": 12,
+        "y": 15,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "WAL files waiting to archive",
+      "description": "WAL segments with a `.ready` file in pg_wal/archive_status: written but not yet archived. They should stay at 0; a growing number means archiving is failing and pg_wal will fill the disk. Source: https://cloudnative-pg.io/documentation/1.30/monitoring/; https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod) (cnpg_collector_pg_wal_archive_status{value=\"ready\",pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 13,
+      "gridPos": {
+        "x": 16,
+        "y": 15,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Base backups",
+      "description": "Timestamp of the last CNPG base backup. 0 = no backup has ever been taken: these clusters have no `spec.backup` (no Barman Cloud plugin), so point-in-time recovery is impossible and the only copy is Velero's daily file-level copy of the volume. Source: https://cloudnative-pg.io/documentation/1.30/monitoring/.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace) (cnpg_collector_last_available_backup_timestamp{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{namespace}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeFromNow",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "none configured",
+                  "color": "orange",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 14,
+      "gridPos": {
+        "x": 20,
+        "y": 15,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "row",
+      "title": "Workload",
+      "collapsed": false,
+      "panels": [],
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Connections by state",
+      "description": "Backends per instance and state (active, idle, idle in transaction, …). Many `idle in transaction` sessions = an application that opens transactions and does not close them. Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json; https://github.com/cloudnative-pg/charts/blob/cloudnative-pg-v0.29.1/charts/cloudnative-pg/values.yaml (monitoringQueriesConfigMap).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod, state) (cnpg_backends_total{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}} {{state}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod) (cnpg_pg_settings_setting{name=\"max_connections\",pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}} max_connections",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*max_connections"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 16,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Connections by application",
+      "description": "Backends per database, user and application_name — which client holds the connections (Keycloak JDBC pool, Dependency-Track pool, the CNPG metrics exporter itself). Source: https://github.com/cloudnative-pg/charts/blob/cloudnative-pg-v0.29.1/charts/cloudnative-pg/values.yaml (monitoringQueriesConfigMap).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (datname, usename, application_name) (cnpg_backends_total{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{datname}} / {{usename}} / {{application_name}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 17,
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Transactions per second",
+      "description": "Commits and rollbacks per second per database. A rising rollback share points at application errors (constraint violations, aborted transactions). Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (datname) (rate(cnpg_pg_stat_database_xact_commit{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[$__rate_interval]))",
+          "legendFormat": "{{datname}} commit",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (datname) (rate(cnpg_pg_stat_database_xact_rollback{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[$__rate_interval]))",
+          "legendFormat": "{{datname}} rollback",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 18,
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rows written and read",
+      "description": "Rows inserted/updated/deleted (writes) and fetched (reads via indexes) per second per database. Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (datname) (rate(cnpg_pg_stat_database_tup_inserted{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[$__rate_interval]) + rate(cnpg_pg_stat_database_tup_updated{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[$__rate_interval]) + rate(cnpg_pg_stat_database_tup_deleted{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[$__rate_interval]))",
+          "legendFormat": "{{datname}} written",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (datname) (rate(cnpg_pg_stat_database_tup_fetched{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[$__rate_interval]))",
+          "legendFormat": "{{datname}} fetched",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 19,
+      "gridPos": {
+        "x": 8,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Buffer cache hit ratio",
+      "description": "Share of block reads served from shared_buffers (blks_hit) instead of being read from the OS/disk (blks_read), per database. Low and falling = the working set no longer fits in memory (raise shared_buffers / memory limit). Source: https://www.postgresql.org/docs/18/monitoring-stats.html; https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json. Derived query: blks_hit / (blks_hit + blks_read) over the window, the standard ratio from the pg_stat_database counters (the official dashboard plots the two counters).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (datname) (rate(cnpg_pg_stat_database_blks_hit{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[$__rate_interval])) / (sum by (datname) (rate(cnpg_pg_stat_database_blks_hit{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[$__rate_interval])) + sum by (datname) (rate(cnpg_pg_stat_database_blks_read{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[$__rate_interval])))",
+          "legendFormat": "{{datname}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 20,
+      "gridPos": {
+        "x": 16,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Longest transaction by application",
+      "description": "Age of the oldest open transaction per database/application. Spikes line up with batch jobs (Dependency-Track vulnerability analysis); a line that keeps growing is a stuck session. Threshold line at 300 s (CNPG sample alert). Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json; https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.30.1/docs/src/samples/monitoring/prometheusrule.yaml.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (datname, application_name) (cnpg_backends_max_tx_duration_seconds{pod=~\"($cluster)-[0-9]+\"}) > 0",
+          "legendFormat": "{{datname}} / {{application_name}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 21,
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Blocked backends and deadlocks",
+      "description": "Backends waiting on locks (left) and deadlocks detected per hour (right). The CNPG sample alert DatabaseDeadlockConflicts fires above 10 deadlocks per hour. Source: https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.30.1/docs/src/samples/monitoring/prometheusrule.yaml; https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod) (cnpg_backends_waiting_total{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}} blocked",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (datname) (increase(cnpg_pg_stat_database_deadlocks{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[1h]))",
+          "legendFormat": "{{datname}} deadlocks/h",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*deadlocks/h"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 22,
+      "gridPos": {
+        "x": 8,
+        "y": 36,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Temporary files",
+      "description": "Bytes written to temporary files per second (sorts and hashes that did not fit in work_mem). Sustained values = raise work_mem for that workload or add an index. Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (datname) (rate(cnpg_pg_stat_database_temp_bytes{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[$__rate_interval]))",
+          "legendFormat": "{{datname}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 23,
+      "gridPos": {
+        "x": 16,
+        "y": 36,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Storage and WAL",
+      "collapsed": false,
+      "panels": [],
+      "id": 24,
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Database size",
+      "description": "Size of each application database over time. Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, datname) (cnpg_pg_database_size_bytes{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"})",
+          "legendFormat": "{{datname}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 25,
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Database growth (24h)",
+      "description": "Change of each database size over the previous 24 h — the trend to project disk usage. Negative after a VACUUM FULL or a large delete. Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json. Derived query: delta(cnpg_pg_database_size_bytes[1d]) on the gauge.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (datname) (delta(cnpg_pg_database_size_bytes{pod=~\"($cluster)-[0-9]+\",datname!~\"template.*|postgres|\"}[1d]))",
+          "legendFormat": "{{datname}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 26,
+      "gridPos": {
+        "x": 8,
+        "y": 45,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "WAL generated",
+      "description": "WAL bytes generated per second (pg_stat_wal via cnpg_collector_wal_bytes). Drives disk I/O, archive volume and (with replicas) replication traffic. Source: https://cloudnative-pg.io/documentation/1.30/monitoring/.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (rate(cnpg_collector_wal_bytes{pod=~\"($cluster)-[0-9]+\"}[$__rate_interval]))",
+          "legendFormat": "{{pod}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 27,
+      "gridPos": {
+        "x": 16,
+        "y": 45,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "WAL on disk",
+      "description": "Size of pg_wal per instance (cnpg_collector_pg_wal value=size) — it should stay roughly flat around min_wal_size..max_wal_size; steady growth means WAL cannot be recycled (archiving stuck or a replication slot holding it). Source: https://cloudnative-pg.io/documentation/1.30/monitoring/; https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod) (cnpg_collector_pg_wal{value=\"size\",pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 28,
+      "gridPos": {
+        "x": 0,
+        "y": 53,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "WAL archiving",
+      "description": "WAL segments waiting to be archived (.ready) and archive failures per hour. With no backup configured CNPG's archive command completes immediately, so `.ready` must stay 0. Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json; https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.30.1/docs/src/samples/monitoring/prometheusrule.yaml.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod) (cnpg_collector_pg_wal_archive_status{value=\"ready\",pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}} .ready",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (increase(cnpg_pg_stat_archiver_failed_count{pod=~\"($cluster)-[0-9]+\"}[1h]))",
+          "legendFormat": "{{pod}} failures/h",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 29,
+      "gridPos": {
+        "x": 8,
+        "y": 53,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Checkpoints",
+      "description": "Checkpoints per hour, requested (forced because max_wal_size was reached) vs timed (checkpoint_timeout). Many requested checkpoints = write bursts larger than max_wal_size (PostgreSQL docs: raise max_wal_size). Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json; https://www.postgresql.org/docs/18/wal-configuration.html.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (increase(cnpg_pg_stat_checkpointer_checkpoints_req{pod=~\"($cluster)-[0-9]+\"}[1h]))",
+          "legendFormat": "{{pod}} requested",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (increase(cnpg_pg_stat_checkpointer_checkpoints_timed{pod=~\"($cluster)-[0-9]+\"}[1h]))",
+          "legendFormat": "{{pod}} timed",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 30,
+      "gridPos": {
+        "x": 16,
+        "y": 53,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Metrics collector and operator",
+      "collapsed": false,
+      "panels": [],
+      "id": 31,
+      "gridPos": {
+        "x": 0,
+        "y": 61,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Collection duration",
+      "description": "Time the instance manager spends running the monitoring queries, per query group. Slow collections (seconds) delay metrics and load the database. Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod, collector) (cnpg_collector_collection_duration_seconds{pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}} {{collector}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 32,
+      "gridPos": {
+        "x": 0,
+        "y": 62,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Operator reconcile errors",
+      "description": "Failed reconciliations of the CloudNativePG operator per controller (cluster, backup, pooler, …). `requeue_after` results are normal and not shown. Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json; https://book.kubebuilder.io/reference/metrics-reference.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (controller) (rate(controller_runtime_reconcile_errors_total{job=\"cnpg-system/cnpg\"}[$__rate_interval]))",
+          "legendFormat": "{{controller}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.0001
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 33,
+      "gridPos": {
+        "x": 8,
+        "y": 62,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Operator",
+      "description": "CloudNativePG operator Pod ready (kube-state-metrics) and scraped. Without the operator running databases keep serving, but nothing heals, rotates certificates or applies spec changes. Source: https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json. Derived query: the official panel's Pod regex expects cloudnative-pg-*/cnpg-controller-manager-*; here the Deployment is `cnpg` (fullnameOverride).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(kube_pod_status_ready{namespace=\"cnpg-system\",pod=~\"cnpg-.*\",condition=\"true\"}) or vector(0)",
+          "legendFormat": "ready pods",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(up{job=\"cnpg-system/cnpg\"}) or vector(0)",
+          "legendFormat": "scraped",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 34,
+      "gridPos": {
+        "x": 16,
+        "y": 62,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Resources (database Pods)",
+      "collapsed": false,
+      "panels": [],
+      "id": 35,
+      "gridPos": {
+        "x": 0,
+        "y": 70,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory working set vs limit",
+      "description": "Memory of each postgres container (solid) and its limit (dashed, 1 GiB). PostgreSQL uses spare memory for its caches; an OOM kill restarts the database. Source: https://github.com/kubernetes-monitoring/kubernetes-mixin; https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (container_memory_working_set_bytes{container=\"postgres\",pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod) (kube_pod_container_resource_limits{container=\"postgres\",resource=\"memory\",pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}} limit",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* limit"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 36,
+      "gridPos": {
+        "x": 0,
+        "y": 71,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU usage",
+      "description": "CPU cores used by each postgres container. Source: https://github.com/kubernetes-monitoring/kubernetes-mixin; https://github.com/cloudnative-pg/grafana-dashboards/blob/7dd1bc255b5202530e1bae7b858a3bb41a2028c7/charts/cluster/grafana-dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{container=\"postgres\",pod=~\"($cluster)-[0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cores",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 37,
+      "gridPos": {
+        "x": 12,
+        "y": 71,
+        "w": 12,
+        "h": 8
+      }
+    }
+  ]
+}

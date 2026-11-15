@@ -1,0 +1,1886 @@
+{
+  "id": null,
+  "uid": "hl-ai-mcp-servers",
+  "title": "MCP servers",
+  "description": "The 7 read-only MCP servers at https://mcp.staffops.space/<name> (kubernetes, grafana, argocd, dependency-track, keycloak, prometheus, kubectl; plus Tempo's built-in /tempo) behind Gateway mcp with Keycloak JWT: per-server request rate / status codes / latency from the Gateway's Envoy (Istio standard metrics), pod health and resources for all 7, and the own metrics of the three servers that export them (kubernetes-mcp, grafana-mcp, prometheus-mcp). No official dashboard exists for any of them. Docs: docs/dashboards/ai.md.",
+  "tags": [
+    "ai",
+    "mcp"
+  ],
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "timezone": "",
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "name": "Firing alerts (mcp-servers)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\", namespace=\"mcp-servers\"}",
+        "step": "60s",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{severity}} {{pod}}",
+        "useValueForTime": false
+      },
+      {
+        "name": "Container restarts (mcp-servers)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "orange",
+        "expr": "changes(kube_pod_container_status_restarts_total{namespace=\"mcp-servers\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Restart {{pod}}",
+        "textFormat": "{{container}}",
+        "useValueForTime": false
+      },
+      {
+        "name": "Deployment rollouts",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "blue",
+        "expr": "changes(kube_deployment_status_observed_generation{namespace=\"mcp-servers\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Rollout {{deployment}}",
+        "textFormat": "Deployment spec changed (new image/config from Argo CD)",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "kubernetes-mcp-server metrics",
+      "type": "link",
+      "url": "https://github.com/containers/kubernetes-mcp-server/blob/main/docs/OTEL.md#prometheus-metrics",
+      "targetBlank": true,
+      "icon": "doc",
+      "tooltip": "kubernetes-mcp-server metrics"
+    },
+    {
+      "title": "mcp-grafana metrics",
+      "type": "link",
+      "url": "https://github.com/grafana/mcp-grafana/blob/main/docs/sources/developer/observability-metrics-and-tracing.md",
+      "targetBlank": true,
+      "icon": "doc",
+      "tooltip": "mcp-grafana metrics"
+    },
+    {
+      "title": "prometheus-mcp-server metrics",
+      "type": "link",
+      "url": "https://github.com/tjhop/prometheus-mcp-server#metrics",
+      "targetBlank": true,
+      "icon": "doc",
+      "tooltip": "prometheus-mcp-server metrics"
+    }
+  ],
+  "panels": [
+    {
+      "type": "row",
+      "title": "Overview",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "id": 1
+    },
+    {
+      "type": "text",
+      "title": "How to read this dashboard",
+      "description": "How to read this dashboard.",
+      "options": {
+        "mode": "markdown",
+        "content": "\n**What it is.** AI assistants reach the lab through **MCP servers** at `https://mcp.staffops.space/<name>`. The dedicated\nGateway **`mcp`** (Istio, `192.168.68.241`) checks a **Keycloak JWT** (groups `/mcp/admin`, `/mcp/viewer`), strips it and\nroutes by path to the server in namespace `mcp-servers`. Every server is **read-only**.\n\n| Path | Server | Own metrics |\n|---|---|---|\n| /kubernetes | kubernetes-mcp-server | yes (`k8s_mcp_*`) |\n| /grafana | mcp-grafana | yes (`mcp_server_operation_*`, `http_*`) |\n| /prometheus | prometheus-mcp-server | yes (`prom_mcp_*`) |\n| /argocd, /dependency-track, /keycloak, /kubectl | — | no (Gateway + pod metrics only) |\n| /tempo | Tempo built-in (namespace monitoring) | Gateway only |\n\n**Healthy looks like:** all 7 deployments UP, Gateway responses 2xx/202 (MCP notifications answer 202), no 5xx, tool\ncalls answered in seconds. **401** = no/expired Keycloak token, **403** = token without an allowed group — both are\nrejections by the Gateway, not server faults.\n\n**When something goes red:** a server DOWN → `kubectl --context k8s01 -n mcp-servers describe pod -l app=<name>` (most\nstart failures are a missing key in Vault `homelab/mcp` → CreateContainerConfigError); 5xx for one path → that server's\nlogs in Loki; many 401/403 → client token / Keycloak (Security dashboards).\n"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 24,
+        "h": 10
+      },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Deployments available",
+      "description": "kube_deployment_status_replicas_available per Deployment in mcp-servers (kube-state-metrics). 1 = serving, 0 = that path answers 503 at the Gateway. Same signal as the mixin alert KubeDeploymentReplicasMismatch (https://github.com/kubernetes-monitoring/kubernetes-mixin).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max by (deployment) (kube_deployment_status_replicas_available{namespace=\"mcp-servers\"})",
+          "legendFormat": "{{deployment}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 4
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "Gateway requests/s",
+      "description": "All requests routed by Gateway mcp to a backend (istio_requests_total from the Gateway Envoy, reporter=source; Istio Service dashboard formula, https://github.com/istio/istio/tree/master/manifests/addons/dashboards (Istio Service/Workload dashboards)).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(rate(istio_requests_total{reporter=\"source\", source_workload=\"mcp-istio\", source_workload_namespace=\"gateway\"}[$__rate_interval])) or vector(0)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 6,
+        "h": 4
+      },
+      "id": 4
+    },
+    {
+      "type": "stat",
+      "title": "Gateway 5xx ratio (range)",
+      "description": "Share of requests answered 5xx over the range: 1 - (non-5xx / all), the Istio dashboards' 'success rate' (response_code !~ \"5.*\") inverted (https://github.com/istio/istio/tree/master/manifests/addons/dashboards (Istio Service/Workload dashboards)). 5xx = backend down, crashed or failing. Thresholds: any 5xx yellow, >5 % red.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "(sum(increase(istio_requests_total{reporter=\"source\", source_workload=\"mcp-istio\", source_workload_namespace=\"gateway\", response_code=~\"5..\"}[$__range])) or vector(0)) / sum(increase(istio_requests_total{reporter=\"source\", source_workload=\"mcp-istio\", source_workload_namespace=\"gateway\"}[$__range]))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.0001
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 15,
+        "w": 6,
+        "h": 4
+      },
+      "id": 5
+    },
+    {
+      "type": "stat",
+      "title": "Auth rejections (range)",
+      "description": "Requests answered 401 (no/invalid Keycloak JWT) or 403 (JWT without group /mcp/admin or /mcp/viewer) over the range, from istio_requests_total response_code. A few = a client with an expired token; a steady flow = misconfigured client or probing.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase(istio_requests_total{reporter=\"source\", source_workload=\"mcp-istio\", source_workload_namespace=\"gateway\", response_code=~\"401|403\"}[$__range])) or vector(0)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 15,
+        "w": 6,
+        "h": 4
+      },
+      "id": 6
+    },
+    {
+      "type": "stat",
+      "title": "Restarts (range)",
+      "description": "increase(kube_pod_container_status_restarts_total) over the range for all MCP pods (kube-state-metrics; KubePodCrashLooping signal).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"mcp-servers\"}[$__range]))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 15,
+        "w": 6,
+        "h": 4
+      },
+      "id": 7
+    },
+    {
+      "type": "row",
+      "title": "Per server at the Gateway (mcp.staffops.space/<name>)",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 1
+      },
+      "id": 8
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests/s by server",
+      "description": "sum by (destination_service_name) of rate(istio_requests_total) from the Envoy of Gateway mcp (Istio Service dashboard formula, https://github.com/istio/istio/tree/master/manifests/addons/dashboards (Istio Service/Workload dashboards)). Each path maps to one Service (tempo = Tempo's built-in MCP). Series appear only after a server got its first request since the gateway pod started.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (destination_service_name) (rate(istio_requests_total{reporter=\"source\", source_workload=\"mcp-istio\", source_workload_namespace=\"gateway\"}[$__rate_interval]))",
+          "legendFormat": "{{destination_service_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "id": 9
+    },
+    {
+      "type": "timeseries",
+      "title": "Non-2xx responses by server and code",
+      "description": "rate(istio_requests_total) for response codes other than 2xx, per server and code. 401/403 = rejected by the Gateway's JWT policy; 307 = redirect (keycloak-mcp answers /mcp → /mcp/); 404 = unknown path; 5xx = server problem. Empty = every response was 2xx in the window.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (destination_service_name, response_code) (rate(istio_requests_total{reporter=\"source\", source_workload=\"mcp-istio\", source_workload_namespace=\"gateway\", response_code!~\"2..\"}[$__rate_interval]))",
+          "legendFormat": "{{destination_service_name}} {{response_code}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "auto",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "id": 10
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 request duration by server",
+      "description": "histogram_quantile(0.95) of istio_request_duration_milliseconds_bucket per server (Istio Service dashboard formula). For MCP over streamable HTTP, POST /mcp requests last as long as the tool call; a GET that opens an event stream lasts until the client disconnects, which shows up as very long outliers. Empty for a server without requests in the window.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (destination_service_name, le) (rate(istio_request_duration_milliseconds_bucket{reporter=\"source\", source_workload=\"mcp-istio\", source_workload_namespace=\"gateway\"}[$__rate_interval])))",
+          "legendFormat": "{{destination_service_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "auto",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "id": 11
+    },
+    {
+      "type": "table",
+      "title": "Requests in range by server and status",
+      "description": "increase(istio_requests_total[$__range]) per server and response code: who is used, who fails, who is rejected.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (destination_service_name, response_code) (round(increase(istio_requests_total{reporter=\"source\", source_workload=\"mcp-istio\", source_workload_namespace=\"gateway\"}[$__range])))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Requests",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "destination_service_name": "Server",
+              "response_code": "Code",
+              "Value": "Requests"
+            }
+          }
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "id": 12
+    },
+    {
+      "type": "row",
+      "title": "Pods and resources (all 7 servers)",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 1
+      },
+      "id": 13
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU by pod (cores)",
+      "description": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate by pod — the recording rule used by the kubernetes-mixin k8s-resources-namespace dashboard (https://github.com/kubernetes-monitoring/kubernetes-mixin). MCP servers idle near 0; spikes line up with tool calls.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (pod) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace=\"mcp-servers\", container!=\"\"})",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 12,
+        "h": 8
+      },
+      "id": 14
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory working set by pod",
+      "description": "container_memory_working_set_bytes by pod (kubernetes-mixin k8s-resources-namespace formula). The working set is what the kubelet compares with the limit for OOM kills.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (pod) (container_memory_working_set_bytes{job=\"kubelet\", metrics_path=\"/metrics/cadvisor\", namespace=\"mcp-servers\", container!=\"\", image!=\"\"})",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 37,
+        "w": 12,
+        "h": 8
+      },
+      "id": 15
+    },
+    {
+      "type": "bargauge",
+      "title": "Memory working set / limit",
+      "description": "Working set divided by the memory limit per container (kubernetes-mixin k8s-resources-namespace 'Memory Usage (WSS) / Limits' column). Thresholds: yellow 80 %, red 90 % — near 100 % the container is OOM-killed.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (container) (container_memory_working_set_bytes{job=\"kubelet\", metrics_path=\"/metrics/cadvisor\", namespace=\"mcp-servers\", container!=\"\", image!=\"\"}) / sum by (container) (kube_pod_container_resource_limits{namespace=\"mcp-servers\", resource=\"memory\"})",
+          "legendFormat": "{{container}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.8
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          },
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 12,
+        "h": 7
+      },
+      "id": 16
+    },
+    {
+      "type": "table",
+      "title": "Containers not running (waiting reason)",
+      "description": "kube_pod_container_status_waiting_reason == 1 (kube-state-metrics; mixin alert KubeContainerWaiting). Lists containers stuck in CreateContainerConfigError (missing Secret key, e.g. Vault homelab/mcp), ImagePullBackOff, CrashLoopBackOff… Empty = every container is running (healthy).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max by (pod, container, reason) (kube_pod_container_status_waiting_reason{namespace=\"mcp-servers\"} == 1)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true
+            }
+          }
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 45,
+        "w": 12,
+        "h": 7
+      },
+      "id": 17
+    },
+    {
+      "type": "row",
+      "title": "kubernetes-mcp (/kubernetes)",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 52,
+        "w": 24,
+        "h": 1
+      },
+      "id": 18
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool calls/s by tool",
+      "description": "rate(k8s_mcp_tool_calls_total) by tool_name (https://github.com/containers/kubernetes-mcp-server/blob/main/docs/OTEL.md#prometheus-metrics). MCP protocol methods (initialize, tools/list) are counted too; real tools appear as their name (resources_list, pods_log, …). Counters are created on the first call after a pod start; until then the fallback shows 0 (pattern from dashboard 14574).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (tool_name) (rate(k8s_mcp_tool_calls_total{job=\"mcp-servers/kubernetes-mcp\"}[$__rate_interval])) or on () (sum(up{job=\"mcp-servers/kubernetes-mcp\"}) * 0)",
+          "legendFormat": "{{tool_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 53,
+        "w": 8,
+        "h": 8
+      },
+      "id": 19
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool errors/s by tool",
+      "description": "rate(k8s_mcp_tool_errors_total) by tool_name (https://github.com/containers/kubernetes-mcp-server/blob/main/docs/OTEL.md#prometheus-metrics). The counter is created on the first error, so 'no errors yet' shows as 0 (the 'or up*0' fallback follows the pattern of the official nvidia dashboard 14574). Errors are usually RBAC denials (the server has the view role, no Secrets) or missing resources.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (tool_name) (rate(k8s_mcp_tool_errors_total{job=\"mcp-servers/kubernetes-mcp\"}[$__rate_interval])) or on () (sum(up{job=\"mcp-servers/kubernetes-mcp\"}) * 0)",
+          "legendFormat": "{{tool_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 53,
+        "w": 8,
+        "h": 8
+      },
+      "id": 20
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 tool duration",
+      "description": "histogram_quantile(0.95) of k8s_mcp_tool_duration_seconds_bucket by tool_name (https://github.com/containers/kubernetes-mcp-server/blob/main/docs/OTEL.md#prometheus-metrics). Slow calls = large list/log responses or a slow API server.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (tool_name, le) (rate(k8s_mcp_tool_duration_seconds_bucket{job=\"mcp-servers/kubernetes-mcp\"}[$__rate_interval])))",
+          "legendFormat": "{{tool_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "auto",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 53,
+        "w": 8,
+        "h": 8
+      },
+      "id": 21
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP requests/s by path and status class",
+      "description": "rate(k8s_mcp_http_requests_total) by url_path and http_response_status_class (https://github.com/containers/kubernetes-mcp-server/blob/main/docs/OTEL.md#prometheus-metrics). /mcp is the MCP endpoint, /healthz the probes, /metrics the scrape; 4xx on /mcp = rejected requests (e.g. Host check, bad session).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (url_path, http_response_status_class) (rate(k8s_mcp_http_requests_total{job=\"mcp-servers/kubernetes-mcp\"}[$__rate_interval]))",
+          "legendFormat": "{{url_path}} {{http_response_status_class}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 61,
+        "w": 12,
+        "h": 7
+      },
+      "id": 22
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests in flight by MCP method",
+      "description": "k8s_mcp_requests_in_flight by mcp_method_name (https://github.com/containers/kubernetes-mcp-server/blob/main/docs/OTEL.md#prometheus-metrics): requests being handled right now. A tools/call that stays > 0 for long = a stuck call. The gauge appears with the first request after a pod start (0 before).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (mcp_method_name) (k8s_mcp_requests_in_flight{job=\"mcp-servers/kubernetes-mcp\"}) or on () (sum(up{job=\"mcp-servers/kubernetes-mcp\"}) * 0)",
+          "legendFormat": "{{mcp_method_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 61,
+        "w": 12,
+        "h": 7
+      },
+      "id": 23
+    },
+    {
+      "type": "row",
+      "title": "grafana-mcp (/grafana)",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 24,
+        "h": 1
+      },
+      "id": 24
+    },
+    {
+      "type": "timeseries",
+      "title": "MCP operations/s by method and tool",
+      "description": "rate of mcp_server_operation_duration_seconds_count by mcp_method_name and gen_ai_tool_name — OpenTelemetry MCP semantic conventions, documented in https://github.com/grafana/mcp-grafana/blob/main/docs/sources/developer/observability-metrics-and-tracing.md.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (mcp_method_name, gen_ai_tool_name) (rate(mcp_server_operation_duration_seconds_count{job=\"grafana-mcp\"}[$__rate_interval]))",
+          "legendFormat": "{{mcp_method_name}} {{gen_ai_tool_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 69,
+        "w": 8,
+        "h": 8
+      },
+      "id": 25
+    },
+    {
+      "type": "timeseries",
+      "title": "Failed operations/s by tool and error type",
+      "description": "Operations that carry the error_type label (OTel semconv: set only when the operation failed; https://github.com/grafana/mcp-grafana/blob/main/docs/sources/developer/observability-metrics-and-tracing.md). 0 = no failures since the pod started (fallback 'or up*0' as in dashboard 14574).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (gen_ai_tool_name, error_type) (rate(mcp_server_operation_duration_seconds_count{job=\"grafana-mcp\", error_type!=\"\"}[$__rate_interval])) or on () (sum(up{job=\"grafana-mcp\"}) * 0)",
+          "legendFormat": "{{gen_ai_tool_name}} {{error_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 69,
+        "w": 8,
+        "h": 8
+      },
+      "id": 26
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 operation duration by tool",
+      "description": "histogram_quantile(0.95) of mcp_server_operation_duration_seconds_bucket by gen_ai_tool_name (https://github.com/grafana/mcp-grafana/blob/main/docs/sources/developer/observability-metrics-and-tracing.md). Includes the time Grafana/datasources take to answer queries the tool runs.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (gen_ai_tool_name, le) (rate(mcp_server_operation_duration_seconds_bucket{job=\"grafana-mcp\", mcp_method_name=\"tools/call\"}[$__rate_interval])))",
+          "legendFormat": "{{gen_ai_tool_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "auto",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 69,
+        "w": 8,
+        "h": 8
+      },
+      "id": 27
+    },
+    {
+      "type": "timeseries",
+      "title": "Calls to the Grafana API by status",
+      "description": "rate of http_client_request_duration_seconds_count by http_response_status_code (otelhttp client instrumentation, OTel HTTP semconv). grafana-mcp calls http://grafana.monitoring with a service-account token (Vault homelab/mcp: grafana-token): 401/403 here = token revoked or missing permissions.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (http_response_status_code) (rate(http_client_request_duration_seconds_count{job=\"grafana-mcp\"}[$__rate_interval]))",
+          "legendFormat": "{{http_response_status_code}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 77,
+        "w": 12,
+        "h": 7
+      },
+      "id": 28
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 latency: MCP HTTP server vs Grafana API",
+      "description": "histogram_quantile(0.95) of http_server_request_duration_seconds_bucket (requests into grafana-mcp, documented in https://github.com/grafana/mcp-grafana/blob/main/docs/sources/developer/observability-metrics-and-tracing.md) and of http_client_request_duration_seconds_bucket (its calls to Grafana). If both rise together, Grafana is the slow part.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"grafana-mcp\"}[$__rate_interval])))",
+          "legendFormat": "MCP server (incoming)"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_client_request_duration_seconds_bucket{job=\"grafana-mcp\"}[$__rate_interval])))",
+          "legendFormat": "Grafana API (outgoing)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "auto",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 77,
+        "w": 12,
+        "h": 7
+      },
+      "id": 29
+    },
+    {
+      "type": "row",
+      "title": "prometheus-mcp (/prometheus)",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 24,
+        "h": 1
+      },
+      "id": 30
+    },
+    {
+      "type": "stat",
+      "title": "Server ready",
+      "description": "prom_mcp_server_ready: 1 when the server is ready (same state as its readiness probe, https://github.com/tjhop/prometheus-mcp-server#metrics).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(prom_mcp_server_ready{job=\"mcp-servers/prometheus-mcp\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "NOT READY",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "READY",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 85,
+        "w": 4,
+        "h": 7
+      },
+      "id": 31
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool calls/s and failures",
+      "description": "rate of prom_mcp_tool_call_duration_seconds_count by tool_name, and rate(prom_mcp_tool_calls_failed_total) (https://github.com/tjhop/prometheus-mcp-server#metrics; failures exclude calls cancelled by the client), plus rate(prom_mcp_api_calls_failed_total) by target_path (failed calls to the Prometheus HTTP API). The failure counters appear on the first failure; until then the fallback shows 0. Counter appears on the first failure; until then the fallback shows 0.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (tool_name) (rate(prom_mcp_tool_call_duration_seconds_count{job=\"mcp-servers/prometheus-mcp\"}[$__rate_interval]))",
+          "legendFormat": "{{tool_name}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "sum by (tool_name) (rate(prom_mcp_tool_calls_failed_total{job=\"mcp-servers/prometheus-mcp\"}[$__rate_interval])) or on () (sum(up{job=\"mcp-servers/prometheus-mcp\"}) * 0)",
+          "legendFormat": "failed {{tool_name}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "C",
+          "expr": "sum by (target_path) (rate(prom_mcp_api_calls_failed_total{job=\"mcp-servers/prometheus-mcp\"}[$__rate_interval])) or on () (sum(up{job=\"mcp-servers/prometheus-mcp\"}) * 0)",
+          "legendFormat": "failed API {{target_path}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "failed.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 85,
+        "w": 10,
+        "h": 7
+      },
+      "id": 32
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 duration: tools vs Prometheus API",
+      "description": "histogram_quantile(0.95) of prom_mcp_tool_call_duration_seconds_bucket by tool_name and of prom_mcp_api_call_duration_seconds_bucket by target_path (https://github.com/tjhop/prometheus-mcp-server#metrics). When tool time ≈ API time, Prometheus is the slow part (heavy PromQL).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (tool_name, le) (rate(prom_mcp_tool_call_duration_seconds_bucket{job=\"mcp-servers/prometheus-mcp\"}[$__rate_interval])))",
+          "legendFormat": "tool {{tool_name}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (target_path, le) (rate(prom_mcp_api_call_duration_seconds_bucket{job=\"mcp-servers/prometheus-mcp\"}[$__rate_interval])))",
+          "legendFormat": "API {{target_path}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "auto",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 14,
+        "y": 85,
+        "w": 10,
+        "h": 7
+      },
+      "id": 33
+    }
+  ]
+}

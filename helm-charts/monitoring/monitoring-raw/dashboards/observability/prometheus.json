@@ -1,0 +1,4322 @@
+{
+  "id": null,
+  "uid": "hl-observability-prometheus",
+  "title": "Prometheus",
+  "description": "Health of the lab's Prometheus server (prometheus-kps-0): ingestion, TSDB/WAL, cardinality, scraping, rule evaluation, OTLP ingestion and alert delivery to Alertmanager. Curated from the official prometheus-mixin (https://github.com/prometheus/prometheus/tree/main/documentation/prometheus-mixin) and its alert rules shipped by kube-prometheus-stack. The chart's own 'Prometheus / Overview' dashboard (folder Kubernetes) stays as the upstream reference.",
+  "tags": [
+    "observability",
+    "prometheus"
+  ],
+  "timezone": "",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "name": "Firing alerts",
+        "expr": "ALERTS{alertstate=\"firing\", alertname=~\"Prometheus.*|TargetDown|ConfigReloaderSidecarErrors\"}",
+        "step": "60s",
+        "titleFormat": "{{alertname}} ({{severity}})",
+        "textFormat": "Prometheus ALERTS series in state firing. See Alertmanager / alert rules for details.",
+        "tagKeys": "severity",
+        "useValueForTime": false
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "name": "Container restarts",
+        "expr": "changes(kube_pod_container_status_restarts_total{namespace=\"monitoring\", pod=~\"prometheus-kps-.*\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Restart: {{pod}} / {{container}}",
+        "textFormat": "kube-state-metrics saw the restart counter change (crash, OOMKill or liveness failure).",
+        "tagKeys": "container",
+        "useValueForTime": false
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "name": "Config reloads",
+        "expr": "changes(prometheus_config_last_reload_success_timestamp_seconds{job=\"kps-prometheus\", namespace=\"monitoring\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Prometheus configuration reloaded",
+        "textFormat": "A new scrape/rule config was loaded (the config-reloader sidecar triggers it when the operator re-renders ServiceMonitors/PrometheusRules).",
+        "tagKeys": "",
+        "useValueForTime": false
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": false,
+        "hide": false,
+        "iconColor": "purple",
+        "name": "TSDB head compactions",
+        "expr": "changes(prometheus_tsdb_compactions_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "TSDB compaction",
+        "textFormat": "Head block persisted / blocks merged (normally every 2h).",
+        "tagKeys": "",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "Observability",
+      "type": "dashboards",
+      "tags": [
+        "observability"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "title": "prometheus-mixin",
+      "url": "https://github.com/prometheus/prometheus/tree/main/documentation/prometheus-mixin",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "doc"
+    },
+    {
+      "title": "Prometheus storage docs",
+      "url": "https://prometheus.io/docs/prometheus/latest/storage/",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "doc"
+    }
+  ],
+  "panels": [
+    {
+      "type": "text",
+      "title": "How to read this dashboard",
+      "options": {
+        "mode": "markdown",
+        "content": "**Prometheus** stores every metric of the lab (scraped from ServiceMonitors/PodMonitors in all namespaces,\nplus OTLP pushed by the otel-gateway at `/api/v1/otlp`) and evaluates all alerting/recording rules. Single replica,\nretention 15 days / 18 GiB on `local-path`.\n\n**Healthy looks like**: *Up* = UP, *Config* = OK, samples/s flat, head series stable (no staircase), 0 rule failures,\n0 targets down, 0 notification errors, WAL/TSDB failure panels flat at 0.\n\n**When something goes red**\n- *Config FAILED* \u2192 a PrometheusRule or ServiceMonitor broke the config: `kubectl --context k8s01 -n monitoring logs prometheus-kps-0 -c prometheus | grep -i error`.\n- *Head series climbing / churn high* \u2192 a cardinality explosion: the *Samples per scrape* and *Series churn* panels name the job; fix the exporter or drop labels with `metricRelabelings`.\n- *Targets down* \u2192 see the *Targets per job* table, then `kubectl get endpoints` for that Service.\n- *Rule failures / missed iterations* \u2192 the query of a rule errors or a group takes longer than its interval.\n- *Notification errors* \u2192 Prometheus cannot reach Alertmanager (see the Alertmanager dashboard).\n\nFormulas come from the [prometheus-mixin](https://github.com/prometheus/prometheus/tree/main/documentation/prometheus-mixin) dashboards and alerts (thresholds mirror the kube-prometheus-stack\n`prometheus` rule group). Storage: [docs](https://prometheus.io/docs/prometheus/latest/storage/).",
+        "code": {
+          "language": "plaintext"
+        }
+      },
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 9
+      }
+    },
+    {
+      "type": "row",
+      "title": "Overview",
+      "collapsed": false,
+      "panels": [],
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Up",
+      "description": "Scrape health of the Prometheus container itself (`up`). DOWN means Prometheus is not running or cannot scrape itself: nothing else on this page (and no alert) can be trusted.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(up{job=\"kps-prometheus\", namespace=\"monitoring\", container=\"prometheus\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 3,
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Uptime",
+      "description": "Time since the Prometheus process started (`process_start_time_seconds`). A small value right after an unexpected drop means a restart (OOMKill?): check the restart annotation.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#EAB839",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 600
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max(process_start_time_seconds{job=\"kps-prometheus\", namespace=\"monitoring\", container=\"prometheus\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 4,
+      "gridPos": {
+        "x": 2,
+        "y": 10,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Config",
+      "description": "Result of the last configuration reload (`prometheus_config_last_reload_successful`). FAILED means Prometheus keeps running the previous config and ignores new targets/rules. Mixin alert PrometheusBadConfig (critical) fires when it is 0 for 10m.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "FAILED",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "OK",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min(prometheus_config_last_reload_successful{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 5,
+      "gridPos": {
+        "x": 5,
+        "y": 10,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Head series",
+      "description": "Active series in the in-memory head block (`prometheus_tsdb_head_series`), i.e. the current cardinality. Memory use grows roughly linearly with it. Watch the trend, not the absolute value.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_tsdb_head_series{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 6,
+      "gridPos": {
+        "x": 7,
+        "y": 10,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Samples / s",
+      "description": "Ingestion rate: samples appended to the head per second (scrapes + OTLP + rule results). Formula from the mixin 'Appended Samples' panel. A drop to 0 means Prometheus stopped ingesting (alert PrometheusNotIngestingSamples).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "blue",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_tsdb_head_samples_appended_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 7,
+      "gridPos": {
+        "x": 10,
+        "y": 10,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Targets down",
+      "description": "Number of scrape targets whose last scrape failed (`up == 0`) across the whole cluster. kube-prometheus alert TargetDown fires when >10% of a job's targets are down for 10m. Details in the 'Targets per job' table.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(up == 0) or vector(0)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 8,
+      "gridPos": {
+        "x": 13,
+        "y": 10,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Rule failures (1h)",
+      "description": "Rule evaluations that returned an error in the last hour (`prometheus_rule_evaluation_failures_total`). Any failure means an alert or recording rule is silently not working. Mixin alert PrometheusRuleFailures (critical) fires on any increase.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_rule_evaluation_failures_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[1h])) or vector(0)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 9,
+      "gridPos": {
+        "x": 15,
+        "y": 10,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Alert send errors (1h)",
+      "description": "Errors sending alerts to Alertmanager in the last hour (`prometheus_notifications_errors_total`). Mixin alerts PrometheusErrorSendingAlertsTo(Some|Any)Alertmanager(s) fire above 1% of sends.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_notifications_errors_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[1h])) or vector(0)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 10,
+      "gridPos": {
+        "x": 18,
+        "y": 10,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Disk used / limit",
+      "description": "On-disk size (persisted blocks + WAL + memory-mapped head chunks) as a share of the size-based retention limit (`prometheus_tsdb_retention_limit_bytes`, 18 GiB). Near 100% Prometheus deletes the oldest blocks early (size retention), so you get less than 15 days of history. Metric semantics: Prometheus storage docs.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 0.8
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum(prometheus_tsdb_storage_blocks_bytes{job=\"kps-prometheus\", namespace=\"monitoring\"}) + sum(prometheus_tsdb_wal_storage_size_bytes{job=\"kps-prometheus\", namespace=\"monitoring\"}) + sum(prometheus_tsdb_head_chunks_storage_size_bytes{job=\"kps-prometheus\", namespace=\"monitoring\"})) / sum(prometheus_tsdb_retention_limit_bytes{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 11,
+      "gridPos": {
+        "x": 21,
+        "y": 10,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "row",
+      "title": "Ingestion and cardinality",
+      "collapsed": false,
+      "panels": [],
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Samples appended / s",
+      "description": "Samples written to the TSDB head per second, by sample type (float / native histogram). Source: mixin 'Appended Samples' (`rate(prometheus_tsdb_head_samples_appended_total[5m])`). A sudden jump means a new target or a label explosion; a drop to 0 means ingestion stopped.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (type) (rate(prometheus_tsdb_head_samples_appended_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "{{type}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 13,
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Head series and chunks",
+      "description": "Active series (`prometheus_tsdb_head_series`, mixin 'Head Series') and how fast series are created/removed (right axis would hide it, so it is per minute). Steady creation with no matching removal = growing cardinality; spikes every 2h are normal head GC after compaction.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_tsdb_head_series{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "head series",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_tsdb_head_series_created_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval])) * 60",
+          "legendFormat": "created / min",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_tsdb_head_series_removed_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval])) * 60",
+          "legendFormat": "removed / min",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        }
+      ],
+      "id": 14,
+      "gridPos": {
+        "x": 8,
+        "y": 15,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Out-of-order / too old samples",
+      "description": "Samples rejected by the TSDB because they are older than the head accepts (`prometheus_tsdb_out_of_order_samples_total`, `prometheus_tsdb_too_old_samples_total`, `prometheus_tsdb_out_of_bound_samples_total`). Usually OTLP pushes with delayed timestamps or duplicated exporters. Should be 0; the mixin alerts PrometheusOutOfOrderTimestamps / DuplicateTimestamps cover the scrape side.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_tsdb_out_of_order_samples_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "out of order",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_tsdb_too_old_samples_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "too old",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_tsdb_out_of_bound_samples_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "out of bounds",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        }
+      ],
+      "id": 15,
+      "gridPos": {
+        "x": 16,
+        "y": 15,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Samples per scrape - top 10 jobs",
+      "description": "Samples kept per scrape after relabeling (`scrape_samples_post_metric_relabeling`, an automatically generated series documented in https://prometheus.io/docs/concepts/jobs_instances/), summed per job. This is the per-job cardinality: the biggest bars are where to cut labels/metrics when head series grow.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(10, sum by (job) (scrape_samples_post_metric_relabeling))",
+          "legendFormat": "{{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 16,
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Series churn - top 10 jobs (new series / 1h)",
+      "description": "New series created per job over the last hour (`sum_over_time(scrape_series_added[1h])`; `scrape_series_added` is the documented per-scrape count of new series). High churn (pod restarts, labels with IDs/timestamps) bloats the head and the index even when the current series count looks fine.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(10, sum by (job) (sum_over_time(scrape_series_added[1h])))",
+          "legendFormat": "{{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 17,
+      "gridPos": {
+        "x": 12,
+        "y": 23,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Scraping and target health",
+      "collapsed": false,
+      "panels": [],
+      "id": 18,
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "table",
+      "title": "Targets per job",
+      "description": "One line per scrape job: targets up, targets total, samples kept per scrape and the slowest scrape. A job with up < total has failing targets (alert TargetDown). Scrape duration close to the 30s interval means the exporter is too slow and scrapes overlap/time out. Sources: `up`, `scrape_samples_post_metric_relabeling`, `scrape_duration_seconds` (Prometheus docs, automatically generated series).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Slowest scrape"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Slowest scrape"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "#EAB839",
+                      "value": 5
+                    },
+                    {
+                      "color": "red",
+                      "value": 15
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Samples / scrape",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "job": "Job",
+              "Value #A": "Up",
+              "Value #B": "Targets",
+              "Value #C": "Samples / scrape",
+              "Value #D": "Slowest scrape"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job) (up)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count by (job) (up)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job) (scrape_samples_post_metric_relabeling)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job) (scrape_duration_seconds)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "refId": "D"
+        }
+      ],
+      "id": 19,
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 10
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Targets down by job",
+      "description": "Count of targets with `up == 0`, per job. Empty/flat at 0 is healthy. kube-prometheus rule TargetDown: `100 * count by (job, namespace, service) (up == 0) / count(up) > 10` for 10m.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count by (job) (up == 0)",
+          "legendFormat": "{{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 20,
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 6,
+        "h": 10
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Slowest scrapes - top 10",
+      "description": "Per-target scrape duration (`scrape_duration_seconds`). Values approaching the scrape interval (30s) or timeout (10s default) lead to failed scrapes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(10, max by (job) (scrape_duration_seconds))",
+          "legendFormat": "{{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 21,
+      "gridPos": {
+        "x": 18,
+        "y": 32,
+        "w": 6,
+        "h": 10
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Scrape errors by cause",
+      "description": "Samples/scrapes rejected while scraping. Body size / sample limit = target exceeded a configured limit (whole scrape dropped); duplicate / out-of-order timestamps = broken exporter. Formula: mixin 'Scrape failures' panel. Mixin alerts PrometheusScrapeSampleLimitHit, PrometheusScrapeBodySizeLimitHit, PrometheusDuplicateTimestamps, PrometheusOutOfOrderTimestamps.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_target_scrapes_exceeded_body_size_limit_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "body size limit",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_target_scrapes_exceeded_sample_limit_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "sample limit",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_target_scrapes_sample_duplicate_timestamp_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "duplicate timestamp",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_target_scrapes_sample_out_of_bounds_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "out of bounds",
+          "range": true,
+          "instant": false,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_target_scrapes_sample_out_of_order_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "out of order",
+          "range": true,
+          "instant": false,
+          "refId": "E"
+        }
+      ],
+      "id": 22,
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Service discovery",
+      "description": "Targets discovered by Kubernetes SD (mixin 'Discovered targets', `prometheus_sd_discovered_targets`) and SD failures (`prometheus_sd_kubernetes_failures_total`, alert PrometheusKubernetesListWatchFailures). Failures mean Prometheus cannot list/watch the API server and target lists go stale.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_sd_discovered_targets{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "discovered targets",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_sd_kubernetes_failures_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "k8s SD failures / s",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 23,
+      "gridPos": {
+        "x": 8,
+        "y": 42,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Target sync / scrape pool reloads",
+      "description": "Time to sync target lists (`prometheus_target_sync_length_seconds`, mixin 'Target Sync') and failures (`prometheus_target_sync_failed_total`, alert PrometheusTargetSyncFailure (critical); `prometheus_target_scrape_pool_reloads_failed_total`).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(prometheus_target_sync_length_seconds{job=\"kps-prometheus\", namespace=\"monitoring\", quantile=\"0.99\"})",
+          "legendFormat": "sync p99 (s)",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_target_sync_failed_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "sync failures",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_target_scrape_pool_reloads_failed_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "pool reload failures",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        }
+      ],
+      "id": 24,
+      "gridPos": {
+        "x": 16,
+        "y": 42,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Average scrape interval",
+      "description": "Actual interval between scrapes, by configured interval (mixin 'Average Scrape Interval Duration': `rate(prometheus_target_interval_length_seconds_sum[5m]) / rate(prometheus_target_interval_length_seconds_count[5m])`). It should match the configured value (30s); drift means Prometheus is overloaded.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(prometheus_target_interval_length_seconds_sum{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]) / rate(prometheus_target_interval_length_seconds_count{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval])",
+          "legendFormat": "{{interval}} configured",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 25,
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Rule evaluation",
+      "collapsed": false,
+      "panels": [],
+      "id": 26,
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rule evaluation failures",
+      "description": "Failed evaluations per rule group (`prometheus_rule_evaluation_failures_total`). A failing rule silently stops alerting. Mixin alert PrometheusRuleFailures (critical): any increase in 5m.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "label_replace(sum by (rule_group) (increase(prometheus_rule_evaluation_failures_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval])) > 0, \"group\", \"$1\", \"rule_group\", \".*;(.*)\")",
+          "legendFormat": "{{group}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 27,
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Missed iterations",
+      "description": "Rule group evaluations skipped because the previous one was still running (`prometheus_rule_group_iterations_missed_total`). Mixin alert PrometheusMissingRuleEvaluations.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "label_replace(sum by (rule_group) (increase(prometheus_rule_group_iterations_missed_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval])) > 0, \"group\", \"$1\", \"rule_group\", \".*;(.*)\")",
+          "legendFormat": "{{group}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 28,
+      "gridPos": {
+        "x": 8,
+        "y": 59,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Slowest rule groups (duration / interval)",
+      "description": "Last evaluation duration divided by the group interval (`prometheus_rule_group_last_duration_seconds / prometheus_rule_group_interval_seconds`, the ratio behind the upstream rule-group 'evaluation slow' condition). Above 1 (100%) the group cannot finish in time and iterations are missed.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.8
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "label_replace(topk(5, prometheus_rule_group_last_duration_seconds{job=\"kps-prometheus\", namespace=\"monitoring\"} / prometheus_rule_group_interval_seconds{job=\"kps-prometheus\", namespace=\"monitoring\"}), \"group\", \"$1\", \"rule_group\", \".*;(.*)\")",
+          "legendFormat": "{{group}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 29,
+      "gridPos": {
+        "x": 16,
+        "y": 59,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rule evaluation latency",
+      "description": "Per-rule evaluation duration quantiles (`prometheus_rule_evaluation_duration_seconds`, a summary) and total evaluations/s. Long evaluations usually come from heavy recording rules over many series.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(prometheus_rule_evaluation_duration_seconds{job=\"kps-prometheus\", namespace=\"monitoring\", quantile=\"0.99\"})",
+          "legendFormat": "p99",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(prometheus_rule_evaluation_duration_seconds{job=\"kps-prometheus\", namespace=\"monitoring\", quantile=\"0.5\"})",
+          "legendFormat": "p50",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 30,
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rules and evaluations / s",
+      "description": "Loaded rules (`prometheus_rule_group_rules`) and evaluations per second (`prometheus_rule_evaluations_total`). A sudden drop in loaded rules after a reload means a PrometheusRule was removed or rejected by the operator (see Prometheus Operator dashboard).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_rule_group_rules{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "rules loaded",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_rule_evaluations_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "evaluations / s",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 31,
+      "gridPos": {
+        "x": 12,
+        "y": 67,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "TSDB and WAL",
+      "collapsed": false,
+      "panels": [],
+      "id": 32,
+      "gridPos": {
+        "x": 0,
+        "y": 75,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Storage size",
+      "description": "On-disk usage split into persisted blocks (`prometheus_tsdb_storage_blocks_bytes`), write-ahead log (`prometheus_tsdb_wal_storage_size_bytes`) and memory-mapped head chunks, with the size-retention limit (18 GiB). Data lives on the node disk (local-path).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "retention limit"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_tsdb_storage_blocks_bytes{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "blocks",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_tsdb_wal_storage_size_bytes{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "WAL",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_tsdb_head_chunks_storage_size_bytes{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "head chunks",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_tsdb_retention_limit_bytes{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "retention limit",
+          "range": true,
+          "instant": false,
+          "refId": "D"
+        }
+      ],
+      "id": 33,
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Compactions and reloads",
+      "description": "Compactions (`prometheus_tsdb_compactions_total`) and failures (`prometheus_tsdb_compactions_failed_total`, `prometheus_tsdb_reloads_failures_total`). Mixin alerts PrometheusTSDBCompactionsFailing / PrometheusTSDBReloadsFailing fire on any failure in 3h: failing compactions make the WAL and head grow until the disk fills.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*failures.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_tsdb_compactions_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[1h]))",
+          "legendFormat": "compactions / 1h",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_tsdb_compactions_failed_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[1h]))",
+          "legendFormat": "compaction failures / 1h",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_tsdb_reloads_failures_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[1h]))",
+          "legendFormat": "reload failures / 1h",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        }
+      ],
+      "id": 34,
+      "gridPos": {
+        "x": 8,
+        "y": 76,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "WAL failures",
+      "description": "Write-ahead-log problems: corruptions, failed writes, failed truncations and failed checkpoints (`prometheus_tsdb_wal_*_failed_total`, `prometheus_tsdb_wal_corruptions_total`, `prometheus_tsdb_checkpoint_creations_failed_total`, `prometheus_tsdb_head_truncations_failed_total`). All must stay at 0; anything else usually means a full or broken disk.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_tsdb_wal_corruptions_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "corruptions",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_tsdb_wal_writes_failed_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "write failures",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_tsdb_wal_truncations_failed_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "truncation failures",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_tsdb_checkpoint_creations_failed_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "checkpoint failures",
+          "range": true,
+          "instant": false,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_tsdb_head_truncations_failed_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "head truncation failures",
+          "range": true,
+          "instant": false,
+          "refId": "E"
+        }
+      ],
+      "id": 35,
+      "gridPos": {
+        "x": 16,
+        "y": 76,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "WAL fsync latency",
+      "description": "Time to fsync the WAL to disk (`prometheus_tsdb_wal_fsync_duration_seconds`, summary). Slow fsync (tens of ms and up) means the node disk is saturated, which slows ingestion of every sample. Gaps (NaN) are normal when no fsync happened in the summary window.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(prometheus_tsdb_wal_fsync_duration_seconds{job=\"kps-prometheus\", namespace=\"monitoring\", quantile=\"0.99\"})",
+          "legendFormat": "p99",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(prometheus_tsdb_wal_fsync_duration_seconds{job=\"kps-prometheus\", namespace=\"monitoring\", quantile=\"0.5\"})",
+          "legendFormat": "p50",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 36,
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Head chunks / blocks loaded",
+      "description": "Chunks in the head (`prometheus_tsdb_head_chunks`, mixin 'Head Chunks') and number of persisted blocks loaded (`prometheus_tsdb_blocks_loaded`). Blocks loaded should stay roughly constant once retention is reached.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_tsdb_head_chunks{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "head chunks",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_tsdb_blocks_loaded{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "blocks loaded",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 37,
+      "gridPos": {
+        "x": 8,
+        "y": 84,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Retention",
+      "description": "Data removed by time retention (`prometheus_tsdb_time_retentions_total`) vs by size retention (`prometheus_tsdb_size_retentions_total`), plus the age of the oldest sample. Size retentions mean disk pressure cuts history below the 15-day target.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "size.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(time() - min(prometheus_tsdb_lowest_timestamp_seconds{job=\"kps-prometheus\", namespace=\"monitoring\"})) / 86400",
+          "legendFormat": "oldest data (days)",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_tsdb_time_retentions_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[1h]))",
+          "legendFormat": "time retentions / 1h",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(prometheus_tsdb_size_retentions_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[1h]))",
+          "legendFormat": "size retentions / 1h",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        }
+      ],
+      "id": 38,
+      "gridPos": {
+        "x": 16,
+        "y": 84,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "OTLP ingestion (otel-gateway -> Prometheus)",
+      "collapsed": false,
+      "panels": [],
+      "id": 39,
+      "gridPos": {
+        "x": 0,
+        "y": 92,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "OTLP write requests by status",
+      "description": "Requests to the OTLP receiver (`prometheus_http_requests_total{handler=\"/api/v1/otlp/v1/metrics\"}`), by HTTP code, plus the remote-write receiver. The otel-gateway pushes span metrics, service-graph metrics and app metrics here. Non-2xx codes = rejected batches (look at the gateway's exporter failures on the OpenTelemetry Collectors dashboard). Flat at 0 while no app sends telemetry.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code) (rate(prometheus_http_requests_total{job=\"kps-prometheus\", namespace=\"monitoring\", handler=\"/api/v1/otlp/v1/metrics\"}[$__rate_interval]))",
+          "legendFormat": "OTLP {{code}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code) (rate(prometheus_http_requests_total{job=\"kps-prometheus\", namespace=\"monitoring\", handler=\"/api/v1/write\"}[$__rate_interval]))",
+          "legendFormat": "remote write {{code}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 40,
+      "gridPos": {
+        "x": 0,
+        "y": 93,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "OTLP request latency",
+      "description": "Latency of OTLP write requests (`prometheus_http_request_duration_seconds` histogram, handler /api/v1/otlp/v1/metrics). Empty until the first OTLP request arrives (the histogram is created lazily).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(prometheus_http_request_duration_seconds_bucket{job=\"kps-prometheus\", namespace=\"monitoring\", handler=\"/api/v1/otlp/v1/metrics\"}[$__rate_interval])))",
+          "legendFormat": "p99",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(prometheus_http_request_duration_seconds_bucket{job=\"kps-prometheus\", namespace=\"monitoring\", handler=\"/api/v1/otlp/v1/metrics\"}[$__rate_interval])))",
+          "legendFormat": "p50",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 41,
+      "gridPos": {
+        "x": 8,
+        "y": 93,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "OTLP data quality",
+      "description": "Samples appended through OTLP without metric metadata (`prometheus_api_otlp_appended_samples_without_metadata_total`) and OTLP exemplars rejected as out of order (`prometheus_api_otlp_out_of_order_exemplars_total`). Not errors that drop samples, but signs of malformed or delayed OTLP input.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_api_otlp_appended_samples_without_metadata_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "samples without metadata",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_api_otlp_out_of_order_exemplars_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "out-of-order exemplars",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 42,
+      "gridPos": {
+        "x": 16,
+        "y": 93,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Alert delivery to Alertmanager",
+      "collapsed": false,
+      "panels": [],
+      "id": 43,
+      "gridPos": {
+        "x": 0,
+        "y": 101,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Notifications sent / errors / dropped",
+      "description": "Alerts sent to Alertmanager (`prometheus_notifications_sent_total`), errors (`..._errors_total`) and alerts dropped (`..._dropped_total`, e.g. queue full or relabeled away). Mixin alerts PrometheusErrorSendingAlertsToSomeAlertmanagers (>1% errors) and PrometheusErrorSendingAlertsToAnyAlertmanager (critical).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "errors|dropped"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_notifications_sent_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "sent",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_notifications_errors_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "errors",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(prometheus_notifications_dropped_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "dropped",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        }
+      ],
+      "id": 44,
+      "gridPos": {
+        "x": 0,
+        "y": 102,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Notification queue",
+      "description": "Pending alerts in the send queue (`prometheus_notifications_queue_length`) against its capacity, and Alertmanagers discovered. Mixin alerts: PrometheusNotificationQueueRunningFull (queue predicted to reach capacity in 30m) and PrometheusNotConnectedToAlertmanagers (< 1 discovered).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "capacity"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_notifications_queue_length{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "queue length",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_notifications_queue_capacity{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "capacity",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_notifications_alertmanagers_discovered{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "alertmanagers discovered",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        }
+      ],
+      "id": 45,
+      "gridPos": {
+        "x": 8,
+        "y": 102,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Notification latency",
+      "description": "Time to deliver a batch of alerts to Alertmanager (`prometheus_notifications_latency_seconds`, summary). Seconds or more means Alertmanager is slow or unreachable.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(prometheus_notifications_latency_seconds{job=\"kps-prometheus\", namespace=\"monitoring\", quantile=\"0.99\"})",
+          "legendFormat": "p99",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(prometheus_notifications_latency_seconds{job=\"kps-prometheus\", namespace=\"monitoring\", quantile=\"0.5\"})",
+          "legendFormat": "p50",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 46,
+      "gridPos": {
+        "x": 16,
+        "y": 102,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Queries",
+      "collapsed": false,
+      "panels": [],
+      "id": 47,
+      "gridPos": {
+        "x": 0,
+        "y": 110,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Query concurrency",
+      "description": "Queries running now (`prometheus_engine_queries`) vs the concurrency limit (`prometheus_engine_queries_concurrent_max`). Mixin alert PrometheusHighQueryLoad fires above 80% for 15m: dashboards and rules start queueing.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "max concurrent"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_engine_queries{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "running",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(prometheus_engine_queries_concurrent_max{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "max concurrent",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 48,
+      "gridPos": {
+        "x": 0,
+        "y": 111,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Query latency by stage (p90)",
+      "description": "90th percentile of query duration by stage (mixin 'Query Stage Duration': `max by (slice) (prometheus_engine_query_duration_seconds{quantile=\"0.9\"})`). inner_eval dominates for heavy queries; queue_time > 0 means queries waited for a free slot.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (slice) (prometheus_engine_query_duration_seconds{job=\"kps-prometheus\", namespace=\"monitoring\", quantile=\"0.9\"})",
+          "legendFormat": "{{slice}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 49,
+      "gridPos": {
+        "x": 8,
+        "y": 111,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP API errors",
+      "description": "API responses with 5xx codes by handler (`prometheus_http_requests_total`). Grafana panels show errors when this is non-zero; 4xx (bad queries) are excluded on purpose.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (handler, code) (rate(prometheus_http_requests_total{job=\"kps-prometheus\", namespace=\"monitoring\", code=~\"5..\"}[$__rate_interval])) > 0",
+          "legendFormat": "{{handler}} {{code}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 50,
+      "gridPos": {
+        "x": 16,
+        "y": 111,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Resources (pod prometheus-kps-0)",
+      "collapsed": false,
+      "panels": [],
+      "id": 51,
+      "gridPos": {
+        "x": 0,
+        "y": 119,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU (cores)",
+      "description": "CPU used by the container (cAdvisor `container_cpu_usage_seconds_total`, rate) against its request (kube-state-metrics). No CPU limit is set in this lab (requests only), so the container can burst; sustained use far above the request means the request should be raised so the scheduler accounts for it. Formula: kubernetes-mixin 'Compute Resources / Pod' dashboard.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "decimals": 3
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "request"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"monitoring\", pod=~\"prometheus-kps-.*\", container=\"prometheus\"}[$__rate_interval]))",
+          "legendFormat": "usage",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(kube_pod_container_resource_requests{namespace=\"monitoring\", pod=~\"prometheus-kps-.*\", container=\"prometheus\", resource=\"cpu\"})",
+          "legendFormat": "request",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 52,
+      "gridPos": {
+        "x": 0,
+        "y": 120,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory",
+      "description": "Working set (what the kernel OOM-killer looks at) against the memory request and limit. The working set reaching the limit means an OOMKill (watch the restart annotation). Formula: kubernetes-mixin 'Compute Resources / Pod' dashboard (container_memory_working_set_bytes).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "request"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "limit"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(container_memory_working_set_bytes{namespace=\"monitoring\", pod=~\"prometheus-kps-.*\", container=\"prometheus\"})",
+          "legendFormat": "working set",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(kube_pod_container_resource_requests{namespace=\"monitoring\", pod=~\"prometheus-kps-.*\", container=\"prometheus\", resource=\"memory\"})",
+          "legendFormat": "request",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(kube_pod_container_resource_limits{namespace=\"monitoring\", pod=~\"prometheus-kps-.*\", container=\"prometheus\", resource=\"memory\"})",
+          "legendFormat": "limit",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(go_memstats_heap_inuse_bytes{job=\"kps-prometheus\", namespace=\"monitoring\", container=\"prometheus\"})",
+          "legendFormat": "Go heap in use",
+          "range": true,
+          "instant": false,
+          "refId": "D"
+        }
+      ],
+      "id": 53,
+      "gridPos": {
+        "x": 8,
+        "y": 120,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Config-reloader sidecar",
+      "description": "The config-reloader sidecar watches the rendered config/rules and triggers Prometheus reloads. `reloader_last_reload_successful` = 0 fires ConfigReloaderSidecarErrors (kube-prometheus-stack rule group config-reloaders).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min(reloader_last_reload_successful{job=\"kps-prometheus\", namespace=\"monitoring\"})",
+          "legendFormat": "last reload OK (1 = yes)",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(reloader_reloads_failed_total{job=\"kps-prometheus\", namespace=\"monitoring\"}[$__rate_interval]))",
+          "legendFormat": "failed reloads",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 54,
+      "gridPos": {
+        "x": 16,
+        "y": 120,
+        "w": 8,
+        "h": 8
+      }
+    }
+  ]
+}

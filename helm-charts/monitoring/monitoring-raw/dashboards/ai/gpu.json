@@ -1,0 +1,1673 @@
+{
+  "id": null,
+  "uid": "hl-ai-gpu",
+  "title": "GPU (GeForce GT 740)",
+  "description": "The lab's only GPU (GeForce GT 740, 4 GiB, Kepler, host driver 470): health of the card (temperature, VRAM, fan, P-state), who holds it in Kubernetes (nvidia.com/gpu requests), and the health of the NVIDIA device plugin and of nvidia-gpu-exporter 1.18.0 (nvidia-smi backend). Curated from the official exporter dashboard https://grafana.com/grafana/dashboards/14574 (utkuozdemir/nvidia_gpu_exporter 'Nvidia GPU Metrics', revision 18): only the panels whose metrics this GPU/driver reports; the official one is not imported because ~40 of its ~50 panels can never have data here (no utilization, power, clocks, throttle reasons, ECC, XID, processes on GT 740 + driver 470). Docs: docs/dashboards/ai.md.",
+  "tags": [
+    "ai",
+    "gpu",
+    "nvidia"
+  ],
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "timezone": "",
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "name": "Firing alerts (GPU)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\", namespace=\"nvidia-device-plugin\"}",
+        "step": "60s",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{severity}}",
+        "useValueForTime": false
+      },
+      {
+        "name": "Container restarts (GPU stack + llm)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "orange",
+        "expr": "changes(kube_pod_container_status_restarts_total{namespace=~\"nvidia-device-plugin|llm\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Restart {{namespace}}/{{pod}}",
+        "textFormat": "{{container}}",
+        "useValueForTime": false
+      },
+      {
+        "name": "GPU holder changed",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "blue",
+        "expr": "changes(kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"}[2m]) > 0 or (time() - kube_pod_start_time{namespace=\"llm\"}) < 120",
+        "step": "60s",
+        "titleFormat": "GPU pod (re)scheduled",
+        "textFormat": "{{namespace}}/{{pod}}",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "nvidia_gpu_exporter",
+      "type": "link",
+      "url": "https://github.com/utkuozdemir/nvidia_gpu_exporter",
+      "targetBlank": true,
+      "icon": "doc",
+      "tooltip": "nvidia_gpu_exporter"
+    },
+    {
+      "title": "Official dashboard 14574",
+      "type": "link",
+      "url": "https://grafana.com/grafana/dashboards/14574",
+      "targetBlank": true,
+      "icon": "doc",
+      "tooltip": "Official dashboard 14574"
+    },
+    {
+      "title": "LLM dashboard",
+      "type": "link",
+      "url": "/d/hl-ai-llm",
+      "targetBlank": true,
+      "icon": "doc",
+      "tooltip": "LLM dashboard"
+    }
+  ],
+  "panels": [
+    {
+      "type": "row",
+      "title": "Overview",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "id": 1
+    },
+    {
+      "type": "text",
+      "title": "How to read this dashboard",
+      "description": "How to read this dashboard.",
+      "options": {
+        "mode": "markdown",
+        "content": "\n**What it is.** One **GeForce GT 740** (Kepler, compute capability 3.0, 4 GiB) on node `k8s01`, host driver **470** (CUDA 11.4).\nThe **NVIDIA device plugin** advertises it as `nvidia.com/gpu: 1` (handed out exclusively, today to `llm/llama`, which uses\nit through **Vulkan**). **nvidia-gpu-exporter** runs `nvidia-smi` every scrape (no GPU allocation, `utility` capability only).\n\n**Not available on this card:** GPU/memory **utilization**, **power**, **clocks** and **throttle reasons** — nvidia-smi\nreturns *N/A / Not Supported* for them on a GT 740 with driver 470, so the exporter (`--query-field-names AUTO`) does not\nexport them. Use **LLM dashboard → Busy time per second** as the activity signal.\n\n**Healthy looks like:** collection OK, temperature well below 70 °C, VRAM ~1.2 GiB of 4 GiB while llama runs,\nP8 (idle) between requests and P0 while generating, 1 GPU allocatable and 1 allocated (to llama).\n\n**When something goes red:**\n- *Collection* FAILED / stale → `kubectl --context k8s01 -n nvidia-device-plugin logs ds/nvidia-gpu-exporter`; usually the\n  driver (`nvidia-smi` on the host) is broken — see Ansible role `gpu` (homelab-ansible).\n- *Allocatable* 0 → the device plugin lost the GPU (driver/NVML); llama stays Pending after a restart.\n- Temperature ≥ 80 °C → check the fan/airflow; the card slows itself down.\n- VRAM ≥ 95 % → a new model or a bigger context will not fit; llama.cpp falls back to the CPU.\n"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 24,
+        "h": 10
+      },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Collection",
+      "description": "nvidia_smi_last_collect_success: did the last nvidia-smi run succeed (1) or fail (0). Chart alert NvidiaGpuExporterCollectionFailing fires after 10 min at 0 (https://github.com/utkuozdemir/helm-charts/tree/master/nvidia-gpu-exporter (chart 2.18.0 PrometheusRule)). A failure here means no fresh GPU data at all.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "min(nvidia_smi_last_collect_success{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "FAILED",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "OK",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 3,
+        "h": 4
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "Last good collection",
+      "description": "time() - nvidia_smi_last_collect_success_timestamp_seconds. Chart alert NvidiaGpuExporterCollectionStale fires above 300 s (https://github.com/utkuozdemir/helm-charts/tree/master/nvidia-gpu-exporter (chart 2.18.0 PrometheusRule)); thresholds use the same 300 s.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "time() - max(nvidia_smi_last_collect_success_timestamp_seconds{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 3,
+        "y": 11,
+        "w": 3,
+        "h": 4
+      },
+      "id": 4
+    },
+    {
+      "type": "stat",
+      "title": "Temperature",
+      "description": "nvidia_smi_temperature_gpu (core temperature, °C). Thresholds from the official dashboard 14574 'Temperature' gauge: yellow 70, red 80.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(nvidia_smi_temperature_gpu{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 11,
+        "w": 3,
+        "h": 4
+      },
+      "id": 5
+    },
+    {
+      "type": "stat",
+      "title": "VRAM used",
+      "description": "nvidia_smi_memory_used_bytes / nvidia_smi_memory_total_bytes (official 14574 'Memory Alloc' gauge; thresholds 85 % / 95 % from it). llama with Qwen2.5-1.5B Q4_K_M uses ~1.2 GiB.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(nvidia_smi_memory_used_bytes{job=\"nvidia-gpu-exporter\"}) / max(nvidia_smi_memory_total_bytes{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.85
+              },
+              {
+                "color": "red",
+                "value": 0.95
+              }
+            ]
+          },
+          "min": 0,
+          "max": 1,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 11,
+        "w": 3,
+        "h": 4
+      },
+      "id": 6
+    },
+    {
+      "type": "stat",
+      "title": "Fan",
+      "description": "nvidia_smi_fan_speed_ratio: the fan speed the driver is asking for, as a share of the maximum (official 14574 description: it is the intended speed, a blocked fan still reports it).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(nvidia_smi_fan_speed_ratio{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 3,
+        "h": 4
+      },
+      "id": 7
+    },
+    {
+      "type": "stat",
+      "title": "P-State",
+      "description": "nvidia_smi_pstate: performance state, P0 = maximum performance … P8 = idle … P15 = minimum (official 14574). Operational state, not health: P0 during generation, P8 between requests.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(nvidia_smi_pstate{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "P0 · Max perf",
+                  "color": "#2B62D9",
+                  "index": 0
+                },
+                "1": {
+                  "text": "P1",
+                  "color": "#3469DB",
+                  "index": 1
+                },
+                "2": {
+                  "text": "P2",
+                  "color": "#3E70DD",
+                  "index": 2
+                },
+                "3": {
+                  "text": "P3",
+                  "color": "#4777DE",
+                  "index": 3
+                },
+                "4": {
+                  "text": "P4",
+                  "color": "#507FE0",
+                  "index": 4
+                },
+                "5": {
+                  "text": "P5",
+                  "color": "#5986E2",
+                  "index": 5
+                },
+                "6": {
+                  "text": "P6",
+                  "color": "#638DE4",
+                  "index": 6
+                },
+                "7": {
+                  "text": "P7",
+                  "color": "#6C94E6",
+                  "index": 7
+                },
+                "8": {
+                  "text": "P8 · Idle",
+                  "color": "#759BE7",
+                  "index": 8
+                },
+                "9": {
+                  "text": "P9",
+                  "color": "#7EA2E9",
+                  "index": 9
+                },
+                "10": {
+                  "text": "P10",
+                  "color": "#88A9EB",
+                  "index": 10
+                },
+                "11": {
+                  "text": "P11",
+                  "color": "#91B0ED",
+                  "index": 11
+                },
+                "12": {
+                  "text": "P12 · Deep idle",
+                  "color": "#9AB8EF",
+                  "index": 12
+                },
+                "13": {
+                  "text": "P13",
+                  "color": "#A3BFF0",
+                  "index": 13
+                },
+                "14": {
+                  "text": "P14",
+                  "color": "#ADC6F2",
+                  "index": 14
+                },
+                "15": {
+                  "text": "P15 · Min",
+                  "color": "#B6CDF4",
+                  "index": 15
+                }
+              }
+            }
+          ],
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 15,
+        "y": 11,
+        "w": 3,
+        "h": 4
+      },
+      "id": 8
+    },
+    {
+      "type": "stat",
+      "title": "GPUs allocatable",
+      "description": "kube_node_status_allocatable{resource=\"nvidia_com_gpu\"} (kube-state-metrics): what the device plugin advertises to the kubelet. 1 = plugin healthy; 0 or missing = the plugin is down or marked the GPU unhealthy (XID/NVML), new GPU pods stay Pending.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(kube_node_status_allocatable{resource=\"nvidia_com_gpu\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 11,
+        "w": 3,
+        "h": 4
+      },
+      "id": 9
+    },
+    {
+      "type": "stat",
+      "title": "GPUs allocated",
+      "description": "sum of nvidia.com/gpu requests of scheduled pods (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"}). 1 of 1 = the only GPU is taken (by llama); another GPU pod would stay Pending.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"}) or vector(0)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 21,
+        "y": 11,
+        "w": 3,
+        "h": 4
+      },
+      "id": 10
+    },
+    {
+      "type": "table",
+      "title": "Who holds the GPU",
+      "description": "Pods with an nvidia.com/gpu request (kube-state-metrics kube_pod_container_resource_requests, resource nvidia_com_gpu), joined with the pod phase. The device plugin gives the whole GPU to one container; nvidia-gpu-exporter reads it without a request.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"}) * on (namespace, pod) group_left (phase) (max by (namespace, pod, phase) (kube_pod_status_phase == 1))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "GPUs",
+              "phase": "Phase"
+            }
+          }
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 12,
+        "h": 6
+      },
+      "id": 11
+    },
+    {
+      "type": "table",
+      "title": "GPU identity",
+      "description": "nvidia_smi_gpu_info labels (official 14574 'GPU Info' table): model, driver, CUDA version, VBIOS, compute capability, PCI bus. Changes here after a host upgrade explain behaviour changes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "nvidia_smi_gpu_info{job=\"nvidia-gpu-exporter\"}",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "Value": true,
+              "instance": true,
+              "job": true,
+              "uuid": true,
+              "index": true,
+              "driver_model_current": true,
+              "driver_model_pending": true,
+              "pci_sub_device_id": true,
+              "serial": true,
+              "container": true,
+              "endpoint": true,
+              "namespace": true,
+              "service": true,
+              "pod": true
+            },
+            "indexByName": {
+              "name": 0,
+              "driver_version": 1,
+              "cuda_version": 2,
+              "vbios_version": 3,
+              "compute_cap": 4,
+              "pci_bus_id": 5
+            },
+            "renameByName": {
+              "name": "GPU",
+              "driver_version": "Driver",
+              "vbios_version": "VBIOS",
+              "compute_cap": "Compute Cap",
+              "pci_bus_id": "PCI Bus",
+              "cuda_version": "CUDA"
+            }
+          }
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 15,
+        "w": 12,
+        "h": 6
+      },
+      "id": 12
+    },
+    {
+      "type": "row",
+      "title": "History",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 1
+      },
+      "id": 13
+    },
+    {
+      "type": "timeseries",
+      "title": "VRAM used vs total",
+      "description": "nvidia_smi_memory_used_bytes and memory_total_bytes (official 14574 'Memory Allocation'). Steps up when a model loads, drops to ~0 when llama stops.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(nvidia_smi_memory_used_bytes{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "used"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "max(nvidia_smi_memory_total_bytes{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "total"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "total"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "id": 14
+    },
+    {
+      "type": "timeseries",
+      "title": "Temperature",
+      "description": "nvidia_smi_temperature_gpu over time with the 80 °C line from the official 14574 'Temperature' panel. Rises with generation load; a slow upward drift at idle points to dust/fan problems.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(nvidia_smi_temperature_gpu{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "temperature"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "id": 15
+    },
+    {
+      "type": "state-timeline",
+      "title": "P-State history",
+      "description": "nvidia_smi_pstate over time (official 14574 'P-State (history)'). Lower = busier: P0 bands line up with LLM requests.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(nvidia_smi_pstate{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "P-state"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "P0 · Max perf",
+                  "color": "#2B62D9",
+                  "index": 0
+                },
+                "1": {
+                  "text": "P1",
+                  "color": "#3469DB",
+                  "index": 1
+                },
+                "2": {
+                  "text": "P2",
+                  "color": "#3E70DD",
+                  "index": 2
+                },
+                "3": {
+                  "text": "P3",
+                  "color": "#4777DE",
+                  "index": 3
+                },
+                "4": {
+                  "text": "P4",
+                  "color": "#507FE0",
+                  "index": 4
+                },
+                "5": {
+                  "text": "P5",
+                  "color": "#5986E2",
+                  "index": 5
+                },
+                "6": {
+                  "text": "P6",
+                  "color": "#638DE4",
+                  "index": 6
+                },
+                "7": {
+                  "text": "P7",
+                  "color": "#6C94E6",
+                  "index": 7
+                },
+                "8": {
+                  "text": "P8 · Idle",
+                  "color": "#759BE7",
+                  "index": 8
+                },
+                "9": {
+                  "text": "P9",
+                  "color": "#7EA2E9",
+                  "index": 9
+                },
+                "10": {
+                  "text": "P10",
+                  "color": "#88A9EB",
+                  "index": 10
+                },
+                "11": {
+                  "text": "P11",
+                  "color": "#91B0ED",
+                  "index": 11
+                },
+                "12": {
+                  "text": "P12 · Deep idle",
+                  "color": "#9AB8EF",
+                  "index": 12
+                },
+                "13": {
+                  "text": "P13",
+                  "color": "#A3BFF0",
+                  "index": 13
+                },
+                "14": {
+                  "text": "P14",
+                  "color": "#ADC6F2",
+                  "index": 14
+                },
+                "15": {
+                  "text": "P15 · Min",
+                  "color": "#B6CDF4",
+                  "index": 15
+                }
+              }
+            }
+          ],
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "never",
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 12,
+        "h": 5
+      },
+      "id": 16
+    },
+    {
+      "type": "timeseries",
+      "title": "Fan speed",
+      "description": "nvidia_smi_fan_speed_ratio (official 14574 'Fan Speed %'): intended fan speed. Follows the temperature.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(nvidia_smi_fan_speed_ratio{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "fan"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 30,
+        "w": 12,
+        "h": 5
+      },
+      "id": 17
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU work (from llama.cpp)",
+      "description": "Because nvidia-smi gives no utilization for this GPU, the activity signal comes from its only user: seconds llama.cpp spent generating / evaluating prompts per second (rate of llamacpp:tokens_predicted_seconds_total and prompt_seconds_total, llama.cpp server README). 1.0 ≈ GPU busy all the time.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(rate(llamacpp:tokens_predicted_seconds_total{job=\"llama\"}[$__rate_interval]))",
+          "legendFormat": "generating"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "sum(rate(llamacpp:prompt_seconds_total{job=\"llama\"}[$__rate_interval]))",
+          "legendFormat": "prompt processing"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 30,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 24,
+        "h": 6
+      },
+      "id": 18
+    },
+    {
+      "type": "row",
+      "title": "Device plugin and exporter",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 24,
+        "h": 1
+      },
+      "id": 19
+    },
+    {
+      "type": "stat",
+      "title": "DaemonSets ready",
+      "description": "Ready vs desired pods of the DaemonSets in nvidia-device-plugin (kube-state-metrics, same comparison as the mixin alert KubeDaemonSetRolloutStuck). nvidia-device-plugin-mps-control-daemon has 0 desired (MPS is not used) and is hidden.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max by (daemonset) (kube_daemonset_status_number_ready{namespace=\"nvidia-device-plugin\"}) and max by (daemonset) (kube_daemonset_status_desired_number_scheduled{namespace=\"nvidia-device-plugin\"} > 0)",
+          "legendFormat": "{{daemonset}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 8,
+        "h": 4
+      },
+      "id": 20
+    },
+    {
+      "type": "stat",
+      "title": "Exporter scrape",
+      "description": "up of job nvidia-gpu-exporter (Prometheus could fetch /metrics). Different from 'Collection': the exporter can be up while nvidia-smi fails.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(up{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 42,
+        "w": 4,
+        "h": 4
+      },
+      "id": 21
+    },
+    {
+      "type": "stat",
+      "title": "Failed collections (range)",
+      "description": "increase(nvidia_smi_failed_scrapes_total): nvidia-smi runs that failed in the selected range. Isolated failures are harmless; a steady rise precedes the Collection alert.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase(nvidia_smi_failed_scrapes_total{job=\"nvidia-gpu-exporter\"}[$__range]))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 42,
+        "w": 4,
+        "h": 4
+      },
+      "id": 22
+    },
+    {
+      "type": "stat",
+      "title": "Restarts (range)",
+      "description": "increase(kube_pod_container_status_restarts_total) in nvidia-device-plugin over the range (kube-state-metrics, KubePodCrashLooping signal). The device plugin uses failOnInitError: it restarts when NVML is unavailable.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"nvidia-device-plugin\"}[$__range]))",
+          "legendFormat": "{{pod}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 42,
+        "w": 8,
+        "h": 4
+      },
+      "id": 23
+    },
+    {
+      "type": "timeseries",
+      "title": "nvidia-smi collection duration",
+      "description": "nvidia_smi_last_collect_duration_seconds. Chart alert NvidiaGpuExporterCollectionSlow fires above 5 s for 10 min (https://github.com/utkuozdemir/helm-charts/tree/master/nvidia-gpu-exporter (chart 2.18.0 PrometheusRule)); the red line uses the same 5 s. Normally ~10–50 ms; slow runs mean the driver is struggling.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(nvidia_smi_last_collect_duration_seconds{job=\"nvidia-gpu-exporter\"})",
+          "legendFormat": "duration"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 24,
+        "h": 6
+      },
+      "id": 24
+    }
+  ]
+}

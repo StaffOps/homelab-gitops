@@ -1,0 +1,2763 @@
+{
+  "id": null,
+  "uid": "hl-observability-otel-collectors",
+  "title": "OpenTelemetry Collectors",
+  "description": "Pipeline health of the three OpenTelemetry Collectors (otel-agent DaemonSet, otel-gateway Deployment, otel-logs DaemonSet): data received vs sent vs refused/failed per signal, processor drops, exporter queues, Kubernetes metadata enrichment, file tailing and collector CPU/memory. Built from the collector's internal telemetry (https://opentelemetry.io/docs/collector/internal-telemetry/, level normal) following the community reference dashboard 'OpenTelemetry Collector' (grafana.com 15983, rev 31). No official dashboard is published by the OpenTelemetry project.",
+  "tags": [
+    "observability",
+    "opentelemetry"
+  ],
+  "timezone": "",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "job",
+        "label": "Collector",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(otelcol_process_uptime{namespace=\"opentelemetry\"}, job)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "definition": "label_values(otelcol_process_uptime{namespace=\"opentelemetry\"}, job)",
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0,
+        "options": []
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "name": "Firing alerts",
+        "expr": "ALERTS{alertstate=\"firing\", namespace=\"opentelemetry\"}",
+        "step": "60s",
+        "titleFormat": "{{alertname}} ({{severity}})",
+        "textFormat": "Prometheus ALERTS series in state firing. See Alertmanager / alert rules for details.",
+        "tagKeys": "severity",
+        "useValueForTime": false
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "name": "Container restarts",
+        "expr": "changes(kube_pod_container_status_restarts_total{namespace=\"opentelemetry\", pod=~\"otel-.*\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Restart: {{pod}} / {{container}}",
+        "textFormat": "kube-state-metrics saw the restart counter change (crash, OOMKill or liveness failure).",
+        "tagKeys": "container",
+        "useValueForTime": false
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": false,
+        "hide": false,
+        "iconColor": "blue",
+        "name": "Collector config rolled out",
+        "expr": "sum(increase(controller_runtime_reconcile_total{job=\"opentelemetry-operator\", controller=\"opentelemetrycollector\", result=\"success\"}[2m])) > 0",
+        "step": "60s",
+        "titleFormat": "Operator reconciled an OpenTelemetryCollector",
+        "textFormat": "The opentelemetry-operator reconciled a collector CR (new config / image), pods may have been rolled.",
+        "tagKeys": "",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "Observability",
+      "type": "dashboards",
+      "tags": [
+        "observability"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Collector internal telemetry",
+      "url": "https://opentelemetry.io/docs/collector/internal-telemetry/",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "doc"
+    },
+    {
+      "title": "grafana.com 15983 (reference)",
+      "url": "https://grafana.com/grafana/dashboards/15983",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "doc"
+    }
+  ],
+  "panels": [
+    {
+      "type": "text",
+      "title": "How to read this dashboard",
+      "options": {
+        "mode": "markdown",
+        "content": "**Pipeline in this lab**\n\n`apps (SDK) / OBI --OTLP--> otel-agent (DaemonSet) --OTLP--> otel-gateway (Deployment) --> Tempo (traces) / Prometheus /api/v1/otlp (metrics, span metrics, service graph) / Loki (logs)`\n`/var/log/pods + Kubernetes events --> otel-logs (DaemonSet) --OTLP/HTTP--> Loki`; the VPS sends to the gateway's authenticated receiver `otlp/external` (https://otel.<domain>).\n\n**How to read**: for each signal compare *received* with *sent*; anything in the *refused / failed / dropped* panels is\ndata that did not make it. *Exporter queue usage* near 100% means the backend is slower than the input (next stop:\nenqueue_failed = data loss). Processors legitimately drop items (`filter/noise` drops health-check spans on the agent).\n\n**Healthy**: all collectors up, loss panels empty, queue usage ~0%, memory well under the container limit\n(GOMEMLIMIT is 200 MiB on the DaemonSets, 800 MiB on the gateway; memory_limiter refuses data at 80% of the limit).\n\n**Empty panels are expected** for signals nobody sends: today no workload exports OTLP traces/metrics (OBI only\ninstruments `staffops*` namespaces, which do not exist yet), so only the *Logs* row of otel-logs moves. Counters\nappear the first time something increments them.\n\n**Debug**: `kubectl --context k8s01 -n opentelemetry logs ds/otel-logs-collector` (or `deploy/otel-gateway-collector`,\n`ds/otel-agent-collector`). Metric names: [internal telemetry](https://opentelemetry.io/docs/collector/internal-telemetry/); collector v0.165 exposes counters\n**without** the `_total` suffix.",
+        "code": {
+          "language": "plaintext"
+        }
+      },
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 11
+      }
+    },
+    {
+      "type": "row",
+      "title": "Overview",
+      "collapsed": false,
+      "panels": [],
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Collectors down",
+      "description": "Collector pods whose telemetry endpoint (:8888) failed its last scrape (`up == 0` for the otel-*-collector-monitoring jobs). Non-zero = a collector is down or hung; kube-prometheus alert TargetDown covers it after 10m.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(up{namespace=\"opentelemetry\", job=~\"$job\", job=~\"otel-.*-collector-monitoring\"} == 0) or vector(0)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 3,
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Receiver refused + failed (1h)",
+      "description": "Items (spans + metric points + log records) refused or failed at receivers in the last hour, all collectors. Refused = back-pressure from memory_limiter.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum(increase(otelcol_receiver_refused_spans{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0)) + (sum(increase(otelcol_receiver_refused_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0)) + (sum(increase(otelcol_receiver_refused_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0)) + (sum(increase(otelcol_receiver_failed_spans{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0)) + (sum(increase(otelcol_receiver_failed_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0)) + (sum(increase(otelcol_receiver_failed_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 4,
+      "gridPos": {
+        "x": 3,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Export failures (1h)",
+      "description": "Items exporters could not deliver (send_failed after retries) or could not queue (enqueue_failed) in the last hour. Any value = data lost.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum(increase(otelcol_exporter_send_failed_spans{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0)) + (sum(increase(otelcol_exporter_send_failed_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0)) + (sum(increase(otelcol_exporter_send_failed_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0)) + (sum(increase(otelcol_exporter_enqueue_failed_spans{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0)) + (sum(increase(otelcol_exporter_enqueue_failed_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0)) + (sum(increase(otelcol_exporter_enqueue_failed_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[1h])) or vector(0))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 5,
+      "gridPos": {
+        "x": 7,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Max exporter queue usage",
+      "description": "Highest sending-queue fill ratio of any exporter (queue_size / queue_capacity, grafana.com 15983 'Exporter Queue Usage'). At 100% new data is rejected (enqueue_failed).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 0.8
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(max by (job, exporter) (otelcol_exporter_queue_size{namespace=\"opentelemetry\", job=~\"$job\"}) / min by (job, exporter) (otelcol_exporter_queue_capacity{namespace=\"opentelemetry\", job=~\"$job\"}))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 6,
+      "gridPos": {
+        "x": 11,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Log records sent / s",
+      "description": "Log records delivered to Loki per second by all collectors (`otelcol_exporter_sent_log_records`). The main live signal of this lab.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(otelcol_exporter_sent_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 7,
+      "gridPos": {
+        "x": 15,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Restarts (24h)",
+      "description": "Container restarts of the collector pods (kube-state-metrics). Config changes roll pods (new pod, not a restart); restarts mean crashes or OOMKills.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"opentelemetry\", pod=~\"otel-(agent|gateway|logs)-collector-.*\", container=\"otc-container\"}[24h])) or vector(0)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "id": 8,
+      "gridPos": {
+        "x": 19,
+        "y": 12,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "table",
+      "title": "Collectors",
+      "description": "One line per collector pod: version (`target_info`), uptime (`otelcol_process_uptime`), CPU cores (`otelcol_process_cpu_seconds` rate), RSS (`otelcol_process_memory_rss`) and Go heap (`otelcol_process_runtime_heap_alloc_bytes`).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Uptime"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "RSS"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Go heap"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [],
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value #A": true
+            },
+            "renameByName": {
+              "job": "Collector",
+              "pod": "Pod",
+              "service_version": "Version",
+              "Value #B": "Uptime",
+              "Value #C": "CPU (cores)",
+              "Value #D": "RSS",
+              "Value #E": "Go heap"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, pod, service_version) (target_info{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, pod) (otelcol_process_uptime{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, pod) (rate(otelcol_process_cpu_seconds{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, pod) (otelcol_process_memory_rss{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, pod) (otelcol_process_runtime_heap_alloc_bytes{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "refId": "E"
+        }
+      ],
+      "id": 9,
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 6
+      }
+    },
+    {
+      "type": "row",
+      "title": "Traces (spans)",
+      "collapsed": false,
+      "panels": [],
+      "id": 10,
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Spans: received vs sent",
+      "description": "Spans accepted by receivers (`otelcol_receiver_accepted_spans`) and successfully sent by exporters (`otelcol_exporter_sent_spans`), per collector. In a healthy pipeline sent ~= received (times the number of exporters fed by the pipeline; minus what processors filter on purpose). Formula: official internal telemetry docs (https://opentelemetry.io/docs/collector/internal-telemetry/) and grafana.com dashboard 15983 'Receivers'/'Exporters' panels.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, receiver) (rate(otelcol_receiver_accepted_spans{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "received {{job}} / {{receiver}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, exporter) (rate(otelcol_exporter_sent_spans{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "sent {{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 11,
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Spans: refused / failed / dropped",
+      "description": "Losses (should all be empty or 0). Receiver refused (`otelcol_receiver_refused_spans`: the pipeline pushed back, typically memory_limiter) and failed (`otelcol_receiver_failed_spans`: internal error); exporter send_failed (`otelcol_exporter_send_failed_spans`: the backend rejected the data after retries - data lost) and enqueue_failed (`otelcol_exporter_enqueue_failed_spans`: sending queue full - data lost). Collector docs recommend alerting on any sustained refused/send_failed rate.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "send failed.*|enqueue failed.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "refused.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, receiver) (rate(otelcol_receiver_refused_spans{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "refused {{job}} / {{receiver}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, receiver) (rate(otelcol_receiver_failed_spans{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "receiver failed {{job}} / {{receiver}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, exporter) (rate(otelcol_exporter_send_failed_spans{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "send failed {{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, exporter) (rate(otelcol_exporter_enqueue_failed_spans{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "enqueue failed {{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "D"
+        }
+      ],
+      "id": 12,
+      "gridPos": {
+        "x": 12,
+        "y": 23,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Metrics (metric points)",
+      "collapsed": false,
+      "panels": [],
+      "id": 13,
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Metric points: received vs sent",
+      "description": "Metric points accepted by receivers (`otelcol_receiver_accepted_metric_points`) and successfully sent by exporters (`otelcol_exporter_sent_metric_points`), per collector. In a healthy pipeline sent ~= received (times the number of exporters fed by the pipeline; minus what processors filter on purpose). Formula: official internal telemetry docs (https://opentelemetry.io/docs/collector/internal-telemetry/) and grafana.com dashboard 15983 'Receivers'/'Exporters' panels.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, receiver) (rate(otelcol_receiver_accepted_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "received {{job}} / {{receiver}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, exporter) (rate(otelcol_exporter_sent_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "sent {{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 14,
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Metric points: refused / failed / dropped",
+      "description": "Losses (should all be empty or 0). Receiver refused (`otelcol_receiver_refused_metric_points`: the pipeline pushed back, typically memory_limiter) and failed (`otelcol_receiver_failed_metric_points`: internal error); exporter send_failed (`otelcol_exporter_send_failed_metric_points`: the backend rejected the data after retries - data lost) and enqueue_failed (`otelcol_exporter_enqueue_failed_metric_points`: sending queue full - data lost). Collector docs recommend alerting on any sustained refused/send_failed rate.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "send failed.*|enqueue failed.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "refused.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, receiver) (rate(otelcol_receiver_refused_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "refused {{job}} / {{receiver}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, receiver) (rate(otelcol_receiver_failed_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "receiver failed {{job}} / {{receiver}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, exporter) (rate(otelcol_exporter_send_failed_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "send failed {{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, exporter) (rate(otelcol_exporter_enqueue_failed_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "enqueue failed {{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "D"
+        }
+      ],
+      "id": 15,
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Logs (log records)",
+      "collapsed": false,
+      "panels": [],
+      "id": 16,
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Log records: received vs sent",
+      "description": "Log records accepted by receivers (`otelcol_receiver_accepted_log_records`) and successfully sent by exporters (`otelcol_exporter_sent_log_records`), per collector. In a healthy pipeline sent ~= received (times the number of exporters fed by the pipeline; minus what processors filter on purpose). Formula: official internal telemetry docs (https://opentelemetry.io/docs/collector/internal-telemetry/) and grafana.com dashboard 15983 'Receivers'/'Exporters' panels.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, receiver) (rate(otelcol_receiver_accepted_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "received {{job}} / {{receiver}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, exporter) (rate(otelcol_exporter_sent_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "sent {{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 17,
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Log records: refused / failed / dropped",
+      "description": "Losses (should all be empty or 0). Receiver refused (`otelcol_receiver_refused_log_records`: the pipeline pushed back, typically memory_limiter) and failed (`otelcol_receiver_failed_log_records`: internal error); exporter send_failed (`otelcol_exporter_send_failed_log_records`: the backend rejected the data after retries - data lost) and enqueue_failed (`otelcol_exporter_enqueue_failed_log_records`: sending queue full - data lost). Collector docs recommend alerting on any sustained refused/send_failed rate.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "send failed.*|enqueue failed.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "refused.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, receiver) (rate(otelcol_receiver_refused_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "refused {{job}} / {{receiver}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, receiver) (rate(otelcol_receiver_failed_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "receiver failed {{job}} / {{receiver}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, exporter) (rate(otelcol_exporter_send_failed_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "send failed {{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, exporter) (rate(otelcol_exporter_enqueue_failed_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "enqueue failed {{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "D"
+        }
+      ],
+      "id": 18,
+      "gridPos": {
+        "x": 12,
+        "y": 41,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Processors and batching",
+      "collapsed": false,
+      "panels": [],
+      "id": 19,
+      "gridPos": {
+        "x": 0,
+        "y": 49,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Items dropped/filtered by processors",
+      "description": "Items that went into a processor but did not come out: `otelcol_processor_incoming_items - otelcol_processor_outgoing_items` per processor and signal (both counters are documented in the collector internal telemetry; their difference is what the processor dropped, filtered or refused). Expected for filter/noise (health checks); anything on memory_limiter or k8s_attributes is unexpected.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, processor, otel_signal) (rate(otelcol_processor_incoming_items{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval])) - sum by (job, processor, otel_signal) (rate(otelcol_processor_outgoing_items{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "{{job}} {{processor}} {{otel_signal}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 20,
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Processor throughput",
+      "description": "Items per second entering each processor (`otelcol_processor_incoming_items`), per signal: shows where data flows in each pipeline.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, processor, otel_signal) (rate(otelcol_processor_incoming_items{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "{{job}} {{processor}} {{otel_signal}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 21,
+      "gridPos": {
+        "x": 8,
+        "y": 50,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "memory_limiter refusals",
+      "description": "Items refused by the memory_limiter processor because the collector is near its memory limit (`otelcol_processor_memory_limiter_refused_*`; accepted counterpart `otelcol_processor_memory_limiter_accepted_*`). Refusals propagate to receivers as 'refused' and clients retry. Empty = never refused since start.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "refused.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job) (label_replace(rate(otelcol_processor_memory_limiter_refused_spans{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]), \"signal\", \"spans\", \"\", \"\") or label_replace(rate(otelcol_processor_memory_limiter_refused_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]), \"signal\", \"metric_points\", \"\", \"\") or label_replace(rate(otelcol_processor_memory_limiter_refused_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]), \"signal\", \"log_records\", \"\", \"\"))",
+          "legendFormat": "refused {{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job) (label_replace(rate(otelcol_processor_memory_limiter_accepted_spans{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]), \"signal\", \"spans\", \"\", \"\") or label_replace(rate(otelcol_processor_memory_limiter_accepted_metric_points{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]), \"signal\", \"metric_points\", \"\", \"\") or label_replace(rate(otelcol_processor_memory_limiter_accepted_log_records{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]), \"signal\", \"log_records\", \"\", \"\"))",
+          "legendFormat": "accepted {{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 22,
+      "gridPos": {
+        "x": 16,
+        "y": 50,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Batch size (avg) and send triggers",
+      "description": "Average items per batch sent (`otelcol_processor_batch_batch_send_size` sum/count) and what triggered sends: size reached vs timeout (`otelcol_processor_batch_batch_size_trigger_send`, `..._timeout_trigger_send`) - grafana.com 15983 'Batch Metrics'. Mostly timeout triggers = low traffic (normal here). The histogram is exported only where the batch processor has processed data.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job) (rate(otelcol_processor_batch_batch_send_size_sum{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval])) / sum by (job) (rate(otelcol_processor_batch_batch_send_size_count{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "avg batch {{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job) (rate(otelcol_processor_batch_timeout_trigger_send{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval])) * 60",
+          "legendFormat": "timeout sends/min {{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job) (rate(otelcol_processor_batch_batch_size_trigger_send{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval])) * 60",
+          "legendFormat": "size sends/min {{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        }
+      ],
+      "id": 23,
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Batch metadata cardinality",
+      "description": "Distinct metadata combinations the batch processor keeps separate batches for (`otelcol_processor_batch_metadata_cardinality`). Grows only with metadata_keys; should stay small (1-2).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job) (otelcol_processor_batch_metadata_cardinality{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "{{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 24,
+      "gridPos": {
+        "x": 12,
+        "y": 58,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Exporters",
+      "collapsed": false,
+      "panels": [],
+      "id": 25,
+      "gridPos": {
+        "x": 0,
+        "y": 66,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Exporter queue usage",
+      "description": "Sending queue fill ratio per exporter (grafana.com 15983 'Exporter Queue Usage': `max(otelcol_exporter_queue_size) / min(otelcol_exporter_queue_capacity)`). Rising usage = the backend (Tempo / Prometheus / Loki / gateway) is slow or down; at 100% data is dropped.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.8
+              }
+            ]
+          },
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, exporter) (otelcol_exporter_queue_size{namespace=\"opentelemetry\", job=~\"$job\"}) / min by (job, exporter) (otelcol_exporter_queue_capacity{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "{{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 26,
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Exporter queue size / capacity",
+      "description": "Batches waiting in each exporter's sending queue (`otelcol_exporter_queue_size`) against the configured capacity (`otelcol_exporter_queue_capacity`: 2000 on the agent, 5000 on gateway/logs).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "capacity.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, exporter) (otelcol_exporter_queue_size{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "size {{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min by (job, exporter) (otelcol_exporter_queue_capacity{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "capacity {{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 27,
+      "gridPos": {
+        "x": 8,
+        "y": 67,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Exporter in-flight requests",
+      "description": "Requests currently being sent by each exporter (`otelcol_exporter_in_flight_requests`). Stuck high = the backend hangs.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, exporter) (otelcol_exporter_in_flight_requests{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "{{job}} / {{exporter}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 28,
+      "gridPos": {
+        "x": 16,
+        "y": 67,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Receivers and enrichment",
+      "collapsed": false,
+      "panels": [],
+      "id": 29,
+      "gridPos": {
+        "x": 0,
+        "y": 75,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "file_log: files tracked",
+      "description": "Files the otel-logs file_log receiver keeps open and is actively reading (`otelcol_fileconsumer_open_files`, `otelcol_fileconsumer_reading_files`). Open files ~ number of containers on the node; reading > 0 for long = it is behind.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, pod) (otelcol_fileconsumer_open_files{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "open {{pod}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, pod) (otelcol_fileconsumer_reading_files{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "reading {{pod}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 30,
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "k8s_attributes: pod association",
+      "description": "Result of matching telemetry to a pod by the k8s_attributes processor (`otelcol.k8s.pod.association`, status success/error). Errors = records without Kubernetes metadata (short-lived pods already gone, host-network sources).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, status) (rate({\"otelcol.k8s.pod.association\", namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "{{job}} {{status}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 31,
+      "gridPos": {
+        "x": 8,
+        "y": 76,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "k8s_attributes: pod cache",
+      "description": "Pods held in the k8s_attributes informer cache (`otelcol.k8s.watcher.pod_cache.size`) and watch events per minute (added/updated/deleted). The cache should track the pods of the node.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job) ({\"otelcol.k8s.watcher.pod_cache.size\", namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "cache {{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job) (rate({\"otelcol.k8s.watcher.pod.updated\", namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval])) * 60",
+          "legendFormat": "updates/min {{job}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 32,
+      "gridPos": {
+        "x": 16,
+        "y": 76,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Collector resources",
+      "collapsed": false,
+      "panels": [],
+      "id": 33,
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU (cores) per collector",
+      "description": "CPU used by each collector process (grafana.com 15983 'CPU Usage': `rate(otelcol_process_cpu_seconds)`).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, pod) (rate(otelcol_process_cpu_seconds{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "{{pod}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "id": 34,
+      "gridPos": {
+        "x": 0,
+        "y": 85,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory: RSS vs container limit",
+      "description": "Process RSS (`otelcol_process_memory_rss`, 15983 'Total RSS Memory') and the container memory limit (kube-state-metrics). memory_limiter starts refusing at 80% of the limit; the kernel OOM-kills at 100%.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "limit.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod) (otelcol_process_memory_rss{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "rss {{pod}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod) (kube_pod_container_resource_limits{namespace=\"opentelemetry\", pod=~\"otel-(agent|gateway|logs)-collector-.*\", container=\"otc-container\", resource=\"memory\"})",
+          "legendFormat": "limit {{pod}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 35,
+      "gridPos": {
+        "x": 8,
+        "y": 85,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Go heap / allocation rate",
+      "description": "Live heap (`otelcol_process_runtime_heap_alloc_bytes`) and allocation rate (`otelcol_process_runtime_total_alloc_bytes`), 15983 'Total Runtime Heap Memory'. High allocation with low throughput = expensive processors (OTTL transforms, regex).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": null,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod) (otelcol_process_runtime_heap_alloc_bytes{namespace=\"opentelemetry\", job=~\"$job\"})",
+          "legendFormat": "heap {{pod}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (pod) (rate(otelcol_process_runtime_total_alloc_bytes{namespace=\"opentelemetry\", job=~\"$job\"}[$__rate_interval]))",
+          "legendFormat": "alloc/s {{pod}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "id": 36,
+      "gridPos": {
+        "x": 16,
+        "y": 85,
+        "w": 8,
+        "h": 8
+      }
+    }
+  ]
+}

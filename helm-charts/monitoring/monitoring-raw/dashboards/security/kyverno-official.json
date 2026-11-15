@@ -1,0 +1,2961 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "name": "Firing alerts",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\", namespace=\"kyverno\"}",
+        "step": "60s",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{severity}}: {{alertname}} {{name}}",
+        "tagKeys": "alertname,severity",
+        "useValueForTime": false
+      },
+      {
+        "name": "Container restarts",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "expr": "changes(kube_pod_container_status_restarts_total{namespace=~\"kyverno\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Restart {{pod}}/{{container}}",
+        "textFormat": "container {{container}} of {{pod}} restarted",
+        "tagKeys": "namespace,container",
+        "useValueForTime": false
+      },
+      {
+        "name": "Sweeper Job failed",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "expr": "kube_job_status_failed{namespace=\"kyverno\", job_name=~\"pod-zone-label-sweeper.*\"} > 0",
+        "step": "60s",
+        "titleFormat": "Sweeper Job {{job_name}} failed",
+        "textFormat": "pod-zone-label-sweeper Job failed",
+        "tagKeys": "job_name",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "description": "Dashboard bundled with the kyverno Helm chart 3.10.0 (Kyverno v1.20.0), charts/grafana/dashboard/kyverno-dashboard.json, vendored instead of the chart ConfigMap (grafana.enabled=false). Changes: datasource pinned, cluster variable removed (single cluster, no cluster label), panels for policy kinds this lab does not use removed (ImageValidatingPolicy stat/target, Deleting Policies row), intro text, descriptions, annotations.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "security"
+      ],
+      "asDropdown": true,
+      "title": "Security & Identity",
+      "includeVars": false,
+      "keepTime": true,
+      "icon": "external link",
+      "targetBlank": false,
+      "tooltip": "",
+      "url": ""
+    }
+  ],
+  "panels": [
+    {
+      "type": "text",
+      "title": "",
+      "description": "How to read this dashboard.",
+      "options": {
+        "mode": "markdown",
+        "content": "### Kyverno — chart dashboard (kyverno chart 3.10.0)\nUpstream dashboard kept for reference; the day-to-day view is **Kyverno** (curated). In this lab the *fail* results are\n**audit findings** of the 12 Pod Security Standards baseline ValidatingPolicies (Audit mode, nothing is blocked), the only\nMutatingPolicy is `pod-zone-label` and the only GeneratingPolicy is `mcp-read-crds`. *Enforcing (Deny) Validating\nPolicies* stays empty until a policy is moved to Enforce. Removed: ImageValidatingPolicy and DeletingPolicy panels (no such\npolicies here). Docs: [Kyverno metrics](https://kyverno.io/docs/reference/metrics/), `docs/dashboards/security.md`.",
+        "code": {
+          "language": "markdown",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 5
+      },
+      "id": 1
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 2,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "# Kyverno\nA Kubernetes-native policy management engine\n\n#### About this dashboard\n\nThis dashboard represents generic insights that can be extracted from a cluster with Kyverno running.\n\n- **Policies (policies.kyverno.io)** rows cover `ValidatingPolicy`, `ImageValidatingPolicy`, `MutatingPolicy`, `GeneratingPolicy`, `DeletingPolicy` and their namespaced variants.\n\n#### For more details around the metrics\n\nCheckout the [official docs of Kyverno metrics](https://kyverno.io/docs/monitoring/)",
+        "mode": "markdown"
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A"
+        }
+      ],
+      "transparent": true,
+      "type": "text",
+      "description": "Upstream description of this dashboard."
+    },
+    {
+      "collapsed": false,
+      "datasource": null,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "id": 3,
+      "panels": [],
+      "targets": [],
+      "title": "Policies (policies.kyverno.io) - Overview",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Percentage of fail results across ValidatingPolicy, ImageValidatingPolicy, MutatingPolicy and GeneratingPolicy evaluations (admission and background) in the last 24 hours. Namespaced variants (e.g. NamespacedValidatingPolicy) are reported under the same policy kind.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "noValue": "No results",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "#eab839",
+                "value": 25
+              },
+              {
+                "color": "red",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 12
+      },
+      "id": 4,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto",
+        "text": {}
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "(sum (\n  label_replace(sum (increase(kyverno_validating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_image_validating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_mutating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_generating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)\nor vector(0)) * 100\n/\nsum (\n  label_replace(sum (increase(kyverno_validating_policy_results_total[24h])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_image_validating_policy_results_total[24h])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_mutating_policy_results_total[24h])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_generating_policy_results_total[24h])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Policy Failure Rate (Last 24 Hours)",
+      "transparent": true,
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "ValidatingPolicy and NamespacedValidatingPolicy resources evaluated in the selected time range. Counted from the result metrics: a policy is included when it produced at least one result in the selected time range (there is no inventory metric for policies.kyverno.io types).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 6,
+        "y": 12
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "count(\nsum by (cluster, policy_namespace, policy_name, policy_kind) (\n  label_replace(sum by (cluster, policy_namespace, policy_name) (increase(kyverno_validating_policy_results_total[$__range])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n)\n> 0)",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Validating Policies",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "MutatingPolicy and NamespacedMutatingPolicy resources evaluated in the selected time range. Counted from the result metrics: a policy is included when it produced at least one result in the selected time range (there is no inventory metric for policies.kyverno.io types).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 12,
+        "y": 12
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "count(\nsum by (cluster, policy_namespace, policy_name, policy_kind) (\n  label_replace(sum by (cluster, policy_namespace, policy_name) (increase(kyverno_mutating_policy_results_total[$__range])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n)\n> 0)",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Mutating Policies",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "GeneratingPolicy and NamespacedGeneratingPolicy resources evaluated in the selected time range. Counted from the result metrics: a policy is included when it produced at least one result in the selected time range (there is no inventory metric for policies.kyverno.io types).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 15,
+        "y": 12
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "count(\nsum by (cluster, policy_namespace, policy_name, policy_kind) (\n  label_replace(sum by (cluster, policy_namespace, policy_name) (increase(kyverno_generating_policy_results_total[$__range])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)\n> 0)",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Generating Policies",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Percentage of fail results produced by background scans (reports controller, and GeneratingPolicy evaluations in the background controller) in the last 24 hours. Namespaced variants (e.g. NamespacedValidatingPolicy) are reported under the same policy kind.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "noValue": "No results",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "#eab839",
+                "value": 25
+              },
+              {
+                "color": "red",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 12
+      },
+      "id": 8,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto",
+        "text": {}
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "(sum (\n  label_replace(sum (increase(kyverno_validating_policy_results_total{execution_cause=\"background_scan\", result=\"fail\"}[24h])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_image_validating_policy_results_total{execution_cause=\"background_scan\", result=\"fail\"}[24h])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_mutating_policy_results_total{execution_cause=\"background_scan\", result=\"fail\"}[24h])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_generating_policy_results_total{execution_cause=\"background_scan\", result=\"fail\"}[24h])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)\nor vector(0)) * 100\n/\nsum (\n  label_replace(sum (increase(kyverno_validating_policy_results_total{execution_cause=\"background_scan\"}[24h])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_image_validating_policy_results_total{execution_cause=\"background_scan\"}[24h])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_mutating_policy_results_total{execution_cause=\"background_scan\"}[24h])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_generating_policy_results_total{execution_cause=\"background_scan\"}[24h])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Background Scan Failure Rate (Last 24 Hours)",
+      "transparent": true,
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "ValidatingPolicy and ImageValidatingPolicy resources with the Deny validation action. Counted from the result metrics: a policy is included when it produced at least one result in the selected time range (there is no inventory metric for policies.kyverno.io types).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 6,
+        "y": 16
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "count(\nsum by (cluster, policy_namespace, policy_name, policy_kind) (\n  label_replace(sum by (cluster, policy_namespace, policy_name) (increase(kyverno_validating_policy_results_total{policy_validation_mode=\"Deny\"}[$__range])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (cluster, policy_namespace, policy_name) (increase(kyverno_image_validating_policy_results_total{policy_validation_mode=\"Deny\"}[$__range])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n)\n> 0)",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Enforcing (Deny) Validating Policies",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "ValidatingPolicy and ImageValidatingPolicy resources without the Deny validation action. Counted from the result metrics: a policy is included when it produced at least one result in the selected time range (there is no inventory metric for policies.kyverno.io types).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 10,
+        "y": 16
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "count(\nsum by (cluster, policy_namespace, policy_name, policy_kind) (\n  label_replace(sum by (cluster, policy_namespace, policy_name) (increase(kyverno_validating_policy_results_total{policy_validation_mode=\"Audit\"}[$__range])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (cluster, policy_namespace, policy_name) (increase(kyverno_image_validating_policy_results_total{policy_validation_mode=\"Audit\"}[$__range])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n)\n> 0)",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Audit-only Validating Policies",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "ValidatingPolicy, ImageValidatingPolicy and MutatingPolicy resources with background processing enabled. Counted from the result metrics: a policy is included when it produced at least one result in the selected time range (there is no inventory metric for policies.kyverno.io types).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 14,
+        "y": 16
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "count(\nsum by (cluster, policy_namespace, policy_name, policy_kind) (\n  label_replace(sum by (cluster, policy_namespace, policy_name) (increase(kyverno_validating_policy_results_total{policy_background_mode=\"true\"}[$__range])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (cluster, policy_namespace, policy_name) (increase(kyverno_image_validating_policy_results_total{policy_background_mode=\"true\"}[$__range])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (cluster, policy_namespace, policy_name) (increase(kyverno_mutating_policy_results_total{policy_background_mode=\"true\"}[$__range])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n)\n> 0)",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Background-enabled Policies",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "datasource": null,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 12,
+      "panels": [],
+      "targets": [],
+      "title": "Policies (policies.kyverno.io) - Results",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Results of ValidatingPolicy, ImageValidatingPolicy and MutatingPolicy evaluations during admission review, per 5 minutes. Namespaced variants (e.g. NamespacedValidatingPolicy) are reported under the same policy kind.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pass"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "rgb(43, 219, 23)",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fail"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2495C",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF9830",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "warning"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FADE2A",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "skip"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#8AB8FF",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 21
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "sum by (result) (\n  label_replace(sum by (result) (increase(kyverno_validating_policy_results_total{execution_cause=\"admission_request\"}[5m])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (result) (increase(kyverno_image_validating_policy_results_total{execution_cause=\"admission_request\"}[5m])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (result) (increase(kyverno_mutating_policy_results_total{execution_cause=\"admission_request\"}[5m])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n)",
+          "interval": "",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Admission Review Results",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Results of policy evaluations during background processing (reports controller scans and GeneratingPolicy evaluations), per 5 minutes. Namespaced variants (e.g. NamespacedValidatingPolicy) are reported under the same policy kind.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pass"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "rgb(43, 219, 23)",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fail"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2495C",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF9830",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "warning"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FADE2A",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "skip"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#8AB8FF",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 21
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "sum by (result) (\n  label_replace(sum by (result) (increase(kyverno_validating_policy_results_total{execution_cause=\"background_scan\"}[5m])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (result) (increase(kyverno_image_validating_policy_results_total{execution_cause=\"background_scan\"}[5m])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (result) (increase(kyverno_mutating_policy_results_total{execution_cause=\"background_scan\"}[5m])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum by (result) (increase(kyverno_generating_policy_results_total{execution_cause=\"background_scan\"}[5m])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)",
+          "interval": "",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Background Scan Results",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Fail results per 5 minutes, split by policy kind. Namespaced variants (e.g. NamespacedValidatingPolicy) are reported under the same policy kind.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 21
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "sum by (policy_kind) (\n  label_replace(sum (increase(kyverno_validating_policy_results_total{result=\"fail\"}[5m])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_image_validating_policy_results_total{result=\"fail\"}[5m])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_mutating_policy_results_total{result=\"fail\"}[5m])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_generating_policy_results_total{result=\"fail\"}[5m])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)",
+          "interval": "",
+          "legendFormat": "{{policy_kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Policy Failures (by policy kind)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Admission review results per policy, per 5 minutes. Cluster-scoped policies are shown with namespace '-'. Namespaced variants (e.g. NamespacedValidatingPolicy) are reported under the same policy kind.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pass"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "rgb(43, 219, 23)",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fail"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2495C",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF9830",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "warning"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FADE2A",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "skip"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#8AB8FF",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 29
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "label_replace(\nsum by (policy_namespace, policy_name, result, policy_kind) (\n  label_replace(sum by (policy_namespace, policy_name, result) (increase(kyverno_validating_policy_results_total{execution_cause=\"admission_request\"}[5m])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (policy_namespace, policy_name, result) (increase(kyverno_image_validating_policy_results_total{execution_cause=\"admission_request\"}[5m])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (policy_namespace, policy_name, result) (increase(kyverno_mutating_policy_results_total{execution_cause=\"admission_request\"}[5m])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n),\n\"policy_namespace\", \"-\", \"policy_namespace\", \"\")",
+          "interval": "",
+          "legendFormat": "{{policy_kind}} {{policy_namespace}}/{{policy_name}} - {{result}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Admission Review Results (per-policy)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Background processing results per policy, per 5 minutes. Cluster-scoped policies are shown with namespace '-'. Namespaced variants (e.g. NamespacedValidatingPolicy) are reported under the same policy kind.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pass"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "rgb(43, 219, 23)",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fail"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2495C",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF9830",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "warning"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FADE2A",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "skip"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#8AB8FF",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "label_replace(\nsum by (policy_namespace, policy_name, result, policy_kind) (\n  label_replace(sum by (policy_namespace, policy_name, result) (increase(kyverno_validating_policy_results_total{execution_cause=\"background_scan\"}[5m])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (policy_namespace, policy_name, result) (increase(kyverno_image_validating_policy_results_total{execution_cause=\"background_scan\"}[5m])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (policy_namespace, policy_name, result) (increase(kyverno_mutating_policy_results_total{execution_cause=\"background_scan\"}[5m])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum by (policy_namespace, policy_name, result) (increase(kyverno_generating_policy_results_total{execution_cause=\"background_scan\"}[5m])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n),\n\"policy_namespace\", \"-\", \"policy_namespace\", \"\")",
+          "interval": "",
+          "legendFormat": "{{policy_kind}} {{policy_namespace}}/{{policy_name}} - {{result}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Background Scan Results (per-policy)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Policies with the most fail results in the last 24 hours. Namespaced variants (e.g. NamespacedValidatingPolicy) are reported under the same policy kind.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "min": 0,
+          "noValue": "No failures",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#F2495C",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 37
+      },
+      "id": 18,
+      "options": {
+        "displayMode": "gradient",
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "label_replace(\ntopk(10,\nsum by (policy_namespace, policy_name, policy_kind) (\n  label_replace(sum by (policy_namespace, policy_name) (increase(kyverno_validating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (policy_namespace, policy_name) (increase(kyverno_image_validating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (policy_namespace, policy_name) (increase(kyverno_mutating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum by (policy_namespace, policy_name) (increase(kyverno_generating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)\n> 0),\n\"policy_namespace\", \"-\", \"policy_namespace\", \"\")",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "{{policy_kind}} {{policy_namespace}}/{{policy_name}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Top 10 Failing Policies (Last 24 Hours)",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Resource kinds that received the most fail results in the last 24 hours, across all policy kinds.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "min": 0,
+          "noValue": "No failures",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#F2495C",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 37
+      },
+      "id": 19,
+      "options": {
+        "displayMode": "gradient",
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "topk(10,\nsum by (resource_kind) (\n  label_replace(sum by (resource_kind) (increase(kyverno_validating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (resource_kind) (increase(kyverno_image_validating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (resource_kind) (increase(kyverno_mutating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum by (resource_kind) (increase(kyverno_generating_policy_results_total{result=\"fail\"}[24h])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)\n> 0)",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "{{resource_kind}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Top 10 Resource Kinds with Failures (Last 24 Hours)",
+      "type": "bargauge"
+    },
+    {
+      "collapsed": false,
+      "datasource": null,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "id": 20,
+      "panels": [],
+      "targets": [],
+      "title": "Policies (policies.kyverno.io) - Execution Latency",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Average time spent evaluating a single policy against a resource, over 5 minute windows. Namespaced variants (e.g. NamespacedValidatingPolicy) are reported under the same policy kind.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 0,
+        "y": 46
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "sum by (policy_kind) (\n  label_replace(sum (rate(kyverno_validating_policy_execution_duration_seconds_sum[5m])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (rate(kyverno_image_validating_policy_execution_duration_seconds_sum[5m])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (rate(kyverno_mutating_policy_execution_duration_seconds_sum[5m])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum (rate(kyverno_generating_policy_execution_duration_seconds_sum[5m])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)\n/\nsum by (policy_kind) (\n  label_replace(sum (rate(kyverno_validating_policy_execution_duration_seconds_count[5m])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (rate(kyverno_image_validating_policy_execution_duration_seconds_count[5m])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (rate(kyverno_mutating_policy_execution_duration_seconds_count[5m])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum (rate(kyverno_generating_policy_execution_duration_seconds_count[5m])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)",
+          "interval": "",
+          "legendFormat": "{{policy_kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Average Policy Execution Latency (by policy kind)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "95th percentile time spent evaluating a single policy against a resource, over 5 minute windows. Accuracy depends on the configured histogram bucket boundaries. Namespaced variants (e.g. NamespacedValidatingPolicy) are reported under the same policy kind.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 9,
+        "y": 46
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "histogram_quantile(0.95,\nsum by (le, policy_kind) (\n  label_replace(sum by (le) (rate(kyverno_validating_policy_execution_duration_seconds_bucket[5m])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (le) (rate(kyverno_image_validating_policy_execution_duration_seconds_bucket[5m])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (le) (rate(kyverno_mutating_policy_execution_duration_seconds_bucket[5m])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum by (le) (rate(kyverno_generating_policy_execution_duration_seconds_bucket[5m])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)\n)",
+          "interval": "",
+          "legendFormat": "{{policy_kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "p95 Policy Execution Latency (by policy kind)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Average policy execution latency across all policies.kyverno.io kinds in the selected time range.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 46
+      },
+      "id": 23,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "sum (\n  label_replace(sum (increase(kyverno_validating_policy_execution_duration_seconds_sum[$__range])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_image_validating_policy_execution_duration_seconds_sum[$__range])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_mutating_policy_execution_duration_seconds_sum[$__range])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_generating_policy_execution_duration_seconds_sum[$__range])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)\n/\nsum (\n  label_replace(sum (increase(kyverno_validating_policy_execution_duration_seconds_count[$__range])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_image_validating_policy_execution_duration_seconds_count[$__range])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_mutating_policy_execution_duration_seconds_count[$__range])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum (increase(kyverno_generating_policy_execution_duration_seconds_count[$__range])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Average Policy Execution Latency",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "95th percentile policy execution latency across all policies.kyverno.io kinds in the selected time range.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 50
+      },
+      "id": 24,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "histogram_quantile(0.95,\nsum by (le) (\n  label_replace(sum by (le) (increase(kyverno_validating_policy_execution_duration_seconds_bucket[$__range])), \"policy_kind\", \"ValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (le) (increase(kyverno_image_validating_policy_execution_duration_seconds_bucket[$__range])), \"policy_kind\", \"ImageValidatingPolicy\", \"\", \"\")\n  or label_replace(sum by (le) (increase(kyverno_mutating_policy_execution_duration_seconds_bucket[$__range])), \"policy_kind\", \"MutatingPolicy\", \"\", \"\")\n  or label_replace(sum by (le) (increase(kyverno_generating_policy_execution_duration_seconds_bucket[$__range])), \"policy_kind\", \"GeneratingPolicy\", \"\", \"\")\n)\n)",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "p95 Policy Execution Latency",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Average execution latency per policy, over 5 minute windows.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      },
+      "id": 25,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "label_replace(\nsum by (policy_namespace, policy_name) (rate(kyverno_validating_policy_execution_duration_seconds_sum[5m]))\n/\nsum by (policy_namespace, policy_name) (rate(kyverno_validating_policy_execution_duration_seconds_count[5m])),\n\"policy_namespace\", \"-\", \"policy_namespace\", \"\")",
+          "interval": "",
+          "legendFormat": "ValidatingPolicy {{policy_namespace}}/{{policy_name}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "label_replace(\nsum by (policy_namespace, policy_name) (rate(kyverno_mutating_policy_execution_duration_seconds_sum[5m]))\n/\nsum by (policy_namespace, policy_name) (rate(kyverno_mutating_policy_execution_duration_seconds_count[5m])),\n\"policy_namespace\", \"-\", \"policy_namespace\", \"\")",
+          "interval": "",
+          "legendFormat": "MutatingPolicy {{policy_namespace}}/{{policy_name}}",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": false,
+          "expr": "label_replace(\nsum by (policy_namespace, policy_name) (rate(kyverno_generating_policy_execution_duration_seconds_sum[5m]))\n/\nsum by (policy_namespace, policy_name) (rate(kyverno_generating_policy_execution_duration_seconds_count[5m])),\n\"policy_namespace\", \"-\", \"policy_namespace\", \"\")",
+          "interval": "",
+          "legendFormat": "GeneratingPolicy {{policy_namespace}}/{{policy_name}}",
+          "refId": "D"
+        }
+      ],
+      "title": "Average Policy Execution Latency (per-policy)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "datasource": null,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 71
+      },
+      "id": 26,
+      "panels": [],
+      "targets": [
+        {
+          "datasource": null,
+          "refId": "A"
+        }
+      ],
+      "title": "Admission Review Latency",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 0,
+        "y": 72
+      },
+      "id": 27,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": true,
+          "expr": "sum(rate(kyverno_admission_review_duration_seconds_sum[5m])) by (resource_request_operation) / sum(rate(kyverno_admission_review_duration_seconds_count[5m])) by (resource_request_operation)",
+          "interval": "",
+          "legendFormat": "Resource Operation: {{resource_request_operation}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg - Admission Review Duration Over Time (by operation)",
+      "transparent": true,
+      "type": "timeseries",
+      "description": "Average admission review time (sum/count of kyverno_admission_review_duration_seconds) per operation (create/update/delete). Averages hide spikes: see the p99 in the curated Kyverno dashboard."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 9,
+        "y": 72
+      },
+      "id": 28,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": true,
+          "expr": "sum(rate(kyverno_admission_review_duration_seconds_sum[5m])) by (resource_kind) / sum(rate(kyverno_admission_review_duration_seconds_count[5m])) by (resource_kind)",
+          "interval": "",
+          "legendFormat": "Resource Kind: {{resource_kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg - Admission Review Duration Over Time (by resource kind)",
+      "transparent": true,
+      "type": "timeseries",
+      "description": "Average admission review time per resource kind."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 72
+      },
+      "id": 29,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": true,
+          "expr": "sum(increase(kyverno_admission_requests_total[5m]))",
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Rate - Incoming Admission Requests (per 5m)",
+      "type": "stat",
+      "description": "Admission requests received in the last 5 minutes."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 76
+      },
+      "id": 30,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": true,
+          "expr": "sum(kyverno_admission_review_duration_seconds_sum)/sum(kyverno_admission_review_duration_seconds_count)",
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg - Overall Admission Review Duration",
+      "type": "stat",
+      "description": "Average admission review time since the admission controller started (cumulative sum/count)."
+    },
+    {
+      "collapsed": false,
+      "datasource": null,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 80
+      },
+      "id": 31,
+      "panels": [],
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Admission Requests",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change type: created"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#5794F2",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 0,
+        "y": 81
+      },
+      "id": 32,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": true,
+          "expr": "sum(increase(kyverno_admission_requests_total[5m])) by (resource_request_operation)",
+          "interval": "",
+          "legendFormat": "Resource Operation: {{resource_request_operation}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Admission Requests (by operation)",
+      "transparent": true,
+      "type": "timeseries",
+      "description": "Admission requests per 5 minutes by operation."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change type: created"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#5794F2",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 9,
+        "y": 81
+      },
+      "id": 33,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "8.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": true,
+          "expr": "sum(increase(kyverno_admission_requests_total[5m])) by (resource_kind)",
+          "interval": "",
+          "legendFormat": "Resource Kind: {{resource_kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Admission Requests (by resource kind)",
+      "transparent": true,
+      "type": "timeseries",
+      "description": "Admission requests per 5 minutes by resource kind."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "semi-dark-green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 81
+      },
+      "id": 34,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "exemplar": true,
+          "expr": "sum(increase(kyverno_admission_requests_total[24h]))",
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Admission Requests (Last 24 Hours)",
+      "type": "stat",
+      "description": "Admission requests received in the last 24 hours."
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": [
+    "security",
+    "kyverno",
+    "official"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Kyverno (official)",
+  "uid": "hl-security-kyverno-official",
+  "weekStart": "",
+  "id": null
+}

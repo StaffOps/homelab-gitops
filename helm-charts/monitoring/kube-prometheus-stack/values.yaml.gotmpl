@@ -14,6 +14,18 @@ crds:
 # endpoints are the node IP), so no static `endpoints:` list. Chart defaults for kube >= 1.23: https on
 # 10257/10259 with the Prometheus ServiceAccount token (its ClusterRole grants GET on /metrics) and
 # insecureSkipVerify (self-signed serving certs for 127.0.0.1/localhost).
+# kube-apiserver is ~30 % of all series. First rule = the chart default (setting the list replaces it); the second
+# drops histograms no rule or dashboard here uses (~34k series): watch dispatch/list, storage list, request body size,
+# watch-cache timings. Re-enable one by removing it from the regex when debugging that path.
+kubeApiServer:
+    serviceMonitor:
+        metricRelabelings:
+            - action: drop
+              regex: (etcd_request|apiserver_request_slo|apiserver_request_sli|apiserver_request)_duration_seconds_bucket;(0\.15|0\.2|0\.3|0\.35|0\.4|0\.45|0\.6|0\.7|0\.8|0\.9|1\.25|1\.5|1\.75|2|3|3\.5|4|4\.5|6|7|8|9|15|20|40|45|50)(\.0)?
+              sourceLabels: [__name__, le]
+            - action: drop
+              regex: apiserver_(watch_events_dispatch_duration_seconds|watch_list_duration_seconds|storage_list_duration_seconds|request_body_size_bytes|watch_cache_read_wait_seconds|watch_cache_initialization_duration_seconds)_bucket
+              sourceLabels: [__name__]
 kubeControllerManager:
     enabled: true
 kubeScheduler:
@@ -176,8 +188,15 @@ grafana:
             memory: 384Mi
         limits:
             memory: 768Mi
-    # dashboard/datasource sidecars (k8s-sidecar)
+    # dashboard/datasource sidecars (k8s-sidecar). Dashboards go to the Grafana folder named by the ConfigMap
+    # annotation grafana_folder (monitoring-raw/dashboards/<folder>/); the chart's own dashboards → "Kubernetes".
     sidecar:
+        dashboards:
+            folderAnnotation: grafana_folder
+            provider:
+                foldersFromFilesStructure: true
+            annotations:
+                grafana_folder: Kubernetes
         resources:
             requests:
                 cpu: 10m
@@ -189,6 +208,10 @@ kube-state-metrics:
     # kube_node_labels only exists for allow-listed labels; the CloudNativePG dashboard joins pods to the node zone
     metricLabelsAllowlist:
         - nodes=[topology.kubernetes.io/zone]
+    # Scrape its own telemetry port (8081: kube_state_metrics_list_total/watch_total): without it the mixin alerts
+    # KubeStateMetricsListErrors/WatchErrors can never fire (Cluster add-ons dashboard uses the same series)
+    selfMonitor:
+        enabled: true
     resources:
         requests:
             cpu: 10m
@@ -210,3 +233,7 @@ prometheus-node-exporter:
             memory: 32Mi
         limits:
             memory: 64Mi
+# Alert rules the chart does not ship (inserted as-is with readFile: plain Prometheus templates in the file)
+additionalPrometheusRulesMap:
+    coredns:
+        {{- readFile "./coredns.rules.yaml" | nindent 8 }}
