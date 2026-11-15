@@ -233,7 +233,13 @@ prometheus-node-exporter:
             memory: 32Mi
         limits:
             memory: 64Mi
+defaultRules:
+    rules:
+        # the chart's copy selects job="kps-operator" (ignores fullnameOverride); fixed copy below
+        prometheusOperator: false
 # Alert rules the chart does not ship (inserted as-is with readFile: plain Prometheus templates in the file)
 additionalPrometheusRulesMap:
     coredns:
         {{- readFile "./coredns.rules.yaml" | nindent 8 }}
+    prometheus-operator:
+        {{- readFile "./prometheus-operator.rules.yaml" | nindent 8 }}
