@@ -89,3 +89,45 @@
         name: {{ $sa.name }}
         namespace: argo-workflows
 {{- end }}
+# The UI also shows Argo Events objects (Event Sources, Sensors, Event Flow): extra cluster rights for the SSO
+# ServiceAccounts, admin manages them, viewer reads them.
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+      name: argo-workflows-sso-events-admin
+  rules:
+      - apiGroups: [argoproj.io]
+        resources: [eventsources, sensors, eventbus]
+        verbs: [get, list, watch, create, update, patch, delete]
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+      name: argo-workflows-sso-events-view
+  rules:
+      - apiGroups: [argoproj.io]
+        resources: [eventsources, sensors, eventbus]
+        verbs: [get, list, watch]
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+      name: argo-workflows-sso-admin-events
+  roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: argo-workflows-sso-events-admin
+  subjects:
+      - kind: ServiceAccount
+        name: sso-admin
+        namespace: argo-workflows
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+      name: argo-workflows-sso-viewer-events
+  roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: argo-workflows-sso-events-view
+  subjects:
+      - kind: ServiceAccount
+        name: sso-viewer
+        namespace: argo-workflows
