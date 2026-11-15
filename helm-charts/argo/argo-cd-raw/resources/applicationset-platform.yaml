@@ -111,6 +111,9 @@
                     - appName: llm
                       path: llm
                       namespace: llm
+                    - appName: harbor
+                      path: harbor
+                      namespace: harbor
       template:
           metadata:
               name: '{{`{{ .appName }}`}}'

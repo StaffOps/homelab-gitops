@@ -1,0 +1,24 @@
+# Key pair harbor-core signs registry tokens with (the registry verifies them with the same certificate). Without
+# core.secretName the chart generates a new one on every render. Self-signed, 10 years: renewing it means
+# restarting core and registry together.
+- apiVersion: cert-manager.io/v1
+  kind: Issuer
+  metadata:
+      name: harbor-selfsigned
+  spec:
+      selfSigned: {}
+- apiVersion: cert-manager.io/v1
+  kind: Certificate
+  metadata:
+      name: harbor-token
+  spec:
+      secretName: harbor-token
+      commonName: harbor-token
+      duration: 87600h
+      renewBefore: 720h
+      privateKey:
+          algorithm: RSA
+          size: 4096
+      issuerRef:
+          kind: Issuer
+          name: harbor-selfsigned

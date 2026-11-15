@@ -1,0 +1,36 @@
+# Harbor: container image and Helm chart (OCI) registry with Trivy scanning, at https://harbor.<domain>.
+# Exposed through the shared Gateway (chart expose.type route), PostgreSQL from CloudNativePG (Cluster harbor-db in
+# harbor-raw, backed up to R2), images on a local-path volume, login with Keycloak. Every secret the chart would
+# otherwise generate on each render (Argo CD renders without cluster access) comes from an existing Secret.
+repositories:
+    - name: harbor
+      url: https://helm.goharbor.io
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - harbor:
+                  enabled: true
+                  version: 1.19.4 # Harbor 2.15.4
+            - harbor-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: harbor
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    # PostgreSQL Cluster + backups, ExternalSecrets, generated internal secrets, token-signing certificate
+    - chart: bedag/raw
+      name: harbor-raw
+      condition: harbor-raw.enabled
+      <<: *default
+    - chart: harbor/harbor
+      name: harbor
+      condition: harbor.enabled
+      <<: *default

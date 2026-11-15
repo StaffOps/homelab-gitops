@@ -14,7 +14,7 @@
       destinations:
           - server: https://kubernetes.default.svc
             namespace: '*'
-          {{- range list "default" "kube-system" "kube-public" "kube-node-lease" "argo" "calico-system" "calico-apiserver" "tigera-operator" "local-path-storage" "metallb-system" "vault" "external-secrets" "cert-manager" "external-dns" "istio-system" "gateway" "monitoring" "opentelemetry" "cnpg-system" "keycloak" "keda" "dependency-track" "velero" "kyverno" "nvidia-device-plugin" "mcp-servers" "llm" }}
+          {{- range list "default" "kube-system" "kube-public" "kube-node-lease" "argo" "calico-system" "calico-apiserver" "tigera-operator" "local-path-storage" "metallb-system" "vault" "external-secrets" "cert-manager" "external-dns" "istio-system" "gateway" "monitoring" "opentelemetry" "cnpg-system" "keycloak" "keda" "dependency-track" "velero" "kyverno" "nvidia-device-plugin" "mcp-servers" "llm" "harbor" }}
           - server: https://kubernetes.default.svc
             namespace: '!{{ . }}'
           {{- end }}

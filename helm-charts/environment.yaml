@@ -61,3 +61,4 @@ keycloak:
         - vault
         - dependency-track
         - mcp # MCP servers at https://mcp.<domain>/<name> (Gateway JWT check)
+        - harbor

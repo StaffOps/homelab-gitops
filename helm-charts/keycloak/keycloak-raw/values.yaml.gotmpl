@@ -159,7 +159,7 @@ resources:
                 remoteRef:
                     key: {{ .Values.vault.prefix }}/keycloak-automation
                     property: client-secret
-    # OIDC client secrets (Vault homelab/oidc: argocd, grafana, vault), consumed by the realm import below
+    # OIDC client secrets (Vault homelab/oidc: argocd, grafana, vault, ...; harbor from homelab/harbor), consumed by the realm import below
     - apiVersion: external-secrets.io/v1
       kind: ExternalSecret
       metadata:
@@ -174,6 +174,12 @@ resources:
           dataFrom:
               - extract:
                     key: {{ .Values.vault.prefix }}/oidc
+          # Harbor keeps its client secret with its other secrets (Vault homelab/harbor)
+          data:
+              - secretKey: harbor
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/harbor
+                    property: oidc-client-secret
     # Realm keycloak.realm (environment.yaml): groups /<tool>/admin and /<tool>/viewer for every tool in
     # keycloak.apps, scope "groups" (claim groups, full path), one client per app. Users are created by hand in
     # the admin console and joined to the groups of the tools they need.
@@ -211,7 +217,7 @@ resources:
                               access.token.claim: "true"
                               userinfo.token.claim: "true"
               clients:
-                  {{- range $id, $c := dict "argocd" (dict "url" (printf "https://argocd.%s" $d) "callback" "/auth/callback") "grafana" (dict "url" (printf "https://grafana.%s" $d) "callback" "/login/generic_oauth") "vault" (dict "url" (printf "https://vault.%s" $d) "callback" "/ui/vault/auth/oidc/oidc/callback") }}
+                  {{- range $id, $c := dict "argocd" (dict "url" (printf "https://argocd.%s" $d) "callback" "/auth/callback") "grafana" (dict "url" (printf "https://grafana.%s" $d) "callback" "/login/generic_oauth") "vault" (dict "url" (printf "https://vault.%s" $d) "callback" "/ui/vault/auth/oidc/oidc/callback") "harbor" (dict "url" (printf "https://harbor.%s" $d) "callback" "/c/oidc/callback") }}
                   - clientId: {{ $id }}
                     name: {{ $id }}
                     protocol: openid-connect
@@ -238,6 +244,11 @@ resources:
                         - email
                         - roles
                         - groups
+                    {{- if eq $id "harbor" }}
+                    # Harbor asks for offline_access: the refresh token keeps its CLI secret valid
+                    optionalClientScopes:
+                        - offline_access
+                    {{- end }}
                   {{- end }}
                   # Dependency-Track: the frontend (browser) runs the login, so a public client with PKCE
                   - clientId: dependency-track
@@ -372,7 +383,7 @@ resources:
                               value: no-delete
                             - name: IMPORT_MANAGED_ROLE
                               value: no-delete
-                            {{- range $id := list "argocd" "grafana" "vault" "hermes" "backstage" "keycloak-mcp" }}
+                            {{- range $id := list "argocd" "grafana" "vault" "hermes" "backstage" "keycloak-mcp" "harbor" }}
                             - name: {{ upper $id | replace "-" "_" }}_CLIENT_SECRET
                               valueFrom:
                                   secretKeyRef:

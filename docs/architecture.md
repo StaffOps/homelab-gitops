@@ -24,6 +24,7 @@ Argo CD reconciles everything from `main`; the operator only bootstraps, unseals
 | `keycloak` | keycloak | identity provider (OIDC/SAML), PostgreSQL `keycloak-db` (CloudNativePG) | cloudnative-pg, external-secrets |
 | `keda` | keda | event-driven autoscaling (ScaledObject, ScaledJob) | — |
 | `dependency-track` | dependency-track | SBOM analysis (API server + frontend), PostgreSQL `dtrack-db` | cloudnative-pg, external-secrets |
+| `harbor` | harbor | container image + Helm (OCI) registry with Trivy scanning at `harbor.<domain>`; PostgreSQL `harbor-db` (CloudNativePG), images on a local-path volume, Keycloak login | cloudnative-pg, external-secrets, cert-manager, keycloak |
 | `velero` | velero | daily backup of stateful namespaces (objects + volumes, except PostgreSQL data) to Cloudflare R2 | external-secrets |
 | `kyverno` | kyverno | policy engine; Pod Security Standards baseline in Audit (PolicyReports); label `topology.kubernetes.io/zone=k8s-local` on every new Pod | — |
 | `nvidia-device-plugin` | nvidia-device-plugin | RuntimeClass `nvidia` + device plugin → `nvidia.com/gpu: 1` (GT 740, driver 470 on the host) | GPU setup in Ansible |

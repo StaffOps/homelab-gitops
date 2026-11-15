@@ -5,9 +5,10 @@ Two tools, one bucket, no overlap:
 | What | Tool | Where in the bucket | Schedule / retention |
 |------|------|---------------------|----------------------|
 | Kubernetes objects of `backup.namespaces` (Cluster CRs, generated Secrets such as `keycloak-db-app`, PVCs) and every volume **except** PostgreSQL data (Vault storage, Dependency-Track data) | Velero | `k8s01/` | 03:00 UTC, 30 days |
-| PostgreSQL `keycloak-db`, `dtrack-db`: base backup + continuous WAL (point-in-time recovery) | CloudNativePG Barman Cloud plugin | `cnpg/<cluster>/` | base 02:00 UTC + WAL every ≤ 5 min, 30 days |
+| PostgreSQL `keycloak-db`, `dtrack-db`, `harbor-db`: base backup + continuous WAL (point-in-time recovery) | CloudNativePG Barman Cloud plugin | `cnpg/<cluster>/` | base 02:00 UTC + WAL every ≤ 5 min, 30 days |
 
-Monitoring data (Prometheus, Loki, Tempo, Grafana, Alertmanager) is not backed up: it is not worth the cost.
+Monitoring data (Prometheus, Loki, Tempo, Grafana, Alertmanager) and Harbor's image storage are not backed up: metrics
+are not worth the cost and images can be pushed again (Harbor's database, with projects, users and policies, is).
 
 ## Velero
 

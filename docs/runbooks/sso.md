@@ -7,16 +7,18 @@ Keycloak (`https://keycloak.staffops.space`) holds the realm `staffops` (`keyclo
 **Groups:** for every tool in `keycloak.apps` the realm has `/<tool>/admin` and `/<tool>/viewer`. The claim
 `groups` carries the full path (`/argocd/admin`), so each tool only reacts to its own groups. Give a user
 access by joining the groups of the tools they need. Client secrets: Vault `homelab/oidc` (keys `argocd`,
-`grafana`, `vault`); `dependency-track` is a public client (browser login, PKCE).
+`grafana`, `vault`) and `homelab/harbor` (`oidc-client-secret`); `dependency-track` is a public client (browser login, PKCE).
 
 | Tool | Login | `/<tool>/admin` | `/<tool>/viewer` | other users |
 |------|-------|-----------------|------------------|-------------|
 | Argo CD | "Log in via Keycloak" | `role:admin` | `role:readonly` | no access |
 | Grafana | "Sign in with Keycloak" | Admin | Viewer | login refused |
 | Vault | method OIDC, role `default` | policy `admin` | policy `viewer` (read/list) | `default` policy only |
+| Harbor | "Login via OIDC provider" (Keycloak) | system admin | onboarded user; project access by adding the group to a project | onboarded, no project access |
 | Dependency-Track | "Login with Keycloak" | team mapped in the UI (below) | team mapped in the UI | no permissions |
 
-Local logins stay as break-glass: Argo CD `admin`, Grafana `admin` (Vault `homelab/grafana`), Vault root token.
+Local logins stay as break-glass: Argo CD `admin`, Grafana `admin` (Vault `homelab/grafana`), Harbor `admin`
+(Vault `homelab/harbor`), Vault root token.
 
 ## Add a tool
 
