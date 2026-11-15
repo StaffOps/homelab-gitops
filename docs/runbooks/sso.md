@@ -16,7 +16,7 @@ access by joining the groups of the tools they need. Client secrets: Vault `home
 | Vault | method OIDC, role `default` | policy `admin` | policy `viewer` (read/list) | `default` policy only |
 | Argo Workflows | "Login" (SSO) | ClusterRole `argo-workflows-admin` | `argo-workflows-view` | no access |
 | Harbor | "Login via OIDC provider" (Keycloak) | system admin | onboarded user; project access by adding the group to a project | onboarded, no project access |
-| Dependency-Track | "Login with Keycloak" | team mapped in the UI (below) | team mapped in the UI | no permissions |
+| Dependency-Track | "Login with Keycloak" | team *Administrators* | team *Viewers* (VIEW_PORTFOLIO, VIEW_VULNERABILITY, VIEW_POLICY_VIOLATION) | no permissions |
 
 Local logins stay as break-glass: Argo CD `admin`, Grafana `admin` (Vault `homelab/grafana`), Harbor `admin`
 (Vault `homelab/harbor`), Vault root token.
@@ -71,9 +71,11 @@ New service: add it to the client list in `keycloak-raw` (clients and users), ad
 2. Realm `staffops` → Users → create your user (email verified, set a password) → Groups → join the
    `admin` or `viewer` subgroup of each tool.
 3. `scripts/vault.sh oidc` (once; idempotent) — Vault's OIDC auth method, policies `admin`/`viewer`, group mapping.
-4. Dependency-Track: log in as the local `admin`, Administration → Access Management → OpenID Connect Groups:
-   add `/dependency-track/admin` (map to *Administrators*) and `/dependency-track/viewer` (map to a team with
-   `VIEW_PORTFOLIO`, `VIEW_VULNERABILITY`, `VIEW_BADGES`).
+4. Dependency-Track (done 2026-11-15, lives in its database): local `admin` password changed from the install default
+   and kept in Vault `homelab/dependency-track` (`admin-password`); OpenID Connect groups `/dependency-track/admin` →
+   team *Administrators* and `/dependency-track/viewer` → team *Viewers*; team *MCP (read-only)* (VIEW_PORTFOLIO,
+   VIEW_VULNERABILITY, VIEW_POLICY_VIOLATION) with the API key of the MCP server (Vault `homelab/mcp`:
+   `dependency-track-api-key`). Redo through Administration → Access Management only on a new, empty database.
 
 ## Rotate a client secret
 

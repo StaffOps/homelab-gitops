@@ -1,3 +1,4 @@
+{{- $pg := .Values.backup.postgres }}
 {{- $gw := .Values.gateway }}
 resources:
     # Grafana admin credentials (Vault homelab/grafana: admin-user, admin-password)
@@ -38,6 +39,128 @@ resources:
                 remoteRef:
                     key: {{ .Values.vault.prefix }}/oidc
                     property: grafana
+    # PostgreSQL for Grafana (CloudNativePG) instead of SQLite on a local volume: users, preferences and service-account
+    # tokens (MCP server) come back with the database restore. Secret grafana-db-app (username, password).
+    - apiVersion: postgresql.cnpg.io/v1
+      kind: Cluster
+      metadata:
+          name: grafana-db
+      spec:
+          instances: 1
+          storage:
+              storageClass: {{ .Values.storageClass }}
+              size: 5Gi
+          bootstrap:
+              {{- if ($pg | get "restore" false) }}
+              # Disaster recovery (backup.postgres.restore in environment.yaml): rebuild from the R2 backups
+              recovery:
+                  source: origin
+                  {{- with ($pg | get "restoreTargetTime" "") }}
+                  recoveryTarget:
+                      targetTime: {{ . | quote }}
+                  {{- end }}
+              {{- else }}
+              initdb:
+                  database: grafana
+                  owner: grafana
+              {{- end }}
+          {{- if ($pg | get "restore" false) }}
+          externalClusters:
+              - name: origin
+                plugin:
+                    name: barman-cloud.cloudnative-pg.io
+                    parameters:
+                        barmanObjectName: grafana-db-r2
+                        serverName: grafana-db{{ ($pg | get "restoreFromSuffix" "") }}
+          {{- end }}
+          # metrics: one PodMonitor for every cluster (cloudnative-pg-raw); the per-cluster one is deprecated
+          monitoring:
+              enablePodMonitor: false
+          # Base backups + WAL to R2 through the Barman Cloud plugin (ObjectStore grafana-db-r2 below)
+          plugins:
+              - name: barman-cloud.cloudnative-pg.io
+                isWALArchiver: true
+                parameters:
+                    barmanObjectName: grafana-db-r2
+                    {{- with ($pg | get "serverSuffix" "") }}
+                    serverName: grafana-db{{ . }}
+                    {{- end }}
+          resources:
+              requests:
+                  cpu: 50m
+                  memory: 256Mi
+              limits:
+                  memory: 1Gi
+    # Object store for grafana-db (Barman Cloud plugin): s3://<bucket>/<prefix>/grafana-db/. Credentials: the Velero R2
+    # token (Vault homelab/velero); endpoint: R2_ENDPOINT from the Argo CD render env, never in git.
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: grafana-db-r2
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: grafana-db-r2
+          data:
+              - secretKey: ACCESS_KEY_ID
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/velero
+                    property: access-key-id
+              - secretKey: ACCESS_SECRET_KEY
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/velero
+                    property: secret-access-key
+    - apiVersion: barmancloud.cnpg.io/v1
+      kind: ObjectStore
+      metadata:
+          name: grafana-db-r2
+      spec:
+          retentionPolicy: {{ .Values.backup.postgres.retention | quote }}
+          configuration:
+              destinationPath: s3://{{ .Values.backup.bucket }}/{{ .Values.backup.postgres.prefix }}/
+              {{- with env "R2_ENDPOINT" }}
+              endpointURL: {{ . }}
+              {{- end }}
+              s3Credentials:
+                  accessKeyId:
+                      name: grafana-db-r2
+                      key: ACCESS_KEY_ID
+                  secretAccessKey:
+                      name: grafana-db-r2
+                      key: ACCESS_SECRET_KEY
+              wal:
+                  compression: gzip
+              data:
+                  compression: gzip
+          instanceSidecarConfiguration:
+              # R2 rejects the boto3 default checksum headers (plugin docs, "Object Store Providers")
+              env:
+                  - name: AWS_REQUEST_CHECKSUM_CALCULATION
+                    value: when_required
+                  - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+                    value: when_required
+              resources:
+                  requests:
+                      cpu: 10m
+                      memory: 64Mi
+                  limits:
+                      memory: 256Mi
+    - apiVersion: postgresql.cnpg.io/v1
+      kind: ScheduledBackup
+      metadata:
+          name: grafana-db-daily
+      spec:
+          schedule: {{ .Values.backup.postgres.schedule | quote }}
+          backupOwnerReference: self
+          immediate: true
+          cluster:
+              name: grafana-db
+          method: plugin
+          pluginConfiguration:
+              name: barman-cloud.cloudnative-pg.io
     {{- range $host, $svc := dict "grafana" (list "grafana" 80) "prometheus" (list "kps-prometheus" 9090) "alertmanager" (list "kps-alertmanager" 9093) }}
     - apiVersion: gateway.networking.k8s.io/v1
       kind: HTTPRoute

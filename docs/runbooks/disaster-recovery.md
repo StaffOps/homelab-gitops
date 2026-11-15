@@ -15,9 +15,8 @@ Pod zone), DNS records (external-dns) and certificates (cert-manager).
 | State | Where it comes back from | Step |
 |-------|--------------------------|------|
 | Every secret (`secret/homelab/*`) | Velero backup of namespace `vault` (daily 03:00 UTC, R2 `k8s01/`) + the **old** unseal key | 4 |
-| PostgreSQL: Keycloak (users, group membership, master-realm clients), Dependency-Track (projects, API keys), Harbor (projects, users, policies), Argo Workflows (archive), DefectDojo | CloudNativePG base backups + WAL in R2 (`cnpg/<cluster>/`), point-in-time | 1 + 5 |
+| PostgreSQL: Keycloak (users, group membership, master-realm clients), Dependency-Track (projects, API keys), Harbor (projects, users, policies), Argo Workflows (archive), DefectDojo, Grafana (users, preferences, service-account tokens) | CloudNativePG base backups + WAL in R2 (`cnpg/<cluster>/`), point-in-time | 1 + 5 |
 | Argo CD API tokens (accounts `mcp`, `argo-workflows`) | Regenerated: a new Argo CD signs with a new key | 6 |
-| Grafana service-account token for the MCP server | Regenerated: Grafana's database is on a local volume, not backed up | 6 |
 | Metrics, logs, traces, Harbor images, DefectDojo uploads | Not backed up (accepted) | — |
 
 ## 0. Keep these outside the cluster (before any disaster)
@@ -41,7 +40,7 @@ archive into the existing backup path. So, before step 3, uncomment the restore 
         serverSuffix: "-r1"                             # new WAL archive path: never reuse one
 ```
 
-Every CloudNativePG Cluster (`keycloak-db`, `dtrack-db`, `harbor-db`, `workflows-db`, `defectdojo-db`) then renders
+Every CloudNativePG Cluster (`keycloak-db`, `dtrack-db`, `harbor-db`, `workflows-db`, `defectdojo-db`, `grafana-db`) then renders
 `bootstrap.recovery` from its ObjectStore (`<cluster>-r2`, `serverName: <cluster><restoreFromSuffix>`) instead of
 `initdb`, and archives its new WAL under `<cluster><serverSuffix>` so it never writes over the backups it restores
 from. The recovering Clusters wait (and retry) until their R2 credentials exist, which needs Vault (step 4).
@@ -103,8 +102,6 @@ clients and groups from git on top.
   argocd account generate-token --account mcp              # → vault kv patch secret/homelab/mcp argocd-token=<token>
   argocd account generate-token --account argo-workflows   # → vault kv patch secret/homelab/argo-workflows argocd-token=<token>
   ```
-- **Grafana** (new database): create the service account and token for the MCP server again
-  (`homelab/mcp: grafana-token`, [vault.md](vault.md)).
 - Force the affected ExternalSecrets; the MCP servers and `argocd-sync` work again.
 
 ## 7. Check

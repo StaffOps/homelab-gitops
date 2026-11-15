@@ -155,11 +155,14 @@ grafana:
             secretKeyRef:
                 name: grafana-oidc # ExternalSecret in monitoring-raw (Vault homelab/oidc: grafana)
                 key: client-secret
+        # Database: CloudNativePG Cluster grafana-db (monitoring-raw), backed up to R2 like the other databases
+        GF_DATABASE_PASSWORD:
+            secretKeyRef:
+                name: grafana-db-app
+                key: password
+    # Data lives in PostgreSQL (grafana-db); the pod keeps only plugins/cache on an emptyDir
     persistence:
-        enabled: true
-        type: pvc
-        storageClassName: {{ .Values.storageClass }}
-        size: 5Gi
+        enabled: false
     grafana.ini:
         server:
             root_url: https://grafana.{{ .Values.domain }}
@@ -179,6 +182,12 @@ grafana:
             role_attribute_path: contains(groups[*], '/grafana/admin') && 'Admin' || contains(groups[*], '/grafana/viewer') && 'Viewer'
             role_attribute_strict: true # no matching group → login refused
             allow_assign_grafana_admin: true
+        database:
+            type: postgres
+            host: grafana-db-rw:5432
+            name: grafana
+            user: grafana
+            ssl_mode: require
         analytics:
             check_for_updates: false
             reporting_enabled: false
