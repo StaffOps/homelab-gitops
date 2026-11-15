@@ -172,7 +172,9 @@ resources:
     # traffic (mTLS between Pods, L4 telemetry, AuthorizationPolicy). Not labelled:
     #   - kube-* (control plane and node components) and istio-system (ztunnel and istiod must stay outside
     #     the mesh they implement);
-    #   - a namespace that already has the label keeps its value (set "none" to opt a namespace out).
+    #   - calico-system and tigera-operator are set to "none": the Calico operator's default-deny policy there
+    #     (managed by homelab-ansible) would drop ztunnel's HBONE port 15008, and their Pods are mostly hostNetwork;
+    #   - any other namespace that already has the label keeps its value (set "none" to opt a namespace out).
     # Gateway Pods opt out by themselves (Istio sets istio.io/dataplane-mode=none on them); hostNetwork Pods
     # (Calico, MetalLB speaker, node-exporter) are never captured. Existing namespaces are labelled by the
     # background controller (mutateExisting); new ones at admission. Running Pods join without a restart.
@@ -191,18 +193,25 @@ resources:
                     apiVersions: [v1]
                     operations: [CREATE, UPDATE]
                     resources: [namespaces]
+          variables:
+              - name: optOut
+                expression: object.metadata.name in ['calico-system', 'tigera-operator']
+              - name: mode
+                expression: "variables.optOut ? 'none' : 'ambient'"
           matchConditions:
               - name: not-system
                 expression: >-
                     !object.metadata.name.startsWith('kube-') && object.metadata.name != 'istio-system'
-              - name: label-absent
+              - name: needs-label
                 expression: >-
-                    !has(object.metadata.labels) || !('istio.io/dataplane-mode' in object.metadata.labels)
+                    !has(object.metadata.labels) || !('istio.io/dataplane-mode' in object.metadata.labels) ||
+                    (object.metadata.name in ['calico-system', 'tigera-operator'] &&
+                    object.metadata.labels['istio.io/dataplane-mode'] != 'none')
           mutations:
               - patchType: ApplyConfiguration
                 applyConfiguration:
                     expression: >-
-                        Object{metadata: Object.metadata{labels: {"istio.io/dataplane-mode": "ambient"}}}
+                        Object{metadata: Object.metadata{labels: {"istio.io/dataplane-mode": variables.mode}}}
     # The background controller updates existing Namespaces (mutateExisting above)
     - apiVersion: rbac.authorization.k8s.io/v1
       kind: ClusterRole
