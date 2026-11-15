@@ -168,3 +168,49 @@ resources:
           - apiGroups: [apiextensions.k8s.io]
             resources: [customresourcedefinitions]
             verbs: [get, list, watch]
+    # Istio ambient mode on every namespace: label istio.io/dataplane-mode=ambient, so ztunnel carries the Pods'
+    # traffic (mTLS between Pods, L4 telemetry, AuthorizationPolicy). Not labelled:
+    #   - kube-* (control plane and node components) and istio-system (ztunnel and istiod must stay outside
+    #     the mesh they implement);
+    #   - a namespace that already has the label keeps its value (set "none" to opt a namespace out).
+    # Gateway Pods opt out by themselves (Istio sets istio.io/dataplane-mode=none on them); hostNetwork Pods
+    # (Calico, MetalLB speaker, node-exporter) are never captured. Existing namespaces are labelled by the
+    # background controller (mutateExisting); new ones at admission. Running Pods join without a restart.
+    - apiVersion: policies.kyverno.io/v1
+      kind: MutatingPolicy
+      metadata:
+          name: namespace-ambient-mode
+      spec:
+          failurePolicy: Ignore
+          evaluation:
+              mutateExisting:
+                  enabled: true
+          matchConstraints:
+              resourceRules:
+                  - apiGroups: [""]
+                    apiVersions: [v1]
+                    operations: [CREATE, UPDATE]
+                    resources: [namespaces]
+          matchConditions:
+              - name: not-system
+                expression: >-
+                    !object.metadata.name.startsWith('kube-') && object.metadata.name != 'istio-system'
+              - name: label-absent
+                expression: >-
+                    !has(object.metadata.labels) || !('istio.io/dataplane-mode' in object.metadata.labels)
+          mutations:
+              - patchType: ApplyConfiguration
+                applyConfiguration:
+                    expression: >-
+                        Object{metadata: Object.metadata{labels: {"istio.io/dataplane-mode": "ambient"}}}
+    # The background controller updates existing Namespaces (mutateExisting above)
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+          name: kyverno:background-controller:namespace-ambient
+          labels:
+              rbac.kyverno.io/aggregate-to-background-controller: "true"
+      rules:
+          - apiGroups: [""]
+            resources: [namespaces]
+            verbs: [get, list, watch, update, patch]
