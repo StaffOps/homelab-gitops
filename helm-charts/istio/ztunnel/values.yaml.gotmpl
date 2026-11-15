@@ -1,5 +1,8 @@
 logAsJson: true
+# Every namespace except kube-*, istio-system and Calico is in ambient mode: ztunnel carries almost all Pod traffic
+# of the node (79m CPU / 50Mi measured right after enabling it). Requests tripled so it keeps CPU under load; no
+# limits: throttling or OOM-killing ztunnel would cut the network of every mesh Pod.
 resources:
     requests:
-        cpu: 50m
-        memory: 128Mi
+        cpu: 150m
+        memory: 384Mi
