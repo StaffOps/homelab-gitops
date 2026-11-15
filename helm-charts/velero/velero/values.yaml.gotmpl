@@ -65,6 +65,20 @@ metrics:
                   severity: warning
               annotations:
                   summary: No successful Velero backup of schedule {{`{{ $labels.schedule }}`}} for 36h
+            # PartiallyFailed (e.g. one volume not copied by the node-agent) is not counted by velero_backup_failure_total
+            - alert: VeleroBackupPartiallyFailed
+              expr: increase(velero_backup_partial_failure_total{schedule!=""}[1h]) > 0
+              labels:
+                  severity: warning
+              annotations:
+                  summary: Velero backup of schedule {{`{{ $labels.schedule }}`}} partially failed
+            - alert: VeleroBackupLocationUnavailable
+              expr: velero_backup_location_status_gauge == 0
+              for: 15m
+              labels:
+                  severity: warning
+              annotations:
+                  summary: Velero backup location {{`{{ $labels.backup_location_name }}`}} (R2) is unavailable
 resources:
     requests:
         cpu: 20m

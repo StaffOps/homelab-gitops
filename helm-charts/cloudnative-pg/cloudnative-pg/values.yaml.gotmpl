@@ -4,9 +4,10 @@ crds:
     create: true
 monitoring:
     podMonitorEnabled: true
+    # The official dashboard is vendored (newer upstream revision, operator Pod regex fixed for fullnameOverride cnpg)
+    # in helm-charts/monitoring/monitoring-raw/dashboards/data/cnpg.json → Grafana folder "Databases".
     grafanaDashboard:
-        create: true
-        namespace: monitoring
+        create: false
 resources:
     requests:
         cpu: 50m

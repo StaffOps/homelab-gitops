@@ -52,6 +52,7 @@ reportsController:
             memory: 320Mi
     serviceMonitor:
         enabled: true
+# The chart's dashboard is vendored (pruned of the panels for policy types this lab does not use) in
+# monitoring-raw/dashboards/security/kyverno-official.json, next to the curated kyverno.json: docs/dashboards/security.md
 grafana:
-    enabled: true
-    namespace: monitoring
+    enabled: false

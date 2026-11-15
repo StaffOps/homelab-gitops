@@ -4,6 +4,8 @@
 repositories:
     - name: cnpg
       url: https://cloudnative-pg.github.io/charts
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
 environments:
     default:
         values:
@@ -11,6 +13,9 @@ environments:
             - cloudnative-pg:
                   enabled: true
                   version: 0.29.1 # operator 1.30.1
+            - cloudnative-pg-raw:
+                  enabled: true
+                  version: 2.0.2
 ---
 releases:
     - chart: cnpg/cloudnative-pg
@@ -20,3 +25,11 @@ releases:
       version: '{{ .Values | get "cloudnative-pg" | get "version" }}'
       values:
           - ./cloudnative-pg/values.yaml.gotmpl
+    # PrometheusRule for every CloudNativePG cluster of the lab (the operator chart ships none)
+    - chart: bedag/raw
+      name: cloudnative-pg-raw
+      namespace: cnpg-system
+      condition: cloudnative-pg-raw.enabled
+      version: '{{ .Values | get "cloudnative-pg-raw" | get "version" }}'
+      values:
+          - ./cloudnative-pg-raw/values.yaml.gotmpl

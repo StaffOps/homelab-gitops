@@ -45,7 +45,8 @@ groups:
             annotations:
                 summary: Calico IP pool {{ $labels.ippool }} is {{ $value | humanizePercentage }} allocated
           - alert: TigeraOperatorComponentDegraded
-            expr: tigera_operator_component_status{job="tigera-operator", condition="Degraded"} == 1
+            # the operator exports condition in lowercase (available/degraded/progressing)
+            expr: tigera_operator_component_status{job="tigera-operator", condition="degraded"} == 1
             for: 15m
             labels:
                 severity: warning

@@ -1,0 +1,65 @@
+resources:
+    # Alerts for every CloudNativePG cluster (cnpg_* from each instance's exporter, all namespaces). Thresholds from
+    # the CloudNativePG sample rules (docs/src/samples/monitoring/prometheusrule.yaml, v1.30.1) and the cluster
+    # chart rules (cloudnative-pg/charts, charts/cluster/prometheus_rules). Dashboard: "PostgreSQL / Clusters".
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+          name: cloudnative-pg
+      spec:
+          groups:
+              - name: cloudnative-pg
+                rules:
+                    - alert: CNPGInstanceDown
+                      expr: cnpg_collector_up == 0
+                      for: 5m
+                      labels:
+                          severity: critical
+                      annotations:
+                          summary: 'PostgreSQL {{`{{ $labels.namespace }}/{{ $labels.pod }}`}} is down'
+                    - alert: CNPGHighConnections
+                      expr: |
+                          sum by (namespace, pod) (cnpg_backends_total)
+                              / max by (namespace, pod) (cnpg_pg_settings_setting{name="max_connections"}) * 100 > 80
+                      for: 5m
+                      labels:
+                          severity: warning
+                      annotations:
+                          summary: 'PostgreSQL {{`{{ $labels.namespace }}/{{ $labels.pod }}`}} uses over 80% of max_connections'
+                    - alert: CNPGLongRunningTransaction
+                      expr: max by (namespace, pod, datname, application_name) (cnpg_backends_max_tx_duration_seconds) > 300
+                      for: 1m
+                      labels:
+                          severity: warning
+                      annotations:
+                          summary: 'Transaction open for more than 5 minutes on {{`{{ $labels.namespace }}/{{ $labels.pod }}`}} ({{`{{ $labels.application_name }}`}})'
+                    - alert: CNPGDatabaseXidAge
+                      expr: cnpg_pg_database_xid_age > 300000000
+                      for: 1m
+                      labels:
+                          severity: warning
+                      annotations:
+                          summary: 'Database {{`{{ $labels.datname }}`}} on {{`{{ $labels.namespace }}/{{ $labels.pod }}`}} is over 300M transactions from the frozen XID (wraparound risk)'
+                    - alert: CNPGDeadlocks
+                      expr: increase(cnpg_pg_stat_database_deadlocks[1h]) > 10
+                      for: 1m
+                      labels:
+                          severity: warning
+                      annotations:
+                          summary: 'More than 10 deadlocks in the last hour in {{`{{ $labels.datname }}`}} ({{`{{ $labels.namespace }}/{{ $labels.pod }}`}})'
+                    - alert: CNPGWalArchivingFailing
+                      expr: |
+                          (cnpg_pg_stat_archiver_last_failed_time - cnpg_pg_stat_archiver_last_archived_time) > 1
+                              and on (namespace, pod) cnpg_pg_replication_in_recovery == 0
+                      for: 1m
+                      labels:
+                          severity: warning
+                      annotations:
+                          summary: 'WAL archiving is failing on {{`{{ $labels.namespace }}/{{ $labels.pod }}`}}'
+                    - alert: CNPGMetricsCollectionFailing
+                      expr: cnpg_collector_last_collection_error == 1
+                      for: 15m
+                      labels:
+                          severity: warning
+                      annotations:
+                          summary: 'Metrics collection keeps failing on {{`{{ $labels.namespace }}/{{ $labels.pod }}`}}: PostgreSQL panels show stale data'

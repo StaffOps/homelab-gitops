@@ -44,6 +44,17 @@ extraEnv: |
           secretKeyRef:
               name: keycloak-admin
               key: password
+    # Metrics for the official Grafana dashboards (docs/dashboards/security.md): HTTP latency histogram plus a
+    # 250 ms bucket (the SLI "responses below 250ms"), and user-event counters keycloak_user_events_total per
+    # realm and client (login, code_to_token, refresh_token, ... with an error label on failures)
+    - name: KC_HTTP_METRICS_HISTOGRAMS_ENABLED
+      value: "true"
+    - name: KC_HTTP_METRICS_SLOS
+      value: "250"
+    - name: KC_EVENT_METRICS_USER_ENABLED
+      value: "true"
+    - name: KC_EVENT_METRICS_USER_TAGS
+      value: realm,clientId
 metrics:
     enabled: true
 health:

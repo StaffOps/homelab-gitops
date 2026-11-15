@@ -38,3 +38,17 @@ resources:
               - portNumber: 15090
                 path: /stats/prometheus
                 interval: 30s
+    # istio-cni node agent (port "metrics" 15014): istio_cni_install_ready, ztunnel_connected (CNI agent ↔ ztunnel
+    # link that enrols ambient pods), nodeagent_reconcile_events_total. Dashboard: Networking & Ingress / Mesh.
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PodMonitor
+      metadata:
+          name: istio-cni
+      spec:
+          selector:
+              matchLabels:
+                  k8s-app: istio-cni-node
+          podMetricsEndpoints:
+              - port: metrics
+                path: /metrics
+                interval: 30s

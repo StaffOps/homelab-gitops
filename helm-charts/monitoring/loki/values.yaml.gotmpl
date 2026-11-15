@@ -59,7 +59,7 @@ monitoring:
         enabled: true
     # Loki's own recording + alerting rules (PrometheusRule). The chart's dashboards are off: they target the
     # distributed mode (component containers, blooms, cloud object stores, boltdb) and stay mostly empty here;
-    # monitoring-raw ships a dashboard for this monolithic Loki instead (loki.dashboard.json).
+    # monitoring-raw ships a dashboard for this monolithic Loki instead (dashboards/observability/loki.json).
     rules:
         enabled: true
     alerts:

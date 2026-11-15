@@ -19,8 +19,11 @@ server:
             storage "file" {
                 path = "/vault/data"
             }
+            # Metrics are kept in memory for prometheus_retention_time after their last update. It must be well
+            # above the scrape interval (60s): with 30s, request/token/lease metrics (updated on events, or every
+            # usage_gauge_period = 10m) expired before Prometheus scraped them. 24h is Vault's default.
             telemetry {
-                prometheus_retention_time = "30s"
+                prometheus_retention_time = "24h"
                 disable_hostname = true
             }
     dataStorage:

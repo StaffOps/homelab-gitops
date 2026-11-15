@@ -14,6 +14,24 @@ prometheus:
         enabled: true
         serviceMonitor:
             enabled: true
+        # Chart example uses the removed keda_metrics_adapter_scaler_errors; current name per KEDA 2.21 docs
+        prometheusRules:
+            enabled: true
+            alerts:
+                - alert: KedaScalerErrors
+                  expr: sum by (exported_namespace, scaledObject, scaler) (rate(keda_scaler_detail_errors_total[5m])) > 0
+                  for: 10m
+                  labels:
+                      severity: warning
+                  annotations:
+                      summary: 'KEDA scaler {{`{{ $labels.scaler }}`}} of {{`{{ $labels.exported_namespace }}/{{ $labels.scaledObject }}`}} is failing'
+                - alert: KedaScaledObjectErrors
+                  expr: sum by (exported_namespace, scaledObject) (rate(keda_scaled_object_errors_total[5m])) > 0
+                  for: 10m
+                  labels:
+                      severity: warning
+                  annotations:
+                      summary: 'KEDA cannot handle ScaledObject {{`{{ $labels.exported_namespace }}/{{ $labels.scaledObject }}`}}'
     webhooks:
         enabled: true
         serviceMonitor:

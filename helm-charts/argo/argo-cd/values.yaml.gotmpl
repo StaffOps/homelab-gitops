@@ -78,6 +78,8 @@ configs:
     params:
         create: true
         server.insecure: true # TLS terminates at the Gateway
+        # argocd_app_condition{condition=...} per app (dashboard "Argo CD / Operations"); off by default upstream
+        controller.metrics.application.conditions: ComparisonError,SyncError,InvalidSpecError
     cmp:
         create: true
         plugins:
@@ -166,6 +168,10 @@ repoServer:
     # Resolved branch→commit is cached 1m by default, which would hide the 15s polling (configs.cm)
     extraArgs:
         - --revision-cache-expiration=15s
+    # gRPC latency histograms (grpc_server_handling_seconds): GenerateManifest = helmfile plugin render time
+    env:
+        - name: ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM
+          value: "true"
     metrics:
         enabled: true
         serviceMonitor:
