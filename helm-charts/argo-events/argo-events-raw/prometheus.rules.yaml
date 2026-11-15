@@ -1,0 +1,76 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# Scrape jobs from resources/monitoring.yaml; the scrape sets namespace=argo-events (the metrics' own namespace label
+# becomes exported_namespace).
+groups:
+    - name: argo-events
+      rules:
+          # Argo Events ships no alert rules. Derived from the documented "Errors" golden signals
+          # (https://github.com/argoproj/argo-events/blob/v1.9.11/docs/metrics.md):
+          # events_processing_failed_total includes events_sent_failed_total (event not on the EventBus = lost).
+          - alert: ArgoEventsEventProcessingFailed
+            expr: |-
+                sum by (namespace, eventsource_name, event_name) (increase(argo_events_events_processing_failed_total{job="argo-events/eventsources"}[10m])) > 0
+            labels:
+                severity: warning
+            annotations:
+                summary: EventSource {{ $labels.eventsource_name }} failed to process events ({{ $labels.event_name }})
+                description: Events failed to be processed or published to the EventBus in the last 10 minutes. Check `kubectl --context k8s01 -n {{ $labels.namespace }} logs -l eventsource-name={{ $labels.eventsource_name }}` and the EventBus.
+          # Same source: action_retries_failed_total = action given up after the retries (or at once without a
+          # retryStrategy), i.e. the trigger did not run.
+          - alert: ArgoEventsSensorActionFailed
+            expr: |-
+                sum by (namespace, sensor_name, trigger_name) (increase(argo_events_action_retries_failed_total{job="argo-events/sensors"}[10m])) > 0
+            labels:
+                severity: warning
+            annotations:
+                summary: Sensor {{ $labels.sensor_name }} gave up trigger {{ $labels.trigger_name }}
+                description: A trigger failed after its retries in the last 10 minutes. Check `kubectl --context k8s01 -n {{ $labels.namespace }} logs -l sensor-name={{ $labels.sensor_name }}`.
+    # EventBus (NATS JetStream). awesome-prometheus-alerts, NATS / prometheus-nats-exporter, commit a533dc4
+    # (https://github.com/samber/awesome-prometheus-alerts/blob/a533dc44856cf39df3ffa2a1d5040513885a6879/_data/rules.yml).
+    # Upstream uses the exporter's default prefix gnatsd_; Argo Events runs it with prefix nats_ (names verified on
+    # the sidecar). Thresholds, for and severity as upstream; job selector added. Not taken: connections,
+    # subscriptions, routes, accounts, leaf nodes (single server, ~5 clients), JetStream store usage (the max is
+    # derived from the node disk, not the 5 Gi PVC).
+    - name: argo-events-nats
+      rules:
+          # Upstream "Nats server down" with our job; static namespace label added (absent() keeps only job).
+          - alert: NatsServerDown
+            expr: absent(up{job="argo-events/eventbus"})
+            for: 1m
+            labels:
+                severity: critical
+                namespace: argo-events
+            annotations:
+                summary: The EventBus NATS server has disappeared from Prometheus service discovery
+                description: No target for job argo-events/eventbus. Check `kubectl --context k8s01 -n argo-events get eventbus default` and the StatefulSet eventbus-default-js.
+          - alert: NatsHighCpuUsage
+            expr: nats_varz_cpu{job="argo-events/eventbus"} > 80
+            for: 5m
+            labels:
+                severity: warning
+            annotations:
+                summary: NATS server {{ $labels.pod }} uses more than 80% CPU
+                description: nats_varz_cpu is on a 0-100 scale (current {{ $value }}).
+          - alert: NatsHighMemoryUsage
+            expr: nats_varz_mem{job="argo-events/eventbus"} > 200 * 1024 * 1024
+            for: 5m
+            labels:
+                severity: warning
+            annotations:
+                summary: NATS server {{ $labels.pod }} uses more than 200 MB of memory (container limit 512 Mi)
+          # nats_varz_slow_consumers is cumulative since the server started: the alert stays until the pod restarts.
+          - alert: NatsSlowConsumers
+            expr: nats_varz_slow_consumers{job="argo-events/eventbus"} > 0
+            for: 3m
+            labels:
+                severity: critical
+            annotations:
+                summary: NATS server {{ $labels.pod }} dropped slow consumers
+                description: A client (EventSource or Sensor) could not keep up and was disconnected; events may have been redelivered or delayed.
+          - alert: NatsTooManyErrors
+            expr: increase(nats_varz_jetstream_stats_api_errors{job="argo-events/eventbus"}[5m]) > 5
+            for: 5m
+            labels:
+                severity: warning
+            annotations:
+                summary: NATS server {{ $labels.pod }} returned {{ $value }} JetStream API errors in 5 minutes

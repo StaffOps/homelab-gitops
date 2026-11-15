@@ -1,0 +1,2308 @@
+{
+  "id": null,
+  "uid": "hl-platform-argo-rollouts-ops",
+  "title": "Argo Rollouts / Operations",
+  "description": "Curated health view of Argo Rollouts in the homelab: is the controller up, are Rollouts and their canary analyses healthy, is the controller keeping up. Built from the Argo Rollouts v1.10.2 controller metrics docs (https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md), the metric definitions in controller/metrics and the upstream example dashboard ('Argo Rollouts / Official').",
+  "tags": [
+    "platform",
+    "argo-rollouts",
+    "progressive-delivery"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "schemaVersion": 41,
+  "version": 1,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "weekStart": "",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "name": "Firing alerts",
+        "expr": "ALERTS{alertstate=\"firing\", namespace=~\"argo-rollouts\"}",
+        "step": "60s",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{alertname}} ({{severity}}) in {{namespace}}",
+        "tagKeys": "severity",
+        "useValueForTime": false
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "name": "Container restarts",
+        "expr": "changes(kube_pod_container_status_restarts_total{namespace=~\"argo-rollouts\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Restart: {{pod}}",
+        "textFormat": "container {{container}} of {{namespace}}/{{pod}} restarted",
+        "tagKeys": "",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "templating": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Argo Rollouts controller metrics (v1.10.2)",
+      "url": "https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "doc"
+    },
+    {
+      "title": "Related",
+      "type": "dashboards",
+      "tags": [
+        "platform"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "text",
+      "title": "How to read this dashboard",
+      "description": "Reading guide for this dashboard.",
+      "options": {
+        "mode": "markdown",
+        "content": "**What Argo Rollouts does here.** Argo Rollouts v1.10.2 (chart 2.43.12, namespace `argo-rollouts`, one controller\nreplica) replaces a Deployment by a `Rollout` that ships a new version as a canary or blue-green, shifting traffic on the\nshared Gateway through the Gateway API plugin and checking it with Prometheus **ClusterAnalysisTemplates**\n(`success-rate`, `p95-latency`, `pod-restarts`, in argo-rollouts-raw). Rollouts are seen and promoted from Argo CD\n(rollout extension); there is no standalone Rollouts dashboard.\n\n**Today no Rollout exists**, so every per-Rollout panel (phase, replicas, AnalysisRuns, reconcile latency) is empty by\ndesign: the controller only exports `rollout_*`, `analysis_run_*` and `experiment_*` series for existing objects. What is\nlive now: controller up/version, the AnalysisTemplates, workqueues, Kubernetes API calls, resources.\n\n**Healthy looks like:** controller UP, no Rollout in Error/Abort/Timeout/InvalidSpec, 0 reconcile errors, workqueues near 0.\n**When something is red:** `kubectl --context k8s01 argo rollouts get rollout <name> -n <ns>` (or the Argo CD UI),\n`kubectl --context k8s01 -n argo-rollouts logs deploy/argo-rollouts` (json logs), and the AnalysisRun of the failed step:\n`kubectl --context k8s01 -n <ns> get analysisruns`. The Rollout's namespace is the label `exported_namespace`\n(`namespace` is the controller's, set by the scrape).",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        }
+      },
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Active alerts for this service",
+      "id": 31,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Prometheus alerts of this service that are FIRING (condition true for longer than the rule's `for`) or PENDING (condition true, waiting for `for`). Same filter as the red alert annotations of this dashboard; Watchdog/InfoInhibitor are excluded. Empty = healthy. Alertmanager has no receiver in this lab, so dashboards are where alerts are seen: the rule, its threshold and source are in the rule files (helm-charts/<app>/**/prometheus.rules.yaml or the -raw release) and in docs/dashboards/. All alerts of the lab: dashboard \"Alerts overview\" (Observability folder).",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "ALERTS{alertname!~\"Watchdog|InfoInhibitor\", alertstate=~\"firing|pending\", namespace=~\"argo-rollouts\"}",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "No active alerts"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alertstate"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "state"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "firing": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "pending": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "critical": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "warning": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "info": {
+                        "color": "blue",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "prometheus": true,
+              "endpoint": true,
+              "service": true,
+              "instance": true,
+              "uid": true
+            },
+            "indexByName": {
+              "alertname": 0,
+              "alertstate": 1,
+              "severity": 2,
+              "namespace": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Is Argo Rollouts up?",
+      "collapsed": false,
+      "panels": [],
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Controller",
+      "description": "Prometheus can scrape the Rollouts controller (:8090, 1 = up). Down = no Rollout progresses or aborts. Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md. Derived query: Prometheus `up` of the scrape job.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(up{job=\"argo-rollouts-metrics\"}) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 0
+                },
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 3,
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Version",
+      "description": "Controller version from `argo_rollouts_controller_info` (must match the pin v1.10.2 in helm-charts/argo-rollouts/helmfile.yaml.gotmpl). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/controller/metrics/prommetrics.go.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (version) (argo_rollouts_controller_info{job=\"argo-rollouts-metrics\"})",
+          "legendFormat": "{{version}}",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "name",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 4,
+      "gridPos": {
+        "x": 3,
+        "y": 14,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Rollouts",
+      "description": "Rollout objects known to the controller (`rollout_info` = 1 per Rollout). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/examples/dashboard.json (\"Total Rollouts\").",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(rollout_info{job=\"argo-rollouts-metrics\"}) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 5,
+      "gridPos": {
+        "x": 6,
+        "y": 14,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Failed rollouts",
+      "description": "Rollouts whose phase is Error, Abort, Timeout or InvalidSpec (alert `ArgoRolloutFailed`). Phases are computed in controller/metrics/rollouts.go from the Progressing/InvalidSpec conditions. Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/examples/dashboard.json (Error/Timeout/Aborted/Invalid Spec stats).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(rollout_info{job=\"argo-rollouts-metrics\",phase=~\"Error|Abort|Timeout|InvalidSpec\"} == 1) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 6,
+      "gridPos": {
+        "x": 9,
+        "y": 14,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Paused",
+      "description": "Rollouts waiting at a pause step (manual promotion or timed pause). Normal during a canary. Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/examples/dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(rollout_info{job=\"argo-rollouts-metrics\",phase=\"Paused\"} == 1) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 7,
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Progressing",
+      "description": "Rollouts currently shifting traffic or scaling a new ReplicaSet. Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/examples/dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(rollout_info{job=\"argo-rollouts-metrics\",phase=\"Progressing\"} == 1) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 8,
+      "gridPos": {
+        "x": 15,
+        "y": 14,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Analysis templates",
+      "description": "AnalysisTemplates + ClusterAnalysisTemplates seen by the controller (`analysis_template_info`; 3 ClusterAnalysisTemplates in argo-rollouts-raw). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/controller/metrics/prommetrics.go.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(analysis_template_info{job=\"argo-rollouts-metrics\"}) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 9,
+      "gridPos": {
+        "x": 18,
+        "y": 14,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Reconcile errors (24h)",
+      "description": "Errors while reconciling Rollouts, AnalysisRuns and Experiments (`*_reconcile_error` counters, which only appear after the first error). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase({__name__=~\"rollout_reconcile_error|analysis_run_reconcile_error|experiment_reconcile_error\",job=\"argo-rollouts-metrics\"}[24h])) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 10,
+      "gridPos": {
+        "x": 21,
+        "y": 14,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "row",
+      "title": "Rollouts (empty until a Rollout exists)",
+      "collapsed": false,
+      "panels": [],
+      "id": 11,
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "table",
+      "title": "Rollouts",
+      "description": "One row per Rollout: strategy (canary/blueGreen), traffic router (here the Gateway API plugin) and phase (Completed = healthy and fully promoted). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md (`rollout_info`).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (exported_namespace, name, strategy, traffic_router, phase) (rollout_info{job=\"argo-rollouts-metrics\"})",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "container": true,
+              "endpoint": true,
+              "instance": true,
+              "job": true,
+              "pod": true,
+              "service": true,
+              "prometheus": true,
+              "Value": true
+            },
+            "renameByName": {
+              "exported_namespace": "namespace"
+            }
+          }
+        }
+      ],
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Replicas per Rollout",
+      "description": "Desired vs available vs unavailable replicas (`rollout_info_replicas_*`). Unavailable > 0 for long = new version not becoming ready. Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_namespace, name) (rollout_info_replicas_desired{job=\"argo-rollouts-metrics\"})",
+          "legendFormat": "{{exported_namespace}}/{{name}} desired",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_namespace, name) (rollout_info_replicas_available{job=\"argo-rollouts-metrics\"})",
+          "legendFormat": "{{exported_namespace}}/{{name}} available",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_namespace, name) (rollout_info_replicas_unavailable{job=\"argo-rollouts-metrics\"})",
+          "legendFormat": "{{exported_namespace}}/{{name}} unavailable",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 13,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rollout events by reason",
+      "description": "Kubernetes events emitted by the controller per Rollout (`rollout_events_total`, type Normal/Warning, reason such as RolloutUpdated, RolloutStepCompleted, RolloutAborted). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/controller/metrics/prommetrics.go.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_namespace, name, type, reason) (increase(rollout_events_total{job=\"argo-rollouts-metrics\"}[$__rate_interval]))",
+          "legendFormat": "{{exported_namespace}}/{{name}} {{type}} {{reason}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 14,
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Analysis (canary checks)",
+      "collapsed": false,
+      "panels": [],
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "table",
+      "title": "Analysis templates and their metrics",
+      "description": "Each AnalysisTemplate/ClusterAnalysisTemplate and the metrics it checks, with the provider type (prometheus here). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/controller/metrics/prommetrics.go (`analysis_template_metric_info`).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (name, metric, type) (analysis_template_metric_info{job=\"argo-rollouts-metrics\"})",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "container": true,
+              "endpoint": true,
+              "instance": true,
+              "job": true,
+              "pod": true,
+              "service": true,
+              "prometheus": true,
+              "Value": true
+            },
+            "renameByName": {}
+          }
+        }
+      ],
+      "id": 16,
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "AnalysisRuns by phase",
+      "description": "Existing AnalysisRuns per phase (Pending, Running, Successful, Failed, Error, Inconclusive). A Failed/Error run aborts its Rollout. Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md (`analysis_run_info`).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count by (phase) (analysis_run_info{job=\"argo-rollouts-metrics\"} == 1)",
+          "legendFormat": "{{phase}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 17,
+      "gridPos": {
+        "x": 8,
+        "y": 35,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "AnalysisRun metric results",
+      "description": "Last result of each metric of each AnalysisRun (`analysis_run_metric_phase` = 1 on the current phase); dry_run = metric does not count toward the verdict. Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (exported_namespace, name, metric, type, dry_run, phase) (analysis_run_metric_phase{job=\"argo-rollouts-metrics\"} == 1)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "container": true,
+              "endpoint": true,
+              "instance": true,
+              "job": true,
+              "pod": true,
+              "service": true,
+              "prometheus": true,
+              "Value": true
+            },
+            "renameByName": {
+              "exported_namespace": "namespace"
+            }
+          }
+        }
+      ],
+      "id": 18,
+      "gridPos": {
+        "x": 16,
+        "y": 35,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Controller",
+      "collapsed": false,
+      "panels": [],
+      "id": 19,
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Reconcile duration (p95)",
+      "description": "95th percentile of one reconcile of a Rollout / AnalysisRun / Experiment (histograms `*_reconcile`, buckets up to 1 s). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md; heatmap \"Reconciliation Performance\" in https://github.com/argoproj/argo-rollouts/blob/v1.10.2/examples/dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(rollout_reconcile_bucket{job=\"argo-rollouts-metrics\"}[$__rate_interval])))",
+          "legendFormat": "rollout",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(analysis_run_reconcile_bucket{job=\"argo-rollouts-metrics\"}[$__rate_interval])))",
+          "legendFormat": "analysisrun",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(experiment_reconcile_bucket{job=\"argo-rollouts-metrics\"}[$__rate_interval])))",
+          "legendFormat": "experiment",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 20,
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Reconcile errors",
+      "description": "Reconcile errors per object (alert `ArgoRolloutsReconcileErrors`). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_namespace, name) (rate(rollout_reconcile_error{job=\"argo-rollouts-metrics\"}[$__rate_interval]))",
+          "legendFormat": "rollout {{exported_namespace}}/{{name}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_namespace, name) (rate(analysis_run_reconcile_error{job=\"argo-rollouts-metrics\"}[$__rate_interval]))",
+          "legendFormat": "analysisrun {{exported_namespace}}/{{name}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_namespace, name) (rate(experiment_reconcile_error{job=\"argo-rollouts-metrics\"}[$__rate_interval]))",
+          "legendFormat": "experiment {{exported_namespace}}/{{name}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.0001
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 21,
+      "gridPos": {
+        "x": 8,
+        "y": 44,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Workqueue depth",
+      "description": "Items waiting per controller queue (Rollouts, AnalysisRuns, Experiments, Services, Ingresses, DestinationRules). Sustained > 0 = controller not keeping up. Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md, https://github.com/kubernetes/component-base/blob/master/metrics/prometheus/workqueue/metrics.go.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (name) (workqueue_depth{job=\"argo-rollouts-metrics\"})",
+          "legendFormat": "{{name}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 22,
+      "gridPos": {
+        "x": 16,
+        "y": 44,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Workqueue wait (p95)",
+      "description": "Time an item waits in the queue before a worker picks it up (`workqueue_queue_duration_seconds`). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md, https://github.com/kubernetes/component-base/blob/master/metrics/prometheus/workqueue/metrics.go.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, name) (rate(workqueue_queue_duration_seconds_bucket{job=\"argo-rollouts-metrics\"}[$__rate_interval])))",
+          "legendFormat": "{{name}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 23,
+      "gridPos": {
+        "x": 0,
+        "y": 52,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Work duration (p95)",
+      "description": "Time a worker spends on one item (`workqueue_work_duration_seconds`). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md, https://github.com/kubernetes/component-base/blob/master/metrics/prometheus/workqueue/metrics.go.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, name) (rate(workqueue_work_duration_seconds_bucket{job=\"argo-rollouts-metrics\"}[$__rate_interval])))",
+          "legendFormat": "{{name}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 24,
+      "gridPos": {
+        "x": 8,
+        "y": 52,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Kubernetes API requests by verb and code",
+      "description": "Requests the controller sends to the API server (`controller_clientset_k8s_request_total`). 4xx/5xx growing = RBAC or API trouble (404 on Get is often normal). Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (verb, status_code) (rate(controller_clientset_k8s_request_total{job=\"argo-rollouts-metrics\"}[$__rate_interval]))",
+          "legendFormat": "{{verb}} {{status_code}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 25,
+      "gridPos": {
+        "x": 16,
+        "y": 52,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Notifications",
+      "description": "Notifications sent by the controller (`notification_send_success` / `notification_send_error`). No notification service is configured here, so this stays empty. Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/controller/metrics/prommetrics.go.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (type, reason) (rate(notification_send_success{job=\"argo-rollouts-metrics\"}[$__rate_interval]))",
+          "legendFormat": "ok {{type}} {{reason}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (type, reason) (rate(notification_send_error{job=\"argo-rollouts-metrics\"}[$__rate_interval]))",
+          "legendFormat": "error {{type}} {{reason}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 26,
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Go heap and goroutines",
+      "description": "Controller heap in use and goroutines (Go client metrics). Heap is what the upstream dashboard plots as \"Memory Used\". Source: https://github.com/argoproj/argo-rollouts/blob/v1.10.2/examples/dashboard.json.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(go_memstats_heap_alloc_bytes{job=\"argo-rollouts-metrics\"})",
+          "legendFormat": "heap alloc",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(go_goroutines{job=\"argo-rollouts-metrics\"})",
+          "legendFormat": "goroutines",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 27,
+      "gridPos": {
+        "x": 12,
+        "y": 60,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Resources (namespace argo-rollouts)",
+      "collapsed": false,
+      "panels": [],
+      "id": 28,
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory working set vs limit",
+      "description": "Memory per Argo Rollouts container (solid) and its limit (dashed). Source: https://github.com/kubernetes-monitoring/kubernetes-mixin.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (container) (container_memory_working_set_bytes{namespace=\"argo-rollouts\",container!=\"\",image!=\"\"})",
+          "legendFormat": "{{container}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (container) (kube_pod_container_resource_limits{namespace=\"argo-rollouts\",resource=\"memory\"})",
+          "legendFormat": "{{container}} limit",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* limit"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 29,
+      "gridPos": {
+        "x": 0,
+        "y": 69,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU usage",
+      "description": "CPU cores used per Argo Rollouts container. Source: https://github.com/kubernetes-monitoring/kubernetes-mixin.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (container) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace=\"argo-rollouts\",container!=\"\"})",
+          "legendFormat": "{{container}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cores",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "lineInterpolation": "linear",
+            "pointSize": 4,
+            "barAlignment": 0,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 30,
+      "gridPos": {
+        "x": 12,
+        "y": 69,
+        "w": 12,
+        "h": 8
+      }
+    }
+  ]
+}

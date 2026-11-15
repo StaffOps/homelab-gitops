@@ -1,0 +1,45 @@
+# Prometheus scraping of the pods the controller generates (the chart's ServiceMonitor covers only the
+# controller-manager). All three expose port "metrics" (7777). Reference:
+# https://github.com/argoproj/argo-events/blob/v1.9.11/docs/metrics.md (selector controller in eventsource-controller,
+# sensor-controller, eventbus-controller). Jobs: argo-events/eventsources, argo-events/sensors, argo-events/eventbus.
+#   eventsources  argo_events_event_service_running_total, argo_events_events_sent(_failed)_total,
+#                 argo_events_events_processing_failed_total, argo_events_event_processing_duration_milliseconds
+#   sensors       argo_events_action_triggered/failed/retries_failed_total, argo_events_action_duration_milliseconds
+#   eventbus      prometheus-nats-exporter sidecar of the NATS JetStream pods: nats_varz_*, nats_server_*,
+#                 nats_stream_*, nats_consumer_*, nats_connz_*, nats_routez_*, nats_subsz_*
+- apiVersion: monitoring.coreos.com/v1
+  kind: PodMonitor
+  metadata:
+      name: eventsources
+  spec:
+      selector:
+          matchLabels:
+              controller: eventsource-controller
+      podMetricsEndpoints:
+          - port: metrics
+            path: /metrics
+            interval: 30s
+- apiVersion: monitoring.coreos.com/v1
+  kind: PodMonitor
+  metadata:
+      name: sensors
+  spec:
+      selector:
+          matchLabels:
+              controller: sensor-controller
+      podMetricsEndpoints:
+          - port: metrics
+            path: /metrics
+            interval: 30s
+- apiVersion: monitoring.coreos.com/v1
+  kind: PodMonitor
+  metadata:
+      name: eventbus
+  spec:
+      selector:
+          matchLabels:
+              controller: eventbus-controller
+      podMetricsEndpoints:
+          - port: metrics
+            path: /metrics
+            interval: 30s

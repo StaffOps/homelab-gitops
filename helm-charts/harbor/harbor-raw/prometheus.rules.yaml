@@ -1,0 +1,52 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# Harbor itself ships no alert rules (https://goharbor.io/docs/main/administration/metrics/ lists the metrics only).
+# Source: the Harbor mixin of grafana/jsonnet-libs, harbor-mixin/alerts/harbor-alerts.yml at commit dfd854fa67
+# (https://github.com/grafana/jsonnet-libs/blob/dfd854fa671fba95fb6dc915e022715b6db043ce/harbor-mixin/alerts/harbor-alerts.yml).
+# Names, thresholds, durations and severities as upstream; the changes are listed above each rule. Every series of
+# job "harbor" carries namespace=harbor, so the alerts keep it.
+groups:
+    - name: harbor
+      rules:
+          # harbor-mixin, as is. harbor_up is set by the exporter for core, database, jobservice, portal, redis,
+          # registry, registryctl and trivy.
+          - alert: HarborComponentStatus
+            expr: |-
+                harbor_up{job="harbor"} == 0
+            for: 5m
+            labels:
+                severity: critical
+            annotations:
+                summary: Harbor component {{ $labels.component }} is down
+                description: Harbor {{ $labels.component }} has been down for more than 5 minutes (harbor_up from the Harbor exporter).
+          # harbor-mixin, same name (upstream spelling), threshold and duration. Matching fixed: upstream joins with
+          # "on(harbor_project_quota_usage_byte)", a label that does not exist, so it compared any project with any
+          # quota; here both sides match on (namespace, project_name). A quota of -1 means unlimited.
+          - alert: HarborProjectQuataExceeded
+            expr: |-
+                (
+                  harbor_project_quota_usage_byte{job="harbor"}
+                  > on (namespace, project_name)
+                  harbor_project_quota_byte{job="harbor"}
+                )
+                and on (namespace, project_name)
+                harbor_project_quota_byte{job="harbor"} != -1
+            for: 15m
+            labels:
+                severity: warning
+            annotations:
+                summary: Harbor project {{ $labels.project_name }} exceeds its storage quota
+                description: Harbor project {{ $labels.project_name }} has exceeded the configured disk usage quota for the past 15 minutes.
+          # harbor-mixin, same threshold (15 % of core API requests are 4xx/5xx) and duration. Aggregation adapted:
+          # "sum(...)" became "sum by (namespace) (...)" so the alert keeps namespace=harbor.
+          - alert: HarborHighErrorRate
+            expr: |-
+                sum by (namespace) (rate(harbor_core_http_request_total{job="harbor", code=~"4..|5.."}[5m]))
+                /
+                sum by (namespace) (rate(harbor_core_http_request_total{job="harbor"}[5m]))
+                > 0.15
+            for: 5m
+            labels:
+                severity: warning
+            annotations:
+                summary: Harbor core API error rate above 15 %
+                description: '{{ $value | humanizePercentage }} of the Harbor core API requests returned 4xx/5xx over 5 minutes.'

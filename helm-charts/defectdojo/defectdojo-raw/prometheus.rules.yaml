@@ -1,0 +1,52 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# DefectDojo, django-prometheus and nginx-prometheus-exporter ship no alert rules (django-prometheus has only recording
+# rules in examples/prometheus/django.rules). Sources per rule below; every series used carries namespace=defectdojo.
+# PostgreSQL (defectdojo-db) is covered by the CloudNativePG rules.
+groups:
+    - name: defectdojo
+      rules:
+          # nginx-prometheus-exporter README (https://github.com/nginx/nginx-prometheus-exporter#metrics-for-nginx-oss):
+          # nginx_up is "1 for a successful scrape and 0 for a failed one" of nginx stub_status, i.e. the exporter
+          # sidecar cannot reach the nginx container that fronts DefectDojo. Derived: no upstream rule; 5m and critical
+          # follow the harbor-mixin HarborComponentStatus rule (component down).
+          - alert: DefectDojoNginxDown
+            expr: |-
+                nginx_up{job="defectdojo-django"} == 0
+            for: 5m
+            labels:
+                severity: critical
+            annotations:
+                summary: DefectDojo nginx is not answering its exporter
+                description: nginx-prometheus-exporter in {{ $labels.pod }} could not read nginx stub_status for 5 minutes; the DefectDojo UI and API are probably down.
+          # awesome-prometheus-alerts "Nginx high HTTP 5xx error rate" (_data/rules.yml at commit a533dc4,
+          # https://github.com/samber/awesome-prometheus-alerts): 5xx > 5 % of requests while there is traffic, for 1m,
+          # critical. Adapted: nginx stub_status has no status label, so the ratio uses django-prometheus
+          # django_http_responses_total_by_status_total (documentation/metrics.md); window 1m -> 5m because the
+          # scrape interval is 60s (rate needs two samples); aggregated by namespace.
+          # Lab change: warning after 5m (upstream: critical after 1m), so one 500 with little traffic does not page.
+          - alert: DefectDojoHighHttp5xxErrorRate
+            expr: |-
+                (
+                  sum by (namespace) (rate(django_http_responses_total_by_status_total{job="defectdojo-django", status=~"5.."}[5m]))
+                  /
+                  sum by (namespace) (rate(django_http_responses_total_by_status_total{job="defectdojo-django"}[5m]))
+                ) * 100 > 5
+                and
+                sum by (namespace) (rate(django_http_responses_total_by_status_total{job="defectdojo-django"}[5m])) > 0
+            for: 5m
+            labels:
+                severity: warning
+            annotations:
+                summary: DefectDojo returns HTTP 5xx on more than 5 % of requests
+                description: '{{ $value | humanize }} % of DefectDojo responses were 5xx over 5 minutes (django-prometheus).'
+          # awesome-prometheus-alerts "Redis down" (same file and commit): redis_up == 0 for 1m, critical. Valkey is
+          # the Celery broker: without it imports and deduplication jobs are not queued.
+          - alert: DefectDojoValkeyDown
+            expr: |-
+                redis_up{job="defectdojo-valkey-metrics"} == 0
+            for: 1m
+            labels:
+                severity: critical
+            annotations:
+                summary: DefectDojo Valkey (Celery broker) is down
+                description: redis_exporter in {{ $labels.pod }} cannot reach Valkey; Celery tasks (imports, deduplication, notifications) are not being queued.

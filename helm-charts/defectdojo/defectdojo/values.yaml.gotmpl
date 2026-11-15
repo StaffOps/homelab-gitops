@@ -63,7 +63,10 @@ django:
                 memory: 128Mi
     uwsgi:
         appSettings:
-            processes: 2
+            # One process: django-prometheus keeps one registry per uwsgi worker and /django_metrics answers from
+            # whichever worker gets the scrape, so with 2 workers every counter jumps between two values and rate()
+            # is wrong (django-prometheus documentation/exports.md, "multiple processes"). Threads keep concurrency.
+            processes: 1
             threads: 4
         resources:
             requests:
@@ -140,6 +143,11 @@ valkey:
         enabled: true
         image:
             pullPolicy: IfNotPresent
+        # Celery queue depth: length of the list "celery" (default queue, DB 0) as redis_key_size{key="celery"}.
+        # Celery deletes the list when it is empty, so the series is absent while nothing is queued.
+        extraEnvVars:
+            - name: REDIS_EXPORTER_CHECK_SINGLE_KEYS
+              value: db0=celery
         resources:
             requests:
                 cpu: 5m

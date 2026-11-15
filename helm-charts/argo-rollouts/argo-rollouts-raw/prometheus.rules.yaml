@@ -1,0 +1,30 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# The scrape sets namespace=argo-rollouts; the Rollout's own namespace is exported_namespace.
+# Argo Rollouts ships no alert rules; both rules are derived from upstream definitions at the installed tag v1.10.2.
+groups:
+    - name: argo-rollouts
+      rules:
+          # Phases computed in controller/metrics/rollouts.go (calculatePhase) and shown as the Error / Invalid Spec /
+          # Timeout / Aborted stats of the project dashboard (examples/dashboard.json):
+          # https://github.com/argoproj/argo-rollouts/blob/v1.10.2/controller/metrics/rollouts.go
+          # Abort = failed analysis or manual abort (traffic is back on stable); Timeout = progressDeadlineSeconds.
+          - alert: ArgoRolloutFailed
+            expr: |-
+                max by (namespace, exported_namespace, name, strategy, phase) (rollout_info{job="argo-rollouts-metrics", phase=~"Error|Abort|Timeout|InvalidSpec"}) == 1
+            for: 5m
+            labels:
+                severity: warning
+            annotations:
+                summary: Rollout {{ $labels.exported_namespace }}/{{ $labels.name }} is in phase {{ $labels.phase }}
+                description: Check `kubectl --context k8s01 argo rollouts get rollout {{ $labels.name }} -n {{ $labels.exported_namespace }}` (or the Argo CD rollout extension) and the last AnalysisRun.
+          # rollout_reconcile_error: "Error occurring during the rollout"
+          # (https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md). The counter
+          # appears on the first error, so increase() misses that very first one.
+          - alert: ArgoRolloutsReconcileErrors
+            expr: |-
+                sum by (namespace, exported_namespace, name) (increase(rollout_reconcile_error{job="argo-rollouts-metrics"}[15m])) > 0
+            labels:
+                severity: warning
+            annotations:
+                summary: Argo Rollouts fails to reconcile Rollout {{ $labels.exported_namespace }}/{{ $labels.name }}
+                description: Check `kubectl --context k8s01 -n argo-rollouts logs deploy/argo-rollouts` for the Rollout.

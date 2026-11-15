@@ -1,7 +1,7 @@
 # Dashboards: GitOps & Platform
 
 Grafana folder **GitOps & Platform** (`helm-charts/monitoring/monitoring-raw/dashboards/platform/`). Services: Argo CD,
-KEDA, Velero. Every dashboard has a reading guide at the top, a description on each panel (with the source of the
+KEDA, Velero, Argo Rollouts, Argo Workflows, Argo Events. Every dashboard has a reading guide at the top, a description on each panel (with the source of the
 query) and annotations for firing alerts and container restarts of the service namespace.
 
 | Dashboard (uid) | Kind | File |
@@ -12,6 +12,11 @@ query) and annotations for firing alerts and container restarts of the service n
 | KEDA / Official (`hl-platform-keda`) | official, adapted | `keda.json` |
 | Velero / Backups (`hl-platform-velero-ops`) | curated | `velero-ops.json` |
 | Velero / Official (`hl-platform-velero`) | community (Velero project), trimmed | `velero.json` |
+| Argo Rollouts / Operations (`hl-platform-argo-rollouts-ops`) | curated | `argo-rollouts-ops.json` |
+| Argo Rollouts / Official (`hl-platform-argo-rollouts`) | official (Argo Rollouts project), adapted | `argo-rollouts.json` |
+| Argo Workflows / Operations (`hl-platform-argo-workflows-ops`) | curated | `argo-workflows-ops.json` |
+| Argo Workflows / Overview (mixin) (`hl-platform-argo-workflows`) | community (argo-workflows-mixin), adapted | `argo-workflows.json` |
+| Argo Events / Operations (`hl-platform-argo-events-ops`) | curated | `argo-events-ops.json` |
 
 Validation: `scripts/check-dashboard.py` against the live Prometheus, 0 errors on every file (EMPTY results are listed
 per dashboard below). The JSON files are generated from small scripts kept outside the repo; edit the JSON directly.
@@ -166,6 +171,139 @@ since last Backup* (no scheduled backup yet), *Backup time heatmap* (no backup i
 
 ---
 
+## Argo Rollouts
+
+**What it does here.** Argo Rollouts v1.10.2 (chart 2.43.12, namespace `argo-rollouts`, one controller replica):
+canary / blue-green `Rollout`s with Gateway API traffic splitting (plugin) and three Prometheus
+**ClusterAnalysisTemplates** (`success-rate`, `p95-latency`, `pod-restarts`, argo-rollouts-raw). Seen and promoted from
+the Argo CD rollout extension. **No Rollout exists yet.**
+
+**Scrape job**: `argo-rollouts-metrics` (chart ServiceMonitor, :8090). Nothing else to scrape (dashboard disabled).
+Reference: <https://github.com/argoproj/argo-rollouts/blob/v1.10.2/docs/features/controller-metrics.md>, definitions in
+<https://github.com/argoproj/argo-rollouts/blob/v1.10.2/controller/metrics/prommetrics.go>. The scrape sets
+`namespace=argo-rollouts`; the object's own namespace is `exported_namespace`.
+
+| Family | Metrics | Meaning / use |
+|--------|---------|---------------|
+| Rollouts (appear with Rollouts) | `rollout_info{strategy,traffic_router,phase}`, `rollout_info_replicas_{desired,available,unavailable,updated}`, `rollout_events_total{type,reason}`, `rollout_phase` (deprecated) | phase = Completed / Progressing / Paused / Error / Abort / Timeout / InvalidSpec (computed in `controller/metrics/rollouts.go`) |
+| Analysis | `analysis_template_info`, `analysis_template_metric_info{metric,type}` (live: 3 templates), `analysis_run_info{phase}`, `analysis_run_metric_phase{metric,type,dry_run,phase}`, `analysis_run_metric_type` | canary checks and their verdicts |
+| Experiments | `experiment_info`, `experiment_phase`, `experiment_reconcile*` | not used here |
+| Reconcile | `rollout_reconcile` / `analysis_run_reconcile` / `experiment_reconcile` (histograms, buckets ≤ 1 s), `*_reconcile_error` | controller latency and errors |
+| Controller | `argo_rollouts_controller_info{version}`, `controller_clientset_k8s_request_total{kind,verb,status_code}`, `workqueue_*{name}`, `notification_send*` | health, API traffic, queues (Rollouts, AnalysisRuns, Experiments, Services, Ingresses, DestinationRules) |
+| Runtime | `go_*`, `process_*` | Go client defaults |
+
+### Argo Rollouts / Operations (curated)
+Sources: D = docs controller-metrics.md, S = prommetrics.go/rollouts.go, U = upstream dashboard, W = client-go workqueue,
+K = kubernetes-mixin.
+- **Is Argo Rollouts up?** controller up, version (S), Rollouts (U), failed rollouts = Error/Abort/Timeout/InvalidSpec
+  (U, alert `ArgoRolloutFailed`), paused, progressing (U), analysis templates (S), reconcile errors 24 h (D).
+- **Rollouts**: table by phase/strategy/router (D), replicas desired/available/unavailable (D), events by reason (S).
+- **Analysis**: templates and their metrics (S), AnalysisRuns by phase (D), metric results (D).
+- **Controller**: reconcile p95 for the three kinds (D, U heatmap), reconcile errors (D), workqueue depth / wait p95 /
+  work p95 (D, W), API requests by verb and code (D), notifications (S), Go heap + goroutines (U "Memory Used").
+- **Resources**: memory vs limit, CPU (K).
+
+EMPTY at validation (all expected while no Rollout exists): Rollouts table, replicas, events, AnalysisRuns, metric
+results, the three reconcile latencies and errors, notifications (no notification service configured).
+
+### Argo Rollouts / Official
+Source: <https://github.com/argoproj/argo-rollouts/blob/v1.10.2/examples/dashboard.json> (tag = installed version;
+linked from the controller-metrics docs). Changes: the Rollout namespace variable and filters use `exported_namespace`
+(upstream `namespace` would only offer `argo-rollouts`), datasource fixed, refresh 5 s → 1 m, homelab annotations,
+reading guide, descriptions. Legacy `singlestat`/`graph` panels are auto-migrated by Grafana. EMPTY: every panel except
+*Uptime* and *Memory Used* (no Rollout); variables have no values for the same reason.
+
+---
+
+## Argo Workflows
+
+**What it does here.** Argo Workflows v4.1.6 (chart 2.0.18, namespace `argo-workflows`): workflow-controller and
+argo-server (UI/API with Keycloak SSO), archive of finished workflows in CloudNativePG `workflows-db` (30 days), logs and
+artifacts in R2, ClusterWorkflowTemplates `argocd-sync` and `github-watch`.
+
+**Scrape jobs**: `argo-workflows-workflow-controller` (chart ServiceMonitor, :9090 `/metrics`), `argo-workflows/workflows-db`
+(CNPG PodMonitor, see Databases). **argo-server is not scraped**: its `/metrics` on :2746 answers **403** without a
+bearer token (checked with a port-forward); the dashboard uses kube-state-metrics for it. Reference:
+<https://github.com/argoproj/argo-workflows/blob/v4.1.6/docs/metrics.md>. Metrics are OpenTelemetry instruments exported
+with the `argo_workflows_` prefix; several counters have no `_total` suffix (`argo_workflows_total_count`,
+`argo_workflows_error_count`, `argo_workflows_queue_adds_count`, `argo_workflows_log_messages`, `argo_workflows_pod_missing`).
+
+| Family | Metrics | Meaning / use |
+|--------|---------|---------------|
+| Workflows | `argo_workflows_gauge{phase}`, `argo_workflows_total_count{phase,exported_namespace}`, `argo_workflows_workflow_condition{type,status}` | workflows in the cluster per phase; phase transitions (appear after the first workflow handled by the current Pod) |
+| Templates / cron | `argo_workflows_workflowtemplate_triggered_total{name,cluster_scope,phase}`, `argo_workflows_workflowtemplate_runtime` (histogram), `argo_workflows_cronworkflows_triggered_total`, `argo_workflows_cronworkflows_concurrencypolicy_triggered` | template usage and run time; CronWorkflow runs |
+| Pods | `argo_workflows_pods_gauge{phase}`, `argo_workflows_pods_total_count`, `argo_workflows_pod_pending_count{reason}`, `argo_workflows_pod_missing`, `argo_workflows_pod_restarts_total{reason}` | workflow pods; pending reasons, infrastructure restarts |
+| Controller | `argo_workflows_error_count{cause}`, `argo_workflows_log_messages{level}`, `argo_workflows_operation_duration_seconds`, `argo_workflows_is_leader`, `argo_workflows_version`, `argo_workflows_workers_busy_count{worker_type}` | errors (OperationPanic, CronWorkflowSubmissionError, CronWorkflowSpecError), reconcile time, saturation |
+| Queues | `argo_workflows_queue_{adds_count,depth_gauge,latency,duration,retries,longest_running,unfinished_work}{queue_name}` | workflow, cron_wf, pod_cleanup, workflow_ttl, workflow_archive queues |
+| K8s API | `argo_workflows_k8s_request_total` / `_duration{kind,verb,status_code}`, `argo_workflows_client_rate_limiter_latency`, `argo_workflows_resource_rate_limiter_latency` | API traffic, client-go throttling |
+| Not in the docs list | `argo_workflows_db_client_operation_duration{db_operation_name}` (archive DB, OTel database semconv), `argo_workflows_http_client_request_*` (HTTP clients, today the API server), `argo_workflows_go_*` (OTel Go runtime) | archive DB latency |
+| Not present yet | `locks_*`, `deprecated_feature`, custom metrics | appear when used |
+
+### Argo Workflows / Operations (curated)
+Sources: D = docs metrics.md v4.1.6, M = argo-workflows-mixin c331414, G = grafana.com 21393 (linked from the docs; built
+for v3.6, several names differ in v4, so not imported), K = kubernetes-mixin / kube-state-metrics.
+- **Is Argo Workflows up?** controller up, leader, version (D), server pods ready (K), archive DB exporter up (CNPG),
+  running / pending / failed+error workflows in the cluster (D, M).
+- **Workflows**: by phase (D, M), phase changes (D, M), success rate 24 h and completions 24 h (M), template runs by phase
+  (D), template runtime p95 (D, G), CronWorkflow triggers and concurrency-policy suppressions (D, M).
+- **Workflow pods**: by phase, pending by reason, missing/restarted (D, M).
+- **Controller**: errors by cause, log messages by level, operation duration p50/p95, queue depth, queue latency p95,
+  busy workers, API requests by code, API p95, client rate-limiter p95 (D, M).
+- **Archive database**: SQL operations/s and average latency (OTel semconv).
+- **Resources**: whole namespace (controller, server, workflow pods, workflows-db).
+
+Annotations: alerts and restarts in `argo-workflows`, workflow ended Failed/Error. EMPTY at validation: phase changes,
+template runs/runtime, CronWorkflow triggers, pods pending, missing/restarted pods (counters appear on the first event
+handled by the current controller Pod, and no workflow has run since it started),
+operation duration, queue depth/latency (no workflow reconciled in the window).
+
+### Argo Workflows / Overview (mixin)
+Source: <https://github.com/adinhodovic/argo-workflows-mixin/blob/c331414c1bb3bf95f4f83c951cea298674290152/dashboards_out/argo-workflows-overview.json>
+(same mixin as the alerts; targets v3.6+/v4 names). Changes: `cluster` variable and filters removed (one cluster, no
+`cluster` label), variables read from `argo_workflows_gauge` with All = `.*` (upstream read `argo_workflows_total_count`,
+empty until a workflow runs, which blanked every panel), datasource fixed, annotations, reading guide. The mixin's
+*Controller* dashboard is not imported: the curated Controller row covers it. EMPTY: everything built on
+`argo_workflows_total_count`, `pod_pending_count`, `pod_restarts_total`, `pod_missing`, the CronWorkflow counters, and the
+operation-duration histogram (same reason as above).
+
+---
+
+## Argo Events
+
+**What it does here.** Argo Events v1.9.11 (chart 2.4.28, namespace `argo-events`): controller-manager; EventBus
+`default` (NATS JetStream 2.10.29, one server, 5 Gi local-path volume, stream limits 100000 msgs / 72 h / 1 GB);
+EventSource `argocd` (webhook for Argo CD notifications) and Sensor `argocd` (trigger `log`).
+
+**Scrape jobs**: `argo-events-controller-manager-metrics` (chart ServiceMonitor, :7777, controller-runtime metrics only).
+**Added by this change (pending scrape)** — PodMonitors in `argo-events-raw/resources/monitoring.yaml`, port `metrics`
+(7777): `argo-events/eventsources` (`controller=eventsource-controller`), `argo-events/sensors`
+(`controller=sensor-controller`), `argo-events/eventbus` (`controller=eventbus-controller`: the
+prometheus-nats-exporter 0.14.0 sidecar). Endpoints and metric names were checked on the pods with a port-forward. The
+docs' scrape example is <https://github.com/argoproj/argo-events/blob/v1.9.11/docs/metrics.md>.
+
+| Family | Metrics | Meaning / use |
+|--------|---------|---------------|
+| EventSource (pending scrape) | `argo_events_event_service_running_total`, `argo_events_events_sent_total`, `argo_events_events_sent_failed_total`, `argo_events_events_processing_failed_total` (includes sent_failed), `argo_events_event_processing_duration_milliseconds` (summary, _sum/_count only) | labels `eventsource_name`, `event_name`; the docs' golden signals |
+| Sensor (pending scrape) | `argo_events_action_triggered_total`, `argo_events_action_failed_total`, `argo_events_action_retries_failed_total`, `argo_events_action_duration_milliseconds` (summary) | labels `sensor_name`, `trigger_name` |
+| EventBus (pending scrape) | `nats_varz_*` (server: msgs, bytes, mem, cpu, connections, slow consumers, JetStream stats/config), `nats_server_*`, `nats_stream_*{stream_name}`, `nats_consumer_*{consumer_name}`, `nats_connz_*`, `nats_routez_*`, `nats_subsz_*` | exporter prefix is `nats_` (upstream default `gnatsd_`); stream `default` = events, `KV_<sensor>` = Sensor state |
+| Controller | `controller_runtime_*{controller}`, `workqueue_*`, `rest_client_requests_total`, `certwatcher_*` | reconcile of eventbus/eventsource/sensor controllers |
+
+### Argo Events / Operations (curated)
+Sources: E = Argo Events metrics docs v1.9.11, N = NATS monitoring docs / prometheus-nats-exporter v0.14.0, KB =
+controller-runtime metrics reference, K = kube-state-metrics / kubernetes-mixin. No upstream Argo Events dashboard exists.
+- **Is Argo Events up?** controller up, EventSource / Sensor Deployments available, EventBus StatefulSet ready, version
+  (K), event services running and failed events 24 h (E).
+- **EventSources**: events sent, failed events, average processing time (E).
+- **Sensors**: actions triggered, failed actions / retries exhausted, average action duration (E).
+- **EventBus**: exporter up, NATS version, connections, slow consumers, JetStream storage, memory, JetStream API errors,
+  CPU, messages in/out, stream size, consumer backlog (N).
+- **Controller**: reconciles by result, errors, workqueue depth, reconcile p95, API responses (KB). **Resources** (K).
+
+EMPTY at validation: every EventSource, Sensor and EventBus panel (pending scrape, 23 queries). The PVC usage of the
+EventBus is not shown: `kubelet_volume_stats_*` reports the node filesystem for local-path volumes.
+
+---
+
 ## Changes made in the apps (reach the cluster after commit + push)
 
 - `helm-charts/argo/argo-cd/values.yaml.gotmpl`: `configs.params.controller.metrics.application.conditions:
@@ -175,8 +313,26 @@ since last Backup* (no scheduled backup yet), *Backup time heatmap* (no backup i
 - `helm-charts/keda/keda/values.yaml.gotmpl`: PrometheusRule via `prometheus.operator.prometheusRules` with
   `KedaScalerErrors` and `KedaScaledObjectErrors` (current metric names; the chart's commented example uses the removed
   `keda_metrics_adapter_scaler_errors`).
+- `helm-charts/argo-rollouts/argo-rollouts-raw/prometheus.rules.yaml` (PrometheusRule `argo-rollouts`): `ArgoRolloutFailed`
+  (phase Error/Abort/Timeout/InvalidSpec for 5 m; phases from `controller/metrics/rollouts.go` v1.10.2 and the project
+  dashboard) and `ArgoRolloutsReconcileErrors` (`increase(rollout_reconcile_error[15m]) > 0`; docs controller-metrics.md).
+  Argo Rollouts ships no alert rules.
+- `helm-charts/argo-workflows/argo-workflows-raw/prometheus.rules.yaml` (PrometheusRule `argo-workflows`): the four alerts
+  of argo-workflows-mixin c331414 (`ArgoWorkflowsHighWorkflowFailureRate`, `ArgoWorkflowsPendingWorkflows`,
+  `ArgoWorkflowsControllerHighErrorRate`, `ArgoWorkflowsQueueDepthHigh`), thresholds as upstream, grouped by `namespace`
+  instead of `cluster`.
+- `helm-charts/argo-events/argo-events-raw/resources/monitoring.yaml`: PodMonitors `eventsources`, `sensors`, `eventbus`.
+  `helm-charts/argo-events/argo-events-raw/prometheus.rules.yaml` (PrometheusRule `argo-events`):
+  `ArgoEventsEventProcessingFailed` and `ArgoEventsSensorActionFailed` (derived from the "Errors" golden signals of the
+  Argo Events metrics docs; the project ships no rules) and five NATS rules from awesome-prometheus-alerts a533dc4
+  (`NatsServerDown`, `NatsHighCpuUsage`, `NatsHighMemoryUsage`, `NatsSlowConsumers`, `NatsTooManyErrors`; `gnatsd_` →
+  `nats_`, job selector added, thresholds as upstream).
 - `helm-charts/velero/velero/values.yaml.gotmpl`: alerts `VeleroBackupPartiallyFailed` (partial failures are not counted
   by `velero_backup_failure_total`, so `VeleroBackupFailed` missed them) and `VeleroBackupLocationUnavailable`.
+
+Metrics to check after the sync of argo-events: `up{job=~"argo-events/(eventsources|sensors|eventbus)"}`,
+`argo_events_events_sent_total`, `argo_events_action_triggered_total`, `nats_varz_connections` (then `NatsServerDown`
+must resolve: it fires while the eventbus job does not exist).
 
 Metrics to check after the sync: `argocd_app_condition`, `grpc_server_handling_seconds_bucket{job="argo-cd-repo-server-metrics"}`;
 after the first scheduled Velero run: `velero_backup_last_successful_timestamp{schedule="velero-daily"}`,
@@ -195,3 +351,14 @@ after the first scheduled Velero run: `velero_backup_last_successful_timestamp{s
   AppProject does not enable `orphanedResources`.
 - **KEDA**: no extra component alerts needed: kube-prometheus-stack's `TargetDown` covers a dead component and
   `KubeAggregatedAPIDown`/`KubeAggregatedAPIErrors` cover the external metrics APIService.
+- **Argo Workflows server metrics**: `/metrics` on :2746 answers 403 without a token, so the server is not scraped (the
+  dashboard uses kube-state-metrics). Scraping it needs a ServiceMonitor with a bearer token of a ServiceAccount the server
+  accepts (`--auth-mode=client`); not done — the controller carries the workflow signals.
+- **Argo Workflows controller errors**: the mixin's `ArgoWorkflowsControllerHighErrorRate` fires above 5 errors/s; a single
+  `CronWorkflowSubmissionError` (a scheduled run that was not created, e.g. `github-watch`) stays below it. The curated
+  dashboard shows every error by cause; a lab threshold (`increase(...[15m]) > 0`) would be a local addition, not upstream.
+- **NATS**: `NatsSlowConsumers` uses a cumulative counter (fires until the EventBus pod restarts); JetStream store usage is
+  not alerted because its max comes from the node disk — `KubePersistentVolumeFillingUp` would cover the PVC, but
+  local-path reports the node filesystem. `nats_varz_jetstream_stats_api_errors` was already 3 at validation (cumulative).
+- **Argo Rollouts**: rules and most panels are dormant until the first Rollout; `ArgoRolloutsReconcileErrors` misses the
+  first error of a Rollout (counter created on it).

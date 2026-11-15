@@ -18,6 +18,9 @@ restarts plus service events, and a "Security & Identity" link menu to the other
 | Keycloak capacity planning (official) (`hl-security-keycloak-capacity`) | official, adapted | Keycloak |
 | Dependency-Track (`hl-security-dependency-track`) | curated | Dependency-Track |
 | Dependency-Track (official) (`hl-security-dependency-track-official`) | upstream 5.2.1, adapted | Dependency-Track |
+| Harbor (`hl-security-harbor`) | curated | Harbor |
+| Harbor (official) (`hl-security-harbor-official`) | upstream v2.15.4, adapted | Harbor |
+| DefectDojo (`hl-security-defectdojo`) | curated | DefectDojo |
 
 "Adapted" always means: datasource pinned to `prometheus`, intro text panel, missing panel descriptions, lab
 annotations; anything else is listed per dashboard below. Validation: `scripts/check-dashboard.py` (0 errors on all
@@ -309,6 +312,136 @@ on DEX buffers `resilience4j_circuitbreaker_*`; DB `hikaricp_*`, `jdbi_query_lat
 **Gaps / recommendations:** no PrometheusRule exists for DT; candidates: scheduled task failures, a mirror task with no
 success for > 48 h, circuit breaker open.
 
+## Harbor
+
+**Here:** Harbor 2.15.4 (chart 1.19.4), namespace `harbor`: core (OIDC login via Keycloak), registry + registryctl
+(filesystem on `local-path`), jobservice, trivy, portal, internal Redis, exporter; PostgreSQL `harbor-db`
+(CloudNativePG, covered by the Databases dashboards). Chart `metrics.enabled` + `metrics.serviceMonitor.enabled`: one
+ServiceMonitor, job `harbor`, four targets on port 8001 (core, exporter, jobservice, registry; `service` label tells
+them apart, core/jobservice have no `container` label).
+
+**Scrape review:**
+- Scraped and useful: core, registry (distribution), jobservice, exporter. Nothing missing from what Harbor exports.
+- Trivy adapter: `/metrics` on :8080 exists but holds only Go runtime/process metrics (checked live) — not added;
+  scanning activity is visible through the `IMAGE_SCAN*` job queues and `harbor_up{component="trivy"}`.
+- Internal Redis: the chart has no exporter option. Liveness is `harbor_up{component="redis"}`, the job queues
+  (`harbor_task_queue_*`) are read from Redis by the exporter, memory/CPU come from cAdvisor. A redis_exporter
+  sidecar would need a new workload in `harbor-raw` — not added (gap).
+
+**Metrics** ([Harbor docs](https://goharbor.io/docs/main/administration/metrics/)):
+- Exporter (from the database/Redis): `harbor_up{component}`, `harbor_health`, `harbor_system_info{harbor_version,auth_mode}`,
+  `harbor_project_total{public}`, `harbor_project_repo_total`, `harbor_project_member_total`,
+  `harbor_project_quota_usage_byte` / `harbor_project_quota_byte` (-1 = unlimited, all projects here),
+  `harbor_project_artifact_total{artifact_type}`, `harbor_artifact_pulled` (gauge, cumulative pull count),
+  `harbor_statistics_*` (totals, storage consumption), `harbor_task_queue_size{type}`, `harbor_task_queue_latency{type}`,
+  `harbor_task_scheduled_total`, `harbor_task_concurrency{type,pool}` (only while jobs run).
+- Core: `harbor_core_http_request_total{operation,method,code}`, `harbor_core_http_request_duration_seconds` (summary,
+  quantiles 0.5/0.9/0.99), `harbor_core_http_inflight_requests`. `GetPing` = liveness probe, `GetHealth` = exporter.
+- Registry: `registry_http_requests_total{handler,method,code}`, `registry_http_request_duration_seconds`,
+  `registry_http_request_size_bytes`, `registry_http_response_size_bytes` (histograms),
+  `registry_storage_action_seconds{action,driver}`, `registry_storage_cache_total{type}` (counter despite the docs),
+  `registry_http_in_flight_requests`.
+- Jobservice: `harbor_jobservice_info{workers}`, `harbor_jobservice_task_total{type,status}`,
+  `harbor_jobservice_task_process_time_seconds` (summary) — the last two appear after the first job since the pod start.
+
+**Dashboard "Harbor (official)"** — [contrib/grafana-dashboard/metrics-example.json @ v2.15.4](https://github.com/goharbor/harbor/blob/v2.15.4/contrib/grafana-dashboard/metrics-example.json),
+the example the Harbor metrics docs link to (Harbor publishes no grafana.com dashboard; the grafana/jsonnet-libs
+harbor-mixin dashboard is a Grafana Cloud integration, not used). Changes: datasource variable removed and pinned,
+intro text, descriptions on every panel (upstream has one), lab annotations/links, refresh 10s → 1m; queries unchanged.
+EMPTY: "task concurrency" (no job running).
+
+**Dashboard "Harbor"** (curated; Harbor docs + upstream example + harbor-mixin):
+- Health: components (`harbor_up`), overall health, version/auth mode, core API 4xx/5xx ratio (red at the mixin's
+  15 %), metrics targets up (4 expected).
+- Registry content: projects, repositories, artifacts, storage used, pulls, private projects; per-project table
+  (repositories, members, pulls, used, quota with -1 shown as "unlimited").
+- Core API: requests by operation and by code, p99 by operation (summary quantile, max over pods; upstream plots
+  p90), in-flight.
+- Registry: requests by handler/code, latency p50/p95/p99, storage action p99 by action, bytes pushed/pulled
+  (`_sum` of the size histograms), blob descriptor cache hit ratio, in-flight.
+- Job service: queue size and latency by type (`> 0` only), running/scheduled jobs, jobs processed by type/status,
+  average job duration (`_sum/_count` over 1h).
+- Resources: memory vs limit and CPU per container.
+- Annotations: alerts, restarts, **Harbor component down** (`harbor_up == 0`).
+- EMPTY: queue size/latency (all queues empty), running jobs, jobs processed and average duration (no job since the
+  jobservice restart), the active-alerts table.
+
+**Alerts added** (`harbor-raw/prometheus.rules.yaml`, PrometheusRule `harbor`; source: harbor-mixin of
+[grafana/jsonnet-libs @ dfd854fa](https://github.com/grafana/jsonnet-libs/blob/dfd854fa671fba95fb6dc915e022715b6db043ce/harbor-mixin/alerts/harbor-alerts.yml)):
+- `HarborComponentStatus`: `harbor_up == 0` for 5m, critical (as is).
+- `HarborProjectQuataExceeded` (upstream spelling): quota usage > quota where quota ≠ -1, for 15m, warning. Matching
+  fixed: upstream joins `on(harbor_project_quota_usage_byte)`, a label that does not exist; here `on (namespace,
+  project_name)`. Silent today (no project has a quota).
+- `HarborHighErrorRate`: 4xx+5xx share of core API requests > 15 % for 5m, warning; `sum` → `sum by (namespace)`.
+  Peak over the first day: 2 % (docker login 401s).
+
+## DefectDojo
+
+**Here:** DefectDojo 3.5.103 (chart 1.9.69), namespace `defectdojo`: pod `defectdojo-django` (nginx + uwsgi +
+nginx-prometheus-exporter 1.5.3), `defectdojo-celery-worker` (pool `solo`), `defectdojo-celery-beat`, Valkey
+(Celery broker, chart subchart, redis_exporter v1.93.0 sidecar), PostgreSQL `defectdojo-db` (CloudNativePG, covered
+by the Databases dashboards). Scrape: ServiceMonitor `defectdojo` (`defectdojo-raw/resources/monitoring.yaml`, job
+`defectdojo-django`: endpoint `http-metrics` = nginx exporter, endpoint `http` = `/django_metrics/metrics` with basic
+auth through the Service name) and the Valkey chart's ServiceMonitor (job `defectdojo-valkey-metrics`).
+
+**Scrape review (changes pending sync):**
+- **django-prometheus counters were wrong.** uwsgi ran 2 processes; django-prometheus keeps one registry per process
+  and the scrape lands on either worker, so every counter alternated between two series of values (seen live:
+  `login` 76 → 75, metrics view 5 → 4; `process_start_time_seconds` flips every scrape) and `rate()` counted each flip
+  as a reset. django-prometheus [exports.md](https://github.com/korfuri/django-prometheus/blob/master/documentation/exports.md)
+  ("multiple processes"): a single scrape endpoint does not work with several workers. Fix:
+  `django.uwsgi.appSettings.processes: 2 → 1` (threads stay 4). Alternative not taken: `PROMETHEUS_MULTIPROC_DIR`
+  (needs a shared emptyDir and uwsgi lazy-apps; DefectDojo's uwsgi config is not set up for it). The django pod restarts
+  on sync. Until then the request/DB rates on the dashboard are inflated.
+- **Celery queue depth was missing** (workers have no metrics endpoint). Added
+  `valkey.metrics.extraEnvVars: REDIS_EXPORTER_CHECK_SINGLE_KEYS=db0=celery` (redis_exporter
+  [check-single-keys](https://github.com/oliver006/redis_exporter#command-line-flags)) → `redis_key_size{key="celery"}`
+  (list length of the default queue). The series is absent while the queue is empty (Celery deletes the list). Valkey
+  StatefulSet rolls on sync. Panels "Celery queue" and "Celery queue depth" are **pending scrape**.
+- nginx exporter and Valkey: complete. `process_*`/`python_*` of the Django endpoint are per-worker too — not charted.
+
+**Metrics:**
+- django-prometheus ([metrics.md](https://github.com/korfuri/django-prometheus/blob/master/documentation/metrics.md);
+  Python client adds `_total`): `django_http_requests_total_by_view_transport_method_total{view,transport,method}`,
+  `django_http_responses_total_by_status_total{status}`, `_by_status_view_method_total`,
+  `django_http_requests_latency_including_middlewares_seconds` and `django_http_requests_latency_seconds_by_view_method`
+  (histograms), `django_http_exceptions_total_by_type_total` / `_by_view_total` (after the first exception),
+  `django_db_execute_total`, `django_db_new_connections_total`, `django_db_query_duration_seconds` (histogram),
+  `django_db_errors_total{type}` / `django_db_new_connection_errors_total` (after the first error). No model or cache
+  metrics (DefectDojo does not use the mixins/cache backend). The kubelet probes hit `login`; the scrape is view
+  `prometheus-django-metrics`.
+- nginx-prometheus-exporter ([README](https://github.com/nginx/nginx-prometheus-exporter#metrics-for-nginx-oss)):
+  `nginx_up`, `nginx_connections_{accepted,handled,active,reading,writing,waiting}`, `nginx_http_requests_total` (no
+  status label: stub_status).
+- redis_exporter: `redis_up`, clients, memory, commands, keyspace, `redis_rejected_connections_total`, …;
+  `maxmemory` 0, policy `noeviction`.
+
+**Dashboard "DefectDojo"** (curated; DefectDojo publishes no dashboard — checked the repository and the docs):
+- Health: Django, nginx, Valkey, PostgreSQL (`cnpg_collector_up`) up, Celery worker/beat available, HTTP 5xx ratio
+  (red at 5 %, the alert threshold), Celery queue (pending scrape).
+- Web requests: responses by status, top 10 views, latency p50/p95/p99 (quantiles of the django-prometheus example
+  recording rules), slowest views p95, exceptions by type.
+- nginx: connection states, requests/s, dropped connections (accepted − handled).
+- Database (Django side): queries and new connections/s, query duration p50/p95/p99, DB errors.
+- Celery broker: queue depth (pending scrape), clients/blocked clients, memory vs container limit, commands and
+  rejected connections.
+- Resources: memory vs limit and CPU per pod/container.
+- Annotations: alerts, restarts.
+- EMPTY: Celery queue (pending scrape, then empty when idle), exceptions by type and DB errors (none since start),
+  the active-alerts table.
+
+**Alerts added** (`defectdojo-raw/prometheus.rules.yaml`, PrometheusRule `defectdojo`; DefectDojo, django-prometheus
+— only recording rules in `examples/prometheus/django.rules` — and nginx-prometheus-exporter ship no alert rules):
+- `DefectDojoNginxDown`: `nginx_up == 0` for 5m, critical. Derived from the exporter README semantics; duration and
+  severity as harbor-mixin `HarborComponentStatus`.
+- `DefectDojoHighHttp5xxErrorRate`: 5xx > 5 % of Django responses while there is traffic, for 5m, warning (lab change; upstream: 1m, critical) —
+  [awesome-prometheus-alerts](https://github.com/samber/awesome-prometheus-alerts) "Nginx high HTTP 5xx error rate"
+  (`_data/rules.yml` @ a533dc4) applied to `django_http_responses_total_by_status_total` (stub_status has no status);
+  rate window 1m → 5m (60s scrape).
+- `DefectDojoValkeyDown`: `redis_up == 0` for 1m, critical — awesome-prometheus-alerts "Redis down".
+- Not added: "Redis rejected connections" (needs a 1m increase, unreliable with a 60s scrape; maxclients is far away),
+  Celery queue growth (no upstream threshold; revisit with a baseline once `redis_key_size` is scraped).
+
 ---
 
 ## Changes outside the dashboards (in this group's apps)
@@ -318,5 +451,9 @@ success for > 48 h, circuit breaker open.
 | `helm-charts/vault/vault/values.yaml.gotmpl` | `prometheus_retention_time` 30s → 24h | full Vault telemetry, after a `vault-0` restart (seals Vault until auto-unseal) |
 | `helm-charts/keycloak/keycloak/values.yaml.gotmpl` | HTTP histograms + 250 ms SLO bucket, user event metrics (realm, clientId) | SLI latency and login panels; Keycloak restarts on sync |
 | `helm-charts/kyverno/kyverno/values.yaml.gotmpl` | `grafana.enabled: false` | chart ConfigMap `monitoring/kyverno-grafana-grafana` pruned; replaced by `kyverno-official.json` |
+| `helm-charts/defectdojo/defectdojo/values.yaml.gotmpl` | uwsgi `processes` 2 → 1 | django-prometheus counters consistent (one registry); django pod restarts on sync |
+| `helm-charts/defectdojo/defectdojo/values.yaml.gotmpl` | Valkey exporter `REDIS_EXPORTER_CHECK_SINGLE_KEYS=db0=celery` | Celery queue depth `redis_key_size{key="celery"}`; Valkey StatefulSet rolls on sync |
+| `helm-charts/harbor/harbor-raw/` | PrometheusRule `harbor` (`prometheus.rules.yaml`) | 3 harbor-mixin alerts |
+| `helm-charts/defectdojo/defectdojo-raw/` | PrometheusRule `defectdojo` (`prometheus.rules.yaml`) | 3 alerts (nginx, 5xx, Valkey) |
 
 No change was requested for the CloudNativePG `Cluster` objects in `keycloak-raw` / `dependency-track-raw`.

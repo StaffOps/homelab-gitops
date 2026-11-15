@@ -57,8 +57,11 @@ alert timeline and the most frequent alerts in the range. Its EMPTY panels mean 
 | cert-manager | curated | `hl-security-cert-manager` | `security/cert-manager.json` |
 | Dependency-Track (official) | official | `hl-security-dependency-track-official` | `security/dependency-track-official.json` |
 | Dependency-Track | curated | `hl-security-dependency-track` | `security/dependency-track.json` |
+| DefectDojo | curated | `hl-security-defectdojo` | `security/defectdojo.json` |
 | External Secrets (official) | official | `hl-security-external-secrets-official` | `security/external-secrets-official.json` |
 | External Secrets | curated | `hl-security-external-secrets` | `security/external-secrets.json` |
+| Harbor (official) | official | `hl-security-harbor-official` | `security/harbor-official.json` |
+| Harbor | curated | `hl-security-harbor` | `security/harbor.json` |
 | Keycloak capacity planning (official) | official | `hl-security-keycloak-capacity` | `security/keycloak-capacity.json` |
 | Keycloak troubleshooting (official) | official | `hl-security-keycloak-troubleshooting` | `security/keycloak-troubleshooting.json` |
 | Keycloak | curated | `hl-security-keycloak` | `security/keycloak.json` |
@@ -86,6 +89,11 @@ alert timeline and the most frequent alerts in the range. Its EMPTY panels mean 
 |-----------|------|-----|------|
 | Argo CD / Operations | curated | `hl-platform-argocd-ops` | `platform/argocd-ops.json` |
 | Argo CD / Official | official | `hl-platform-argocd` | `platform/argocd.json` |
+| Argo Events / Operations | curated | `hl-platform-argo-events-ops` | `platform/argo-events-ops.json` |
+| Argo Rollouts / Operations | curated | `hl-platform-argo-rollouts-ops` | `platform/argo-rollouts-ops.json` |
+| Argo Rollouts / Official | official | `hl-platform-argo-rollouts` | `platform/argo-rollouts.json` |
+| Argo Workflows / Operations | curated | `hl-platform-argo-workflows-ops` | `platform/argo-workflows-ops.json` |
+| Argo Workflows / Overview (mixin) | community (mixin) | `hl-platform-argo-workflows` | `platform/argo-workflows.json` |
 | KEDA / Operations | curated | `hl-platform-keda-ops` | `platform/keda-ops.json` |
 | KEDA / Official | official | `hl-platform-keda` | `platform/keda.json` |
 | Velero / Backups | curated | `hl-platform-velero-ops` | `platform/velero-ops.json` |

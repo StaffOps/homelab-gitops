@@ -1,0 +1,50 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# Mixin = argo-workflows-mixin, commit c331414 (rendered alerts:
+# https://github.com/adinhodovic/argo-workflows-mixin/blob/c331414c1bb3bf95f4f83c951cea298674290152/prometheus_alerts.yaml).
+# Adaptations: job=~".*" became our job; "by (cluster, …)" became "by (namespace, …)" (one cluster, and the alerts
+# keep namespace=argo-workflows set by the scrape; the workflow's own namespace is exported_namespace);
+# dashboard_url annotations (grafana.com) dropped. Thresholds, for and severity as upstream.
+groups:
+    - name: argo-workflows
+      rules:
+          - alert: ArgoWorkflowsHighWorkflowFailureRate
+            expr: |-
+                (
+                    sum by (namespace) (rate(argo_workflows_total_count{job="argo-workflows-workflow-controller", phase=~"Failed|Error"}[5m]))
+                    /
+                    sum by (namespace) (rate(argo_workflows_total_count{job="argo-workflows-workflow-controller"}[5m]))
+                    * 100
+                ) > 10
+            for: 1m
+            labels:
+                severity: warning
+            annotations:
+                summary: Argo Workflows high workflow failure rate.
+                description: More than 10% of workflows are failing or erroring in {{ $labels.namespace }} the past 5m.
+          - alert: ArgoWorkflowsPendingWorkflows
+            expr: |-
+                sum by (namespace) (argo_workflows_gauge{job="argo-workflows-workflow-controller", phase="Pending"}) > 5
+            for: 15m
+            labels:
+                severity: warning
+            annotations:
+                summary: Argo Workflows has many pending workflows.
+                description: More than 5 workflows are pending in {{ $labels.namespace }} for the past 15m.
+          - alert: ArgoWorkflowsControllerHighErrorRate
+            expr: |-
+                sum by (namespace, cause) (rate(argo_workflows_error_count{job="argo-workflows-workflow-controller"}[5m])) > 5
+            for: 1m
+            labels:
+                severity: warning
+            annotations:
+                summary: Argo Workflows controller has a high error rate.
+                description: More than 5 errors per second with cause {{ $labels.cause }} the past 5m.
+          - alert: ArgoWorkflowsQueueDepthHigh
+            expr: |-
+                sum by (namespace, queue_name) (argo_workflows_queue_depth_gauge{job="argo-workflows-workflow-controller"}) > 100
+            for: 5m
+            labels:
+                severity: warning
+            annotations:
+                summary: Argo Workflows controller queue depth is high.
+                description: Queue {{ $labels.queue_name }} has a depth of more than 100 for the past 5m.
