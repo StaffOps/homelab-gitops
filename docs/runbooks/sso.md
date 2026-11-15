@@ -21,6 +21,9 @@ access by joining the groups of the tools they need. Client secrets: Vault `home
 Local logins stay as break-glass: Argo CD `admin`, Grafana `admin` (Vault `homelab/grafana`), Harbor `admin`
 (Vault `homelab/harbor`), Vault root token.
 
+Not in Keycloak: DefectDojo (local accounts only, admin `admin` in Vault `homelab/defectdojo`): SSO is a
+DefectDojo Pro feature since [3.0](https://docs.defectdojo.com/releases/os_upgrading/3.0/).
+
 ## Add a tool
 
 Add it to `keycloak.apps` (creates its two groups on the next sync), create its client in

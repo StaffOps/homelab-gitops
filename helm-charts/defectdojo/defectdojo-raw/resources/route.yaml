@@ -1,0 +1,19 @@
+# https://defectdojo.<domain>: TLS ends at the shared Gateway (wildcard certificate), plain HTTP to the nginx
+# container of the django Pod. Large scan uploads: the Gateway has no body-size limit, nginx allows 800m.
+- apiVersion: gateway.networking.k8s.io/v1
+  kind: HTTPRoute
+  metadata:
+      name: defectdojo
+  spec:
+      parentRefs:
+          - name: {{ .Values.gateway.name }}
+            namespace: {{ .Values.gateway.namespace }}
+            sectionName: https
+      hostnames:
+          - defectdojo.{{ .Values.domain }}
+      rules:
+          - backendRefs:
+                - name: defectdojo-django
+                  port: 80
+            timeouts:
+                request: 1800s # imports of big reports run in the request (nginx uwsgi_read_timeout is 1800s)

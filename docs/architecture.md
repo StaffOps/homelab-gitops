@@ -28,6 +28,7 @@ Argo CD reconciles everything from `main`; the operator only bootstraps, unseals
 | `argo-events` | argo-events | event-driven automation: EventBus (NATS JetStream), EventSource `argocd` (Argo CD notifications), Sensors | argo-workflows |
 | `argo-workflows` | argo-workflows | workflows and CronWorkflows at `argo-workflows.<domain>` (Keycloak); archive in `workflows-db`, logs/artifacts in R2 | cloudnative-pg, external-secrets, keycloak |
 | `harbor` | harbor | container image + Helm (OCI) registry with Trivy scanning at `harbor.<domain>`; PostgreSQL `harbor-db` (CloudNativePG), images on a local-path volume, Keycloak login | cloudnative-pg, external-secrets, cert-manager, keycloak |
+| `defectdojo` | defectdojo | vulnerability management (scanner findings, deduplication, SLAs) at `defectdojo.<domain>`, DefectDojo 3.5; PostgreSQL `defectdojo-db` (CloudNativePG), Valkey broker, uploads on a local-path volume; local accounts only (SSO is DefectDojo Pro-only since [3.0](https://docs.defectdojo.com/releases/os_upgrading/3.0/)) | cloudnative-pg, external-secrets |
 | `velero` | velero | daily backup of stateful namespaces (objects + volumes, except PostgreSQL data) to Cloudflare R2 | external-secrets |
 | `kyverno` | kyverno | policy engine; Pod Security Standards baseline in Audit (PolicyReports); label `topology.kubernetes.io/zone=k8s-local` on every new Pod | — |
 | `nvidia-device-plugin` | nvidia-device-plugin | RuntimeClass `nvidia` + device plugin → `nvidia.com/gpu: 1` (GT 740, driver 470 on the host) | GPU setup in Ansible |

@@ -123,6 +123,9 @@
                     - appName: argo-workflows
                       path: argo-workflows
                       namespace: argo-workflows
+                    - appName: defectdojo
+                      path: defectdojo
+                      namespace: defectdojo
       template:
           metadata:
               name: '{{`{{ .appName }}`}}'

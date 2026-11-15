@@ -1,0 +1,31 @@
+# The chart has no ServiceMonitor. Two endpoints on Service defectdojo-django:
+# - http-metrics: nginx-prometheus-exporter sidecar (nginx connections and requests);
+# - http, /django_metrics/metrics: django-prometheus (requests, latency, DB queries), behind nginx basic auth
+#   (user and password in Secret defectdojo, see secrets.yaml). Django rejects a Host it does not know, so this
+#   endpoint is scraped through the Service name, which is listed in the chart's alternativeHosts (1 replica).
+- apiVersion: monitoring.coreos.com/v1
+  kind: ServiceMonitor
+  metadata:
+      name: defectdojo
+  spec:
+      selector:
+          matchLabels:
+              app.kubernetes.io/instance: defectdojo
+              defectdojo.org/component: django
+      endpoints:
+          - port: http-metrics
+            path: /metrics
+            interval: 60s
+          - port: http
+            path: /django_metrics/metrics
+            interval: 60s
+            basicAuth:
+                username:
+                    name: defectdojo
+                    key: METRICS_HTTP_AUTH_USER
+                password:
+                    name: defectdojo
+                    key: METRICS_HTTP_AUTH_PASSWORD
+            relabelings:
+                - targetLabel: __address__
+                  replacement: defectdojo-django.{{ .Release.Namespace }}.svc:80

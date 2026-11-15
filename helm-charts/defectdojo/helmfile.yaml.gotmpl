@@ -1,0 +1,38 @@
+# DefectDojo: vulnerability management (findings from scanners, deduplication, SLAs) at https://defectdojo.<domain>.
+# Exposed through the shared Gateway (HTTPRoute in defectdojo-raw), PostgreSQL from CloudNativePG (Cluster
+# defectdojo-db in defectdojo-raw, backed up to R2), Valkey (Celery broker) from the chart. Local accounts only:
+# since 3.0 every SSO login (OIDC, Keycloak, SAML) is a DefectDojo Pro feature.
+# Every secret the chart would otherwise generate on each render (Argo CD renders without cluster access) comes from
+# an existing Secret.
+repositories:
+    - name: defectdojo
+      url: https://raw.githubusercontent.com/DefectDojo/django-DefectDojo/helm-charts
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - defectdojo:
+                  enabled: true
+                  version: 1.9.69 # DefectDojo 3.5.103
+            - defectdojo-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: defectdojo
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    # PostgreSQL Cluster + backups, ExternalSecrets, generated Valkey password, HTTPRoute, ServiceMonitor
+    - chart: bedag/raw
+      name: defectdojo-raw
+      condition: defectdojo-raw.enabled
+      <<: *default
+    - chart: defectdojo/defectdojo
+      name: defectdojo
+      condition: defectdojo.enabled
+      <<: *default
