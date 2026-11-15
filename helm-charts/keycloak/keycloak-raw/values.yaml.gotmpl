@@ -240,7 +240,13 @@ resources:
                         - {{ $c.url }}
                     attributes:
                         post.logout.redirect.uris: {{ $c.url }}/*
+                        {{- if ne $id "argo-workflows" }}
                         pkce.code.challenge.method: S256
+                        {{- else }}
+                        # Argo Workflows' SSO does not send a PKCE code_challenge (Keycloak answers "Missing parameter:
+                        # code_challenge_method"); confidential client with a secret instead
+                        pkce.code.challenge.method: ""
+                        {{- end }}
                     defaultClientScopes:
                         - web-origins
                         - acr
