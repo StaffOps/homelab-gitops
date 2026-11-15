@@ -1,0 +1,15 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+groups:
+    - name: nvidia-device-plugin
+      rules:
+          # Derived (docs/dashboards/ai.md): the node advertises no allocatable nvidia.com/gpu (kube-state-metrics
+          # kube_node_status_allocatable, resource nvidia_com_gpu) = the device plugin lost the GPU; GPU pods stay
+          # Pending. The nvidia-gpu-exporter rules watch the GPU itself, not its advertisement to the kubelet.
+          - alert: NvidiaGpuNotAllocatable
+            expr: max by (node, resource) (kube_node_status_allocatable{resource="nvidia_com_gpu"}) < 1
+            for: 10m
+            labels:
+                severity: warning
+                namespace: nvidia-device-plugin
+            annotations:
+                summary: Node {{ $labels.node }} advertises no allocatable GPU — check the nvidia-device-plugin DaemonSet logs and nvidia-smi on the host

@@ -17,3 +17,45 @@ groups:
                 severity: critical
             annotations:
                 summary: Vault metrics are not being scraped
+          # vault-mixin (https://github.com/adinhodovic/vault-mixin, prometheus_alerts.yaml), expression and threshold as is.
+          - alert: VaultTooManyInfinityTokens
+            expr: |-
+                vault_token_count_by_ttl{job=~".*vault.*", creation_ttl="+Inf"} > 3
+            for: 5m
+            labels:
+                severity: warning
+            annotations:
+                summary: Vault has more than 3 non-expiring tokens — find and revoke the ones that are not the root token
+                description: More than 3 non-expiring tokens on instance {{ $labels.instance }} for the past 5m.
+          # vault-mixin (https://github.com/adinhodovic/vault-mixin, prometheus_alerts.yaml), same threshold; aggregation
+          # adapted: "by (job, instance)" became "by (namespace, job, instance)" so the alert keeps namespace=vault.
+          - alert: VaultLowResponseSuccessRate
+            expr: |-
+                (
+                  1 - (
+                    sum by (namespace, job, instance) (rate(vault_core_response_status_code{job=~".*vault.*", type="5xx"}[5m]))
+                    /
+                    sum by (namespace, job, instance) (rate(vault_core_response_status_code{job=~".*vault.*"}[5m]))
+                  )
+                ) * 100 < 95
+                and
+                sum by (namespace, job, instance) (rate(vault_core_response_status_code{job=~".*vault.*", type="5xx"}[5m])) > 1
+            for: 1m
+            labels:
+                severity: warning
+            annotations:
+                summary: Less than 95 % of Vault responses are non-5xx — check the vault-0 logs and the Vault dashboard
+                description: Less than 95% of Vault responses are non-5xx on instance {{ $labels.instance }} the past 5m.
+          # Derived (no upstream rule): the CronJob vault-autounseal runs every 5 minutes and exits 0 when Vault is
+          # unsealed, so no success in 20 minutes means its Jobs fail (e.g. Secret vault-unseal missing). 20 min is the
+          # red threshold of the Vault dashboard panel "auto-unseal CronJob last success" (docs/dashboards/security.md).
+          # Metric: kube-state-metrics kube_cronjob_status_last_successful_time.
+          - alert: VaultAutoUnsealNotSucceeding
+            expr: |-
+                time() - max by (namespace, cronjob) (kube_cronjob_status_last_successful_time{namespace="vault", cronjob="vault-autounseal"}) > 20 * 60
+            for: 1m
+            labels:
+                severity: warning
+            annotations:
+                summary: The vault-autounseal CronJob has not succeeded for 20 minutes — check its Job pods and that Secret vault/vault-unseal exists
+                description: Vault would stay sealed after the next reboot. See docs/runbooks/vault.md (autounseal-secret).

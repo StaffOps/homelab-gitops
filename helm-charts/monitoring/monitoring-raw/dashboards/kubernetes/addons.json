@@ -140,13 +140,158 @@
       }
     },
     {
+      "type": "table",
+      "title": "Active alerts for this service",
+      "id": 47,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Prometheus alerts of this service that are FIRING (condition true for longer than the rule's `for`) or PENDING (condition true, waiting for `for`). Same filter as the red alert annotations of this dashboard; Watchdog/InfoInhibitor are excluded. Empty = healthy. Alertmanager has no receiver in this lab, so dashboards are where alerts are seen: the rule, its threshold and source are in the rule files (helm-charts/<app>/**/prometheus.rules.yaml or the -raw release) and in docs/dashboards/. All alerts of the lab: dashboard \"Alerts overview\" (Observability folder).",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "ALERTS{alertname!~\"Watchdog|InfoInhibitor\", alertstate=~\"firing|pending\", alertname=~\"CoreDNS.*|KubeAggregatedAPI.*|KubeStateMetrics.*|Kubelet.*Certificate.*|KubePersistentVolume.*|NodeTextFileCollectorScrapeError|TargetDown\"}",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "No active alerts"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alertstate"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "state"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "firing": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "pending": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "critical": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "warning": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "info": {
+                        "color": "blue",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "prometheus": true,
+              "endpoint": true,
+              "service": true,
+              "instance": true,
+              "uid": true
+            },
+            "indexByName": {
+              "alertname": 0,
+              "alertstate": 1,
+              "severity": 2,
+              "namespace": 3
+            }
+          }
+        }
+      ]
+    },
+    {
       "type": "row",
       "title": "CoreDNS",
       "id": 2,
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 12,
+        "y": 17,
         "w": 24,
         "h": 1
       },
@@ -163,7 +308,7 @@
       "description": "CoreDNS metrics endpoint scraped (coredns-mixin alert CoreDNSDown when absent, https://github.com/povilasv/coredns-mixin).",
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 18,
         "w": 3,
         "h": 4
       },
@@ -253,7 +398,7 @@
       "description": "DNS requests per second (`coredns_dns_requests_total`, https://coredns.io/plugins/metrics/).",
       "gridPos": {
         "x": 3,
-        "y": 13,
+        "y": 18,
         "w": 3,
         "h": 4
       },
@@ -315,7 +460,7 @@
       "description": "Share of responses with rcode SERVFAIL over 5 min, formula of coredns-mixin alert\nCoreDNSErrorsHigh (warning 1 %, critical 3 %, https://github.com/povilasv/coredns-mixin/blob/master/alerts/coredns.libsonnet). SERVFAIL = CoreDNS could not\nanswer (upstream down, loop, plugin error). NXDOMAIN is *not* an error (search-path lookups produce many). The SERVFAIL\nseries only exists after the first one, so 0 is shown when absent.",
       "gridPos": {
         "x": 6,
-        "y": 13,
+        "y": 18,
         "w": 3,
         "h": 4
       },
@@ -386,7 +531,7 @@
       "description": "99th percentile time to answer a query (`coredns_dns_request_duration_seconds`), formula of\ncoredns-mixin alert CoreDNSLatencyHigh (critical above 4 s, https://github.com/povilasv/coredns-mixin). Cached answers take microseconds; forwarded ones the\nupstream round-trip.",
       "gridPos": {
         "x": 9,
-        "y": 13,
+        "y": 18,
         "w": 3,
         "h": 4
       },
@@ -457,7 +602,7 @@
       "description": "Share of queries answered from the cache plugin: hits / requests\n(`coredns_cache_hits_total`, `coredns_cache_requests_total`, https://coredns.io/plugins/cache/). Low values mean most queries go upstream\n(slower). No upstream threshold, no colour.",
       "gridPos": {
         "x": 12,
-        "y": 13,
+        "y": 18,
         "w": 3,
         "h": 4
       },
@@ -519,7 +664,7 @@
       "description": "Times all upstream resolvers were marked unhealthy at once in the last hour\n(`coredns_forward_healthcheck_broken_total`, https://coredns.io/plugins/forward/); counter of coredns-mixin alert\nCoreDNSForwardHealthcheckBrokenCount. > 0 = external names stopped resolving for a while.",
       "gridPos": {
         "x": 15,
-        "y": 13,
+        "y": 18,
         "w": 3,
         "h": 4
       },
@@ -585,7 +730,7 @@
       "description": "Recovered panics in CoreDNS plugins in 24 h (`coredns_panics_total`, https://coredns.io/plugins/metrics/). Should be 0.",
       "gridPos": {
         "x": 18,
-        "y": 13,
+        "y": 18,
         "w": 3,
         "h": 4
       },
@@ -651,7 +796,7 @@
       "description": "Failed Corefile reloads since start (`coredns_reload_failed_total`, reload plugin): a\nbad edit of the coredns ConfigMap is rejected and the old config keeps running.",
       "gridPos": {
         "x": 21,
-        "y": 13,
+        "y": 18,
         "w": 3,
         "h": 4
       },
@@ -717,7 +862,7 @@
       "description": "Responses per second by DNS response code (`coredns_dns_responses_total`), as in \"Responses (by\nrcode)\" of the kps CoreDNS dashboard (https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-93.3.0/charts/kube-prometheus-stack/templates/grafana/dashboards-1.14/k8s-coredns.yaml). NOERROR and NXDOMAIN are normal; SERVFAIL/REFUSED are not.",
       "gridPos": {
         "x": 0,
-        "y": 17,
+        "y": 22,
         "w": 8,
         "h": 8
       },
@@ -790,7 +935,7 @@
       "description": "p50 and p99 query latency (`coredns_dns_request_duration_seconds`). The red line marks 1 s; the\ncoredns-mixin CoreDNSLatencyHigh alert fires at a p99 of 4 s for 10 min.",
       "gridPos": {
         "x": 8,
-        "y": 17,
+        "y": 22,
         "w": 8,
         "h": 8
       },
@@ -877,7 +1022,7 @@
       "description": "p99 latency per upstream resolver and the upstream SERVFAIL share,\nfrom `coredns_proxy_request_duration_seconds{proxy_name=\"forward\"}` (https://coredns.io/plugins/forward/; CoreDNS >= 1.11 renamed the\ncoredns_forward_request_* metrics used by the coredns-mixin alerts CoreDNSForwardLatencyHigh (4 s) and CoreDNSForwardErrorsHigh\n(1 % / 3 %), same formulas). A slow or failing upstream makes every external lookup slow.",
       "gridPos": {
         "x": 16,
-        "y": 17,
+        "y": 22,
         "w": 8,
         "h": 8
       },
@@ -973,7 +1118,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 25,
+        "y": 30,
         "w": 24,
         "h": 1
       },
@@ -990,7 +1135,7 @@
       "description": "metrics-server /metrics scraped (ServiceMonitor from helm-charts/metrics-server).",
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 31,
         "w": 3,
         "h": 4
       },
@@ -1080,7 +1225,7 @@
       "description": "Whether the API server can reach the aggregated APIService v1beta1.metrics.k8s.io served by\nmetrics-server (1 - `aggregator_unavailable_apiservice`). This is what `kubectl top` and HPAs use; when unavailable, API\ndiscovery errors also show up in Argo CD. Alert KubeAggregatedAPIDown (https://github.com/kubernetes-monitoring/kubernetes-mixin/tree/master/alerts/system_alerts.libsonnet).",
       "gridPos": {
         "x": 3,
-        "y": 26,
+        "y": 31,
         "w": 3,
         "h": 4
       },
@@ -1170,7 +1315,7 @@
       "description": "Share of metrics-server scrapes of the kubelet (/metrics/resource) that succeeded over 5 min\n(`metrics_server_kubelet_request_total` by `success`, https://github.com/kubernetes-sigs/metrics-server). Failures are almost always TLS (kubelet serving cert) or\nthe kubelet being down.",
       "gridPos": {
         "x": 6,
-        "y": 26,
+        "y": 31,
         "w": 3,
         "h": 4
       },
@@ -1237,7 +1382,7 @@
       "description": "How old metrics-server's last kubelet scrape was at the moment Prometheus scraped\nmetrics-server: `timestamp(m) - m` of `metrics_server_kubelet_last_request_time_seconds` (measured at scrape time, so the\n1-minute Prometheus scrape interval does not inflate it). metrics-server scrapes every `--metric-resolution` = 15 s here, so\na few seconds is normal; red after 4 missed cycles (60 s, derived from that setting).",
       "gridPos": {
         "x": 9,
-        "y": 26,
+        "y": 31,
         "w": 3,
         "h": 4
       },
@@ -1308,7 +1453,7 @@
       "description": "Containers and nodes metrics-server currently holds metrics for (`metrics_server_storage_points`\nby type). Containers should match roughly the running containers; 0 = `kubectl top` returns nothing.",
       "gridPos": {
         "x": 12,
-        "y": 26,
+        "y": 31,
         "w": 3,
         "h": 4
       },
@@ -1370,7 +1515,7 @@
       "description": "p99 duration of a kubelet scrape\n(`metrics_server_kubelet_request_duration_seconds`), p99 age of the metrics served by the API\n(`metrics_server_api_metric_freshness_seconds`) and p99 duration of a full collection cycle\n(`metrics_server_manager_tick_duration_seconds`), all metrics-server's own histograms (https://github.com/kubernetes-sigs/metrics-server). The tick must stay well under\nthe 15 s resolution, otherwise cycles overlap; freshness around the resolution is normal.",
       "gridPos": {
         "x": 15,
-        "y": 26,
+        "y": 31,
         "w": 9,
         "h": 4
       },
@@ -1463,7 +1608,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 35,
         "w": 24,
         "h": 1
       },
@@ -1480,7 +1625,7 @@
       "description": "kubelet-csr-approver controller metrics scraped (https://github.com/postfinance/kubelet-csr-approver).",
       "gridPos": {
         "x": 0,
-        "y": 31,
+        "y": 36,
         "w": 3,
         "h": 4
       },
@@ -1570,7 +1715,7 @@
       "description": "Whether the single replica holds its leader-election lease (`leader_election_master_status`). Only the\nleader approves CSRs: 0 = nothing gets approved.",
       "gridPos": {
         "x": 3,
-        "y": 31,
+        "y": 36,
         "w": 3,
         "h": 4
       },
@@ -1660,7 +1805,7 @@
       "description": "Time left on the kubelet serving certificate (`kubelet_certificate_manager_server_ttl_seconds`):\nthe outcome this controller exists for. The kubelet requests a new certificate (CSR) at ~70-90 % of the lifetime and this\ncontroller approves it after checking the node name (k8s01) and IP (192.168.68.0/24). Thresholds =\nKubeletServerCertificateExpiration (7 d / 1 d).",
       "gridPos": {
         "x": 6,
-        "y": 31,
+        "y": 36,
         "w": 3,
         "h": 4
       },
@@ -1731,7 +1876,7 @@
       "description": "CertificateSigningRequests with neither Approved nor Denied condition (kube-state-metrics\n`kube_certificatesigningrequest_condition`, https://github.com/kubernetes/kube-state-metrics/tree/main/docs/metrics/cluster/certificatesigningrequest-metrics.md). Normally 0: CSRs exist only\naround a rotation and are garbage-collected afterwards. A Pending kubelet-serving CSR that stays = the approver rejected or missed it.",
       "gridPos": {
         "x": 9,
-        "y": 31,
+        "y": 36,
         "w": 3,
         "h": 4
       },
@@ -1797,7 +1942,7 @@
       "description": "CSR reconciliations in the selected time range (controller-runtime\n`controller_runtime_reconcile_total`, https://book.kubebuilder.io/reference/metrics-reference). Usually 0 for months: work only happens when a CSR is created\n(certificate rotation, ~yearly).",
       "gridPos": {
         "x": 12,
-        "y": 31,
+        "y": 36,
         "w": 3,
         "h": 4
       },
@@ -1859,7 +2004,7 @@
       "description": "Failed reconciliations in the selected range (`controller_runtime_reconcile_errors_total`,\nhttps://book.kubebuilder.io/reference/metrics-reference). > 0 = look at the controller logs: a CSR could not be approved/denied.",
       "gridPos": {
         "x": 15,
-        "y": 31,
+        "y": 36,
         "w": 3,
         "h": 4
       },
@@ -1925,7 +2070,7 @@
       "description": "Failed kubelet serving-certificate renewals in 24 h\n(`kubelet_server_expiration_renew_errors`, alert KubeletServerCertificateRenewalErrors, https://github.com/kubernetes-monitoring/kubernetes-mixin/tree/master/alerts/kubelet.libsonnet). The\nkubelet side of a CSR that was not approved in time.",
       "gridPos": {
         "x": 18,
-        "y": 31,
+        "y": 36,
         "w": 3,
         "h": 4
       },
@@ -1991,7 +2136,7 @@
       "description": "Non-2xx answers the controller received from the API server in the last hour\n(`rest_client_requests_total`), e.g. 403 if its RBAC to approve CSRs were broken.",
       "gridPos": {
         "x": 21,
-        "y": 31,
+        "y": 36,
         "w": 3,
         "h": 4
       },
@@ -2053,7 +2198,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 40,
         "w": 24,
         "h": 1
       },
@@ -2070,7 +2215,7 @@
       "description": "Available replicas of the local-path-provisioner Deployment (kube-state-metrics\n`kube_deployment_status_replicas_available`). The project exports no Prometheus metrics (https://github.com/rancher/local-path-provisioner).",
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 41,
         "w": 3,
         "h": 4
       },
@@ -2160,7 +2305,7 @@
       "description": "Container restarts of the provisioner in 24 h (kube_pod_container_status_restarts_total).",
       "gridPos": {
         "x": 3,
-        "y": 36,
+        "y": 41,
         "w": 3,
         "h": 4
       },
@@ -2226,7 +2371,7 @@
       "description": "PVCs not bound (`kube_persistentvolumeclaim_status_phase{phase=\"Pending\"}`). The local-path\nStorageClass uses WaitForFirstConsumer: a PVC is Pending until its first pod is scheduled, so a short Pending during a\ndeploy is normal; a PVC Pending with its pod already scheduled = provisioning failed (see events below).",
       "gridPos": {
         "x": 6,
-        "y": 36,
+        "y": 41,
         "w": 3,
         "h": 4
       },
@@ -2292,7 +2437,7 @@
       "description": "PersistentVolumes in phase Failed or Pending (alert KubePersistentVolumeErrors,\nhttps://github.com/kubernetes-monitoring/kubernetes-mixin/tree/master/alerts/storage_alerts.libsonnet) or Released (claim deleted, directory not cleaned yet; with reclaimPolicy Delete the\nhelper pod should remove it).",
       "gridPos": {
         "x": 9,
-        "y": 36,
+        "y": 41,
         "w": 3,
         "h": 4
       },
@@ -2358,7 +2503,7 @@
       "description": "PersistentVolumes of StorageClass local-path (kube_persistentvolume_info).",
       "gridPos": {
         "x": 12,
-        "y": 36,
+        "y": 41,
         "w": 3,
         "h": 4
       },
@@ -2420,7 +2565,7 @@
       "description": "Free space on `/`, where /opt/local-path-provisioner lives: the real capacity limit of every\nvolume (local-path does not enforce PVC sizes). Thresholds as the node-mixin filesystem alerts (see Cluster health).",
       "gridPos": {
         "x": 15,
-        "y": 36,
+        "y": 41,
         "w": 3,
         "h": 4
       },
@@ -2495,7 +2640,7 @@
       "description": "PVs created as `local` volumes (defaultVolumeType: local; Velero can back them up).\nOlder PVs created as `hostPath` keep that type until recreated.",
       "gridPos": {
         "x": 18,
-        "y": 36,
+        "y": 41,
         "w": 3,
         "h": 4
       },
@@ -2557,7 +2702,7 @@
       "description": "PVs created as `hostPath` (before defaultVolumeType: local). Velero file-system backup\nskips hostPath volumes, so these are **not backed up** by the node-agent.",
       "gridPos": {
         "x": 21,
-        "y": 36,
+        "y": 41,
         "w": 3,
         "h": 4
       },
@@ -2623,7 +2768,7 @@
       "description": "Kubernetes events about PersistentVolumeClaims (Provisioning, ProvisioningSucceeded,\nProvisioningFailed, WaitForFirstConsumer) from Loki (OpenTelemetry k8sobjects receiver, service_name=\"k8s-events\").\nProvisioningFailed tells you why a PVC is stuck.",
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 45,
         "w": 12,
         "h": 8
       },
@@ -2664,7 +2809,7 @@
       "description": "Logs of the local-path-provisioner container (Loki). Each volume create/delete is logged,\nincluding the helper pod that creates/removes the directory on the node.",
       "gridPos": {
         "x": 12,
-        "y": 40,
+        "y": 45,
         "w": 12,
         "h": 8
       },
@@ -2701,7 +2846,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 48,
+        "y": 53,
         "w": 24,
         "h": 1
       },
@@ -2718,7 +2863,7 @@
       "description": "Every Prometheus target behind the Kubernetes dashboards, whether it is up and how long the\nscrape takes (`up`, `scrape_duration_seconds`, `scrape_samples_scraped`). A target at 0 makes its panels go blank; a scrape\nclose to the 10 s timeout drops samples.",
       "gridPos": {
         "x": 0,
-        "y": 49,
+        "y": 54,
         "w": 12,
         "h": 10
       },
@@ -2884,7 +3029,7 @@
       "description": "Share of failed LIST calls of kube-state-metrics to the API server over 5 min,\nformula of the kube-state-metrics mixin alert KubeStateMetricsListErrors (critical above 1 %,\nhttps://github.com/kubernetes/kube-state-metrics/tree/main/jsonnet/kube-state-metrics-mixin). Needs the telemetry port\nscraped (`kube-state-metrics.selfMonitor.enabled`, enabled in this change: **pending scrape** until it is synced).",
       "gridPos": {
         "x": 12,
-        "y": 49,
+        "y": 54,
         "w": 4,
         "h": 5
       },
@@ -2951,7 +3096,7 @@
       "description": "Same for WATCH calls (`kube_state_metrics_watch_total`, alert\nKubeStateMetricsWatchErrors, critical above 1 %). Pending scrape, see the list-errors stat.",
       "gridPos": {
         "x": 16,
-        "y": 49,
+        "y": 54,
         "w": 4,
         "h": 5
       },
@@ -3018,7 +3163,7 @@
       "description": "1 when the node-exporter textfile collector failed to read a .prom file\n(`node_textfile_scrape_error`, node-mixin alert NodeTextFileCollectorScrapeError, https://github.com/prometheus/node_exporter/tree/master/docs/node-mixin/alerts/alerts.libsonnet).",
       "gridPos": {
         "x": 20,
-        "y": 49,
+        "y": 54,
         "w": 4,
         "h": 5
       },
@@ -3096,7 +3241,7 @@
       "description": "Working-set memory of kube-state-metrics and node-exporter\n(their limits are 192 MiB / 64 MiB in the kps values). kube-state-metrics grows with the number of objects; an OOM kill\nblanks most Kubernetes panels.",
       "gridPos": {
         "x": 0,
-        "y": 59,
+        "y": 64,
         "w": 12,
         "h": 5
       },

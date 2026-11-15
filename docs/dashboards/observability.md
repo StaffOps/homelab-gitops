@@ -339,17 +339,20 @@ Needs the owner / another group (not changed here):
 3. kube-prometheus-stack's *Prometheus / Overview*, *Alertmanager / Overview*, *Grafana Overview* duplicate part
    of these curated dashboards; keeping them is fine (reference), turning them off is optional.
 
-Worth adding in the apps of this group (alerts are described, not added, because no upstream rule set fits as-is):
+Alerts added in the apps of this group:
 
-4. **Collector alerts** (opentelemetry-raw PrometheusRule): there are none today. Candidates from the collector
-   docs: `rate(otelcol_exporter_send_failed_*[5m]) > 0`, `rate(otelcol_exporter_enqueue_failed_*[5m]) > 0`,
-   `rate(otelcol_receiver_refused_*[5m]) > 0` for 10m, queue usage `otelcol_exporter_queue_size /
-   otelcol_exporter_queue_capacity > 0.8` for 10m (counter names without `_total`).
-5. **Tempo alerts**: the chart ships none. From the tempo-mixin, the subset valid for the single binary:
-   TempoCompactionsFailing, TempoBadOverrides, TempoLiveStoreUnhealthy, TempoBackendWorkerCallRetriesHigh (expect
-   ~1/min of "no jobs found" retries at idle), TempoUserConfigurableOverridesReloadFailing.
-6. **Grafana alert**: GrafanaRequestsFailing from the grafana-mixin is not deployed (needs its recording rule or the
-   inline ratio used by the dashboard stat).
+4. **Collector** (`opentelemetry-raw/prometheus.rules.yaml`, collector docs "Use internal telemetry to monitor the
+   Collector"; thresholds derived, the docs say "sustained"): `OtelCollectorExporterSendFailed`,
+   `OtelCollectorExporterEnqueueFailed`, `OtelCollectorReceiverRefused` (rate of `*_spans|metric_points|log_records`
+   > 0 for 10m, counters without `_total`, series appear on first failure) and `OtelCollectorExporterQueueNearlyFull`
+   (`queue_size / queue_capacity > 0.8` for 10m); all warning.
+5. **Tempo** (`monitoring-raw/tempo.rules.yaml`, tempo-mixin at tag v3.1.1, thresholds as upstream, `cluster` dropped,
+   `job="tempo"` added): TempoLiveStoreUnhealthy, TempoCompactionsFailing, TempoBadOverrides,
+   TempoUserConfigurableOverridesReloadFailing (critical), TempoBackendWorkerCallRetriesHigh (> 5/min, warning; ~1/min
+   at idle).
+6. **Grafana** (`monitoring-raw/grafana.rules.yaml`): grafana-mixin recording rule
+   `namespace_job_handler_statuscode:grafana_http_request_duration_seconds_count:rate5m` + `GrafanaRequestsFailing`
+   (> 50 % 5xx per handler for 5m, warning), as upstream.
 7. **OBI internal metrics**: OBI can expose `obi_*` self-metrics (export errors, instrumented processes) via
    `extensions.obi.daemon.internal_metrics.prometheus.port` + chart `service.enabled` / `serviceMonitor.enabled`.
    Not enabled: OBI runs on the host network, so the port would listen on the node IP without authentication.

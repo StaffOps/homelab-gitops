@@ -128,4 +128,10 @@ resources:
               - when:
                     - key: request.auth.claims[groups]
                       notValues: [/mcp/admin, /mcp/viewer]
-
+    # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+          name: gateway
+      spec:
+          {{- readFile "./prometheus.rules.yaml" | nindent 10 }}

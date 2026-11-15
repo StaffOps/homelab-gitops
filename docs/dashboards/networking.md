@@ -294,12 +294,20 @@ upstream value. EMPTY: *Rejected / skipped endpoints* (nothing rejected; the gau
 - **Pending after sync** (owner commit + push): istio-cni PodMonitor (job `istio-system/istio-cni`); Envoy stats
   matcher (then restart `gateway/public-istio` and `gateway/mcp-istio`). Check: `up{job="istio-system/istio-cni"}`,
   `envoy_cluster_membership_healthy{job="istio-system/gateway-envoy"}`, `envoy_listener_ssl_handshake`.
-- **Alerts worth adding** (none exist for Istio/gateways/external-dns): gateway 5xx ratio per backend > 5 % for 10 m
-  (mirrors the Istio success-rate red threshold); gateway pod `up == 0`; `envoy_cluster_membership_healthy == 0` for
-  a routed backend (once scraped); `pilot_xds` < 3 or `increase(pilot_total_xds_rejects[10m]) > 0`; external-dns
-  `time() - external_dns_controller_last_sync_timestamp_seconds > 600` and `consecutive_soft_errors > 3`;
-  `metallb_speaker_announced` count lower than LoadBalancer Services with an IP. They would live in
-  istio-raw / gateway-raw / external-dns-raw; thresholds need the owner's call, so they are not added yet.
+- **Alerts added** (all derived from the thresholds above; Istio ships no rules):
+  - `GatewayBackendHigh5xxRate` (gateway-raw): 5xx share of `istio_requests_total` per gateway × backend > 5 % for
+    10m, warning (Istio Mesh dashboard red threshold). Gateway `mcp` is covered by `MCPServerHigh5xxRate` (AI group).
+  - `IstiodXdsClientsMissing` (istio-raw): `sum(pilot_xds) < 3` for 10m, warning — raise the 3 when a gateway or
+    waypoint is added. `IstiodXdsRejects`: `increase(pilot_total_xds_rejects[10m]) > 0`, warning (the counter appears
+    on the first reject, so that very first one is missed).
+  - `ExternalDNSSyncStale` (external-dns-raw): `time() - external_dns_controller_last_sync_timestamp_seconds > 600`;
+    `ExternalDNSConsecutiveSoftErrors`: `consecutive_soft_errors > 3`; both warning (the stale-sync alert is the
+    external-dns docs' alerting recommendation).
+  - `MetalLBServiceNotAnnounced` (metallb-raw): a `kube_service_status_load_balancer_ingress` IP with no
+    `metallb_speaker_announced == 1` for 10m, warning, `namespace: metallb-system` (Service namespace in
+    `exported_namespace`).
+- **Not added:** gateway pod `up == 0` (kube-prometheus-stack `TargetDown` + `KubeDeploymentReplicasMismatch` cover
+  it); `envoy_cluster_membership_healthy == 0` (not scraped yet: pending the stats matcher + gateway restart).
 - **Cardinality option:** istiod env `PILOT_FILTER_GATEWAY_CLUSTER_CONFIG=true` would send gateways only the clusters
   their routes reference (~15 instead of ~148), cutting the new Envoy series ~10× and gateway memory. Behaviour change
   of istiod: left for the owner.

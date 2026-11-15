@@ -20,7 +20,7 @@ resources:
           name: vault
       spec:
           {{- readFile "./prometheus.rules.yaml" | nindent 10 }}
-    # Auto-unseal after a reboot (homelab trade-off, see docs/adr/0005): every 15 minutes, unseal vault-0 if it is
+    # Auto-unseal after a reboot (homelab trade-off, see docs/adr/0005): every 5 minutes, unseal vault-0 if it is
     # sealed, with the single unseal key from Secret vault-unseal. That Secret is NOT in git: it is created
     # once with `scripts/vault.sh autounseal-secret` (encrypted at rest by the API server). Without it the
     # Job just fails to start and Vault stays sealed as before.
@@ -34,7 +34,7 @@ resources:
       metadata:
           name: vault-autounseal
       spec:
-          schedule: "*/15 * * * *" # a reboot heals within 15 minutes
+          schedule: "*/5 * * * *" # a reboot heals within 5 minutes
           concurrencyPolicy: Forbid
           successfulJobsHistoryLimit: 1
           failedJobsHistoryLimit: 3

@@ -79,6 +79,15 @@ metrics:
                   severity: warning
               annotations:
                   summary: Velero backup location {{`{{ $labels.backup_location_name }}`}} (R2) is unavailable
+            # Derived (docs/dashboards/platform.md): the counter is created on the first failure, so increase() would
+            # miss it; "> 0" stays firing until the Velero Pod restarts (counter reset). Metric from Velero v1.18.2
+            # pkg/metrics/metrics.go (repo_maintenance_failure_total, label repository_name).
+            - alert: VeleroRepoMaintenanceFailed
+              expr: velero_repo_maintenance_failure_total > 0
+              labels:
+                  severity: warning
+              annotations:
+                  summary: Kopia repository maintenance failed for {{`{{ $labels.repository_name }}`}}. Check the maintenance Job logs in velero (stays firing until the Velero Pod restarts)
 resources:
     requests:
         cpu: 20m

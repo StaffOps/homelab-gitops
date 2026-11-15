@@ -213,3 +213,17 @@ resources:
           namespace: monitoring
       spec:
           {{- readFile "./calico.rules.yaml" | nindent 10 }}
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+          name: tempo
+          namespace: monitoring
+      spec:
+          {{- readFile "./tempo.rules.yaml" | nindent 10 }}
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+          name: grafana
+          namespace: monitoring
+      spec:
+          {{- readFile "./grafana.rules.yaml" | nindent 10 }}

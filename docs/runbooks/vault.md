@@ -8,9 +8,9 @@ Init file: `~/.config/homelab/vault-init.json` (unseal key + root token, mode 60
 
 ## Sealed (alert VaultSealed, or after any node reboot)
 
-Auto-unseal: the CronJob `vault/vault-autounseal` checks every 15 minutes and unseals `vault-0` with the key in
+Auto-unseal: the CronJob `vault/vault-autounseal` checks every 5 minutes and unseals `vault-0` with the key in
 Secret `vault/vault-unseal` (not in git; create or refresh it with `scripts/vault.sh autounseal-secret`).
-A reboot therefore heals itself within 15 minutes (force it now: `kubectl --context k8s01 -n vault create job --from=cronjob/vault-autounseal unseal-now`). Manual path, if that Secret is missing:
+A reboot therefore heals itself within 5 minutes (force it now: `kubectl --context k8s01 -n vault create job --from=cronjob/vault-autounseal unseal-now`). Manual path, if that Secret is missing:
 
 ```bash
 scripts/vault.sh status     # Sealed: true

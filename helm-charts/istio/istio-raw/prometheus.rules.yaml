@@ -1,0 +1,23 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# istiod metrics: https://istio.io/latest/docs/reference/commands/pilot-discovery/ (Metrics table) (job istiod, namespace
+# istio-system). Istio ships no alert rules; both rules below are derived from docs/dashboards/networking.md.
+groups:
+    - name: istiod
+      rules:
+          # Derived: 3 xDS clients = the two gateway Envoys (public, mcp) + ztunnel (docs/dashboards/networking.md).
+          # Raise the number when a gateway or a waypoint is added.
+          - alert: IstiodXdsClientsMissing
+            expr: sum by (namespace, job) (pilot_xds{job="istiod"}) < 3
+            for: 10m
+            labels:
+                severity: warning
+            annotations:
+                summary: istiod has {{ $value }} connected xDS proxies instead of 3 — a gateway or ztunnel lost its config stream; check pods in gateway and istio-system
+          # Derived: any config NACKed by a proxy (pilot_total_xds_rejects). The counter only exists after the first
+          # rejection, so the very first one after an istiod restart is not seen by increase().
+          - alert: IstiodXdsRejects
+            expr: sum by (namespace, job) (increase(pilot_total_xds_rejects{job="istiod"}[10m])) > 0
+            labels:
+                severity: warning
+            annotations:
+                summary: "{{ $value }} xDS responses from istiod were rejected by proxies in 10m — run `istioctl proxy-status` and check istiod logs for the NACK"

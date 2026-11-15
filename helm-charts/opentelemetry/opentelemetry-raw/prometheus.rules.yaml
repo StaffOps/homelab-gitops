@@ -1,0 +1,42 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# Collector internal telemetry, "Use internal telemetry to monitor the Collector":
+# https://opentelemetry.io/docs/collector/internal-telemetry/#use-internal-telemetry-to-monitor-the-collector
+# Counters here have no _total suffix (Collector default without_type_suffix: true). send_failed / enqueue_failed /
+# refused series appear only after the first failure. Thresholds ("> 0 for 10m", queue "> 0.8 for 10m") are derived:
+# docs/dashboards/observability.md; the docs give "sustained rates" without numbers.
+groups:
+    - name: otel-collector
+      rules:
+          - alert: OtelCollectorExporterSendFailed
+            expr: |-
+                sum by (namespace, job, exporter) (rate({__name__=~"otelcol_exporter_send_failed_(spans|metric_points|log_records)"}[5m])) > 0
+            for: 10m
+            labels:
+                severity: warning
+            annotations:
+                summary: Exporter {{ $labels.exporter }} of {{ $labels.job }} keeps failing to send data — check the backend (Loki/Tempo/Prometheus) and the collector logs
+                description: Sustained send failures mean the Collector cannot export as expected; data is lost once retries and the queue are exhausted.
+          - alert: OtelCollectorExporterEnqueueFailed
+            expr: |-
+                sum by (namespace, job, exporter) (rate({__name__=~"otelcol_exporter_enqueue_failed_(spans|metric_points|log_records)"}[5m])) > 0
+            for: 10m
+            labels:
+                severity: warning
+            annotations:
+                summary: Exporter {{ $labels.exporter }} of {{ $labels.job }} drops data because its sending queue is full — check the backend and the queue size
+          - alert: OtelCollectorReceiverRefused
+            expr: |-
+                sum by (namespace, job, receiver) (rate({__name__=~"otelcol_receiver_refused_(spans|metric_points|log_records)"}[5m])) > 0
+            for: 10m
+            labels:
+                severity: warning
+            annotations:
+                summary: Receiver {{ $labels.receiver }} of {{ $labels.job }} keeps refusing data — clients may be losing telemetry; check memory_limiter and the exporters
+          - alert: OtelCollectorExporterQueueNearlyFull
+            expr: |-
+                max by (namespace, job, exporter) (otelcol_exporter_queue_size / otelcol_exporter_queue_capacity) > 0.8
+            for: 10m
+            labels:
+                severity: warning
+            annotations:
+                summary: The sending queue of exporter {{ $labels.exporter }} ({{ $labels.job }}) is {{ $value | humanizePercentage }} full — the backend is slow or down

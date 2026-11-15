@@ -171,14 +171,16 @@ nvidia dashboard 14574 uses.
 
 ## Gaps and recommendations
 
-- **Alerts worth adding (owner decision):**
-  - `llm`: a PrometheusRule in `llm-raw` for `llamacpp:requests_deferred > 0` sustained (e.g. 10 min: demand above
-    capacity) and for a generation speed collapse (`rate(tokens_predicted_total)/rate(tokens_predicted_seconds_total)`
-    well below the ~7.5 tok/s baseline → CPU fallback). Scrape loss is already covered by `TargetDown`.
-  - `mcp-servers`: 5xx ratio per `destination_service_name` at Gateway `mcp` (Istio metrics), since four servers
-    export nothing themselves.
-  - GPU: `kube_node_status_allocatable{resource="nvidia_com_gpu"} < 1` (device plugin lost the GPU) — no chart rule
-    covers it.
+- **Alerts added:**
+  - `LlamaCppRequestsDeferred` (`llm-raw/prometheus.rules.yaml`): `max(llamacpp:requests_deferred) > 0` for 10m,
+    warning (derived: README semantics + the *Requests deferred* panel). Scrape loss stays with `TargetDown`.
+  - `MCPServerHigh5xxRate` (`mcp-servers-raw/prometheus.rules.yaml`): 5xx share of `istio_requests_total` at Gateway
+    `mcp` per `destination_service_name` > 5 % for 10m, warning; `namespace` = the backend's namespace (derived: Istio
+    Mesh dashboard red threshold, same as `GatewayBackendHigh5xxRate`, which skips Gateway `mcp`).
+  - `NvidiaGpuNotAllocatable` (`nvidia-device-plugin-raw/prometheus.rules.yaml`):
+    `kube_node_status_allocatable{resource="nvidia_com_gpu"} < 1` for 10m, warning, `namespace: nvidia-device-plugin`.
+- **Not added:** a generation speed collapse alert — "well below ~7.5 tok/s" has no defensible threshold (no upstream
+  value, the speed depends on prompt/length, and the ratio is NaN while idle). Revisit with a measured baseline.
 - **GPU utilization.** Not obtainable with nvidia-smi on GT 740 + driver 470; the `-nvml` exporter image reads the same
   NVML data, so it is unlikely to help (not tested). The llama.cpp busy ratio is the proxy. To confirm the exact unsupported fields,
   run `nvidia-smi --query-gpu=utilization.gpu,power.draw,clocks.gr --format=csv` on the host (Ansible / operator).

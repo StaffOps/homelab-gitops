@@ -186,11 +186,12 @@ after the first scheduled Velero run: `velero_backup_last_successful_timestamp{s
 
 - **Velero volume size**: no metric reports how much data Kopia uploaded; `kubectl -n velero get podvolumebackups`
   shows bytes per volume. A restore test (runbook) is the only proof the backup is usable — no metric replaces it.
-- **Velero repository maintenance failures**: no alert yet; the failure counter only appears on the first failure, so an
-  `increase()` alert would miss it. Worth an alert like `velero_repo_maintenance_failure_total > 0` once the owner
-  accepts that it stays firing until the Velero Pod restarts.
-- **Argo CD**: consider an alert on `increase(grpc_server_handled_total{job="argo-cd-repo-server-metrics",grpc_method="GenerateManifest",grpc_code!="OK"}[15m]) > 0`
-  if render errors should page before `ArgoAppNotSynced` (15 min). `argocd_app_orphaned_resources_count` stays 0 because
-  the AppProject does not enable `orphanedResources`.
+- **Alert added — `VeleroRepoMaintenanceFailed`** (velero chart `metrics.prometheusRule`):
+  `velero_repo_maintenance_failure_total > 0`, warning. The counter only appears on the first failure (so `increase()`
+  would miss it); the alert stays firing until the Velero Pod restarts.
+- **Alert added — `ArgoRepoServerRenderErrors`** (argo-cd chart `controller.metrics.rules`):
+  `increase(grpc_server_handled_total{job="argo-cd-repo-server-metrics",grpc_method="GenerateManifest",grpc_code!="OK"}[15m]) > 0`,
+  warning — fires before `ArgoAppNotSynced` (15 min). `argocd_app_orphaned_resources_count` stays 0 because the
+  AppProject does not enable `orphanedResources`.
 - **KEDA**: no extra component alerts needed: kube-prometheus-stack's `TargetDown` covers a dead component and
   `KubeAggregatedAPIDown`/`KubeAggregatedAPIErrors` cover the external metrics APIService.

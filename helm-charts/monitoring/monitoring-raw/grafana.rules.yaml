@@ -1,0 +1,24 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# grafana-mixin (https://github.com/grafana/grafana/tree/main/grafana-mixin): recording rule from rules/rules.libsonnet
+# and alert from alerts/alerts.libsonnet, expressions and threshold (50 %) as upstream. kube-prometheus-stack does
+# not ship them. Labels namespace/job come from the scrape (monitoring/grafana).
+groups:
+    - name: grafana_rules
+      rules:
+          - record: namespace_job_handler_statuscode:grafana_http_request_duration_seconds_count:rate5m
+            expr: |-
+                sum by (namespace, job, handler, status_code) (rate(grafana_http_request_duration_seconds_count[5m]))
+    - name: GrafanaAlerts
+      rules:
+          - alert: GrafanaRequestsFailing
+            expr: |-
+                100 * sum without (status_code) (namespace_job_handler_statuscode:grafana_http_request_duration_seconds_count:rate5m{handler!~"/api/datasources/proxy/:id.*|/api/ds/query|/api/tsdb/query", status_code=~"5.."})
+                /
+                sum without (status_code) (namespace_job_handler_statuscode:grafana_http_request_duration_seconds_count:rate5m{handler!~"/api/datasources/proxy/:id.*|/api/ds/query|/api/tsdb/query"})
+                > 50
+            for: 5m
+            labels:
+                severity: warning
+            annotations:
+                summary: More than half of Grafana requests to {{ $labels.handler }} fail with 5xx — check the grafana pod logs and its database
+                message: "{{ $labels.namespace }}/{{ $labels.job }}/{{ $labels.handler }} is experiencing {{ $value | humanize }}% errors"

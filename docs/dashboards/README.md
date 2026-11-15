@@ -1,8 +1,9 @@
 # Grafana dashboards
 
 Every dashboard of the lab, by Grafana folder. Each one has a "How to read" panel at the top, a description on
-every panel (what it shows, what normal and bad look like, where the formula comes from) and annotations for firing
-alerts and container restarts. Details per service — exported metrics, panel formulas and their sources, panels that
+every panel (what it shows, what normal and bad look like, where the formula comes from), an **Active alerts for
+this service** table right below it (firing and pending alerts, same filter as the alert annotations) and annotations
+for firing alerts and container restarts. Details per service — exported metrics, panel formulas and their sources, panels that
 are expected to be empty, gaps — are in the group files linked below.
 
 ## How dashboards are shipped
@@ -17,6 +18,14 @@ are expected to be empty, gaps — are in the group files linked below.
 - Check every query against the live Prometheus before pushing:
   `scripts/check-dashboard.py helm-charts/monitoring/monitoring-raw/dashboards/*/*.json` (needs a port-forward to
   `svc/kps-prometheus` on 19090). 0 errors is required; EMPTY results must be explained in the group file.
+
+## Where alerts are seen
+
+Alertmanager routes everything to the `null` receiver on purpose (no notifications while the lab is built). Alerts
+still evaluate in Prometheus and are seen in Grafana: the *Active alerts for this service* table of each service
+dashboard, and **Observability → Alerts overview** (`hl-observability-alerts`) for the whole lab: counts by severity,
+every active alert with how long it has been active (`time() - ALERTS_FOR_STATE`), history by severity/namespace, an
+alert timeline and the most frequent alerts in the range. Its EMPTY panels mean no alert is firing.
 
 ## Kubernetes — [kubernetes.md](kubernetes.md)
 
@@ -62,6 +71,7 @@ are expected to be empty, gaps — are in the group files linked below.
 | Dashboard | Kind | UID | File |
 |-----------|------|-----|------|
 | Alertmanager | curated | `hl-observability-alertmanager` | `observability/alertmanager.json` |
+| Alerts overview | curated | `hl-observability-alerts` | `observability/alerts.json` |
 | Grafana | curated | `hl-observability-grafana` | `observability/grafana.json` |
 | Loki | curated | `hl-observability-loki` | `observability/loki.json` |
 | OpenTelemetry Collectors | curated | `hl-observability-otel-collectors` | `observability/otel-collectors.json` |

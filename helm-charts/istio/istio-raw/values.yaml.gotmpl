@@ -52,3 +52,10 @@ resources:
               - port: metrics
                 path: /metrics
                 interval: 30s
+    # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+          name: istiod
+      spec:
+          {{- readFile "./prometheus.rules.yaml" | nindent 10 }}

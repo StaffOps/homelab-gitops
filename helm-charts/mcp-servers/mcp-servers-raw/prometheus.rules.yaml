@@ -1,0 +1,23 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# Most MCP servers export no metrics: their requests are seen by the Envoy of Gateway mcp (Istio standard metrics,
+# https://istio.io/latest/docs/reference/config/metrics/, job istio-system/gateway-envoy, reporter="source").
+groups:
+    - name: mcp-servers
+      rules:
+          # Derived: same 5 % / 10m as GatewayBackendHigh5xxRate (Istio Mesh dashboard red threshold, success rate
+          # < 95 %), per destination_service_name of Gateway mcp (docs/dashboards/ai.md). namespace is set to the
+          # backend's namespace (mcp-servers; monitoring for the Tempo MCP endpoint).
+          - alert: MCPServerHigh5xxRate
+            expr: |-
+                label_replace(
+                  sum by (destination_service_namespace, destination_service_name) (rate(istio_requests_total{job="istio-system/gateway-envoy", reporter="source", source_workload="mcp-istio", response_code=~"5.."}[5m]))
+                  /
+                  sum by (destination_service_namespace, destination_service_name) (rate(istio_requests_total{job="istio-system/gateway-envoy", reporter="source", source_workload="mcp-istio"}[5m])),
+                  "namespace", "$1", "destination_service_namespace", "(.*)"
+                ) > 0.05
+            for: 10m
+            labels:
+                severity: warning
+            annotations:
+                summary: More than 5 % of MCP requests to {{ $labels.destination_service_name }} return 5xx — check that server's pod logs and the MCP Servers dashboard
+                description: "5xx ratio {{ $value | humanizePercentage }} for 10m at Gateway mcp."

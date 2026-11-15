@@ -268,7 +268,9 @@ requests, SERVFAIL ratio, CrashLoopBackOff, failed Jobs, pending CSRs...).
   recreating them as `local` PVs would make them backup-able (a data migration, owner's call).
 - **Per-PV disk usage** is not measurable with the current exporters; if needed, a textfile collector running `du` on
   `/opt/local-path-provisioner/*` (node-exporter textfile, set up by Ansible) would give it.
-- Worth adding later: an alert on `kubeproxy` rule changes not applied > 60 s (the dashboard shows it; the kube-proxy
-  liveness probe already restarts it in the worst case).
+- **Not added:** an alert on `kubeproxy` rule changes not applied > 60 s. No upstream rule or documented threshold
+  (the 60 s is kube-proxy's internal healthz timeout, 2x syncPeriod, in code only; kubernetes-mixin ships none). Note:
+  the kubeadm `kube-proxy` DaemonSet here has **no** liveness probe, so nothing restarts a stuck kube-proxy; the
+  dashboard panel (last queued - last sync) is the only signal.
 - Pre-existing render warning (not from this change): `alertmanager-kps` Secret with literal data is the chart-generated
   Alertmanager config; it contains no credential.

@@ -17,3 +17,10 @@ resources:
                           serviceAccountRef:
                               name: external-secrets
                               namespace: external-secrets
+    # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+          name: external-secrets
+      spec:
+          {{- readFile "./prometheus.rules.yaml" | nindent 10 }}

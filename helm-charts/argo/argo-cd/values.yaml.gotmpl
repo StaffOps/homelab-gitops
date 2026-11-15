@@ -137,6 +137,14 @@ controller:
                       severity: warning
                   annotations:
                       summary: 'Application {{`{{ $labels.name }}`}} is {{`{{ $labels.health_status }}`}}'
+                # Derived (docs/dashboards/platform.md): repo-server manifest render errors (go-grpc-prometheus
+                # grpc_server_handled_total, non-OK GenerateManifest) surface before ArgoAppNotSynced (15m).
+                - alert: ArgoRepoServerRenderErrors
+                  expr: sum by (namespace, job) (increase(grpc_server_handled_total{job="argo-cd-repo-server-metrics", grpc_method="GenerateManifest", grpc_code!="OK"}[15m])) > 0
+                  labels:
+                      severity: warning
+                  annotations:
+                      summary: 'Argo CD repo-server failed to render manifests {{`{{ $value | humanize }}`}} times in 15m. Check the app conditions and scripts/render-app.sh'
 dex:
     enabled: false
 notifications:

@@ -106,6 +106,151 @@
       "id": 1
     },
     {
+      "type": "table",
+      "title": "Active alerts for this service",
+      "id": 35,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Prometheus alerts of this service that are FIRING (condition true for longer than the rule's `for`) or PENDING (condition true, waiting for `for`). Same filter as the red alert annotations of this dashboard; Watchdog/InfoInhibitor are excluded. Empty = healthy. Alertmanager has no receiver in this lab, so dashboards are where alerts are seen: the rule, its threshold and source are in the rule files (helm-charts/<app>/**/prometheus.rules.yaml or the -raw release) and in docs/dashboards/. All alerts of the lab: dashboard \"Alerts overview\" (Observability folder).",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "ALERTS{alertname!~\"Watchdog|InfoInhibitor\", alertstate=~\"firing|pending\", namespace=\"kyverno\"}",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "No active alerts"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alertstate"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "state"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "firing": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "pending": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "critical": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "warning": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "info": {
+                        "color": "blue",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "prometheus": true,
+              "endpoint": true,
+              "service": true,
+              "instance": true,
+              "uid": true
+            },
+            "indexByName": {
+              "alertname": 0,
+              "alertstate": 1,
+              "severity": 2,
+              "namespace": 3
+            }
+          }
+        }
+      ]
+    },
+    {
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -114,7 +259,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 10
       },
       "id": 2,
       "options": {
@@ -147,7 +292,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 11
+        "y": 16
       },
       "id": 3,
       "panels": [],
@@ -203,7 +348,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 12
+        "y": 17
       },
       "id": 4,
       "options": {
@@ -271,7 +416,7 @@
         "h": 4,
         "w": 3,
         "x": 6,
-        "y": 12
+        "y": 17
       },
       "id": 5,
       "options": {
@@ -340,7 +485,7 @@
         "h": 4,
         "w": 3,
         "x": 12,
-        "y": 12
+        "y": 17
       },
       "id": 6,
       "options": {
@@ -409,7 +554,7 @@
         "h": 4,
         "w": 3,
         "x": 15,
-        "y": 12
+        "y": 17
       },
       "id": 7,
       "options": {
@@ -497,7 +642,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 12
+        "y": 17
       },
       "id": 8,
       "options": {
@@ -565,7 +710,7 @@
         "h": 4,
         "w": 4,
         "x": 6,
-        "y": 16
+        "y": 21
       },
       "id": 9,
       "options": {
@@ -634,7 +779,7 @@
         "h": 4,
         "w": 4,
         "x": 10,
-        "y": 16
+        "y": 21
       },
       "id": 10,
       "options": {
@@ -703,7 +848,7 @@
         "h": 4,
         "w": 4,
         "x": 14,
-        "y": 16
+        "y": 21
       },
       "id": 11,
       "options": {
@@ -750,7 +895,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 25
       },
       "id": 12,
       "panels": [],
@@ -911,7 +1056,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 21
+        "y": 26
       },
       "id": 13,
       "options": {
@@ -1100,7 +1245,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 21
+        "y": 26
       },
       "id": 14,
       "options": {
@@ -1203,7 +1348,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 21
+        "y": 26
       },
       "id": 15,
       "options": {
@@ -1392,7 +1537,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 29
+        "y": 34
       },
       "id": 16,
       "options": {
@@ -1581,7 +1726,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 29
+        "y": 34
       },
       "id": 17,
       "options": {
@@ -1648,7 +1793,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 37
+        "y": 42
       },
       "id": 18,
       "options": {
@@ -1719,7 +1864,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 37
+        "y": 42
       },
       "id": 19,
       "options": {
@@ -1766,7 +1911,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 50
       },
       "id": 20,
       "panels": [],
@@ -1841,7 +1986,7 @@
         "h": 8,
         "w": 9,
         "x": 0,
-        "y": 46
+        "y": 51
       },
       "id": 21,
       "options": {
@@ -1944,7 +2089,7 @@
         "h": 8,
         "w": 9,
         "x": 9,
-        "y": 46
+        "y": 51
       },
       "id": 22,
       "options": {
@@ -2010,7 +2155,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 46
+        "y": 51
       },
       "id": 23,
       "options": {
@@ -2080,7 +2225,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 50
+        "y": 55
       },
       "id": 24,
       "options": {
@@ -2187,7 +2332,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 59
       },
       "id": 25,
       "options": {
@@ -2252,7 +2397,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 71
+        "y": 76
       },
       "id": 26,
       "panels": [],
@@ -2331,7 +2476,7 @@
         "h": 8,
         "w": 9,
         "x": 0,
-        "y": 72
+        "y": 77
       },
       "id": 27,
       "options": {
@@ -2435,7 +2580,7 @@
         "h": 8,
         "w": 9,
         "x": 9,
-        "y": 72
+        "y": 77
       },
       "id": 28,
       "options": {
@@ -2501,7 +2646,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 72
+        "y": 77
       },
       "id": 29,
       "options": {
@@ -2568,7 +2713,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 76
+        "y": 81
       },
       "id": 30,
       "options": {
@@ -2614,7 +2759,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 80
+        "y": 85
       },
       "id": 31,
       "panels": [],
@@ -2712,7 +2857,7 @@
         "h": 8,
         "w": 9,
         "x": 0,
-        "y": 81
+        "y": 86
       },
       "id": 32,
       "options": {
@@ -2832,7 +2977,7 @@
         "h": 8,
         "w": 9,
         "x": 9,
-        "y": 81
+        "y": 86
       },
       "id": 33,
       "options": {
@@ -2898,7 +3043,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 81
+        "y": 86
       },
       "id": 34,
       "options": {

@@ -4,3 +4,10 @@ resources:
       metadata:
           name: nvidia
       handler: nvidia # containerd runtime in /etc/containerd/conf.d/99-nvidia.toml (Ansible)
+    # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+          name: nvidia-device-plugin
+      spec:
+          {{- readFile "./prometheus.rules.yaml" | nindent 10 }}

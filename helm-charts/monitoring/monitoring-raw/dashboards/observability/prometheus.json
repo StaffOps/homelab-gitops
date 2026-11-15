@@ -132,7 +132,7 @@
       "title": "How to read this dashboard",
       "options": {
         "mode": "markdown",
-        "content": "**Prometheus** stores every metric of the lab (scraped from ServiceMonitors/PodMonitors in all namespaces,\nplus OTLP pushed by the otel-gateway at `/api/v1/otlp`) and evaluates all alerting/recording rules. Single replica,\nretention 15 days / 18 GiB on `local-path`.\n\n**Healthy looks like**: *Up* = UP, *Config* = OK, samples/s flat, head series stable (no staircase), 0 rule failures,\n0 targets down, 0 notification errors, WAL/TSDB failure panels flat at 0.\n\n**When something goes red**\n- *Config FAILED* \u2192 a PrometheusRule or ServiceMonitor broke the config: `kubectl --context k8s01 -n monitoring logs prometheus-kps-0 -c prometheus | grep -i error`.\n- *Head series climbing / churn high* \u2192 a cardinality explosion: the *Samples per scrape* and *Series churn* panels name the job; fix the exporter or drop labels with `metricRelabelings`.\n- *Targets down* \u2192 see the *Targets per job* table, then `kubectl get endpoints` for that Service.\n- *Rule failures / missed iterations* \u2192 the query of a rule errors or a group takes longer than its interval.\n- *Notification errors* \u2192 Prometheus cannot reach Alertmanager (see the Alertmanager dashboard).\n\nFormulas come from the [prometheus-mixin](https://github.com/prometheus/prometheus/tree/main/documentation/prometheus-mixin) dashboards and alerts (thresholds mirror the kube-prometheus-stack\n`prometheus` rule group). Storage: [docs](https://prometheus.io/docs/prometheus/latest/storage/).",
+        "content": "**Prometheus** stores every metric of the lab (scraped from ServiceMonitors/PodMonitors in all namespaces,\nplus OTLP pushed by the otel-gateway at `/api/v1/otlp`) and evaluates all alerting/recording rules. Single replica,\nretention 15 days / 18 GiB on `local-path`.\n\n**Healthy looks like**: *Up* = UP, *Config* = OK, samples/s flat, head series stable (no staircase), 0 rule failures,\n0 targets down, 0 notification errors, WAL/TSDB failure panels flat at 0.\n\n**When something goes red**\n- *Config FAILED* → a PrometheusRule or ServiceMonitor broke the config: `kubectl --context k8s01 -n monitoring logs prometheus-kps-0 -c prometheus | grep -i error`.\n- *Head series climbing / churn high* → a cardinality explosion: the *Samples per scrape* and *Series churn* panels name the job; fix the exporter or drop labels with `metricRelabelings`.\n- *Targets down* → see the *Targets per job* table, then `kubectl get endpoints` for that Service.\n- *Rule failures / missed iterations* → the query of a rule errors or a group takes longer than its interval.\n- *Notification errors* → Prometheus cannot reach Alertmanager (see the Alertmanager dashboard).\n\nFormulas come from the [prometheus-mixin](https://github.com/prometheus/prometheus/tree/main/documentation/prometheus-mixin) dashboards and alerts (thresholds mirror the kube-prometheus-stack\n`prometheus` rule group). Storage: [docs](https://prometheus.io/docs/prometheus/latest/storage/).",
         "code": {
           "language": "plaintext"
         }
@@ -146,6 +146,151 @@
       }
     },
     {
+      "type": "table",
+      "title": "Active alerts for this service",
+      "id": 55,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Prometheus alerts of this service that are FIRING (condition true for longer than the rule's `for`) or PENDING (condition true, waiting for `for`). Same filter as the red alert annotations of this dashboard; Watchdog/InfoInhibitor are excluded. Empty = healthy. Alertmanager has no receiver in this lab, so dashboards are where alerts are seen: the rule, its threshold and source are in the rule files (helm-charts/<app>/**/prometheus.rules.yaml or the -raw release) and in docs/dashboards/. All alerts of the lab: dashboard \"Alerts overview\" (Observability folder).",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "ALERTS{alertname!~\"Watchdog|InfoInhibitor\", alertstate=~\"firing|pending\", alertname=~\"Prometheus.*|TargetDown|ConfigReloaderSidecarErrors\"}",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "No active alerts"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alertstate"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "state"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "firing": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "pending": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "critical": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "warning": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "info": {
+                        "color": "blue",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "prometheus": true,
+              "endpoint": true,
+              "service": true,
+              "instance": true,
+              "uid": true
+            },
+            "indexByName": {
+              "alertname": 0,
+              "alertstate": 1,
+              "severity": 2,
+              "namespace": 3
+            }
+          }
+        }
+      ]
+    },
+    {
       "type": "row",
       "title": "Overview",
       "collapsed": false,
@@ -153,7 +298,7 @@
       "id": 2,
       "gridPos": {
         "x": 0,
-        "y": 9,
+        "y": 14,
         "w": 24,
         "h": 1
       }
@@ -235,7 +380,7 @@
       "id": 3,
       "gridPos": {
         "x": 0,
-        "y": 10,
+        "y": 15,
         "w": 2,
         "h": 4
       }
@@ -303,7 +448,7 @@
       "id": 4,
       "gridPos": {
         "x": 2,
-        "y": 10,
+        "y": 15,
         "w": 3,
         "h": 4
       }
@@ -385,7 +530,7 @@
       "id": 5,
       "gridPos": {
         "x": 5,
-        "y": 10,
+        "y": 15,
         "w": 2,
         "h": 4
       }
@@ -449,7 +594,7 @@
       "id": 6,
       "gridPos": {
         "x": 7,
-        "y": 10,
+        "y": 15,
         "w": 3,
         "h": 4
       }
@@ -517,7 +662,7 @@
       "id": 7,
       "gridPos": {
         "x": 10,
-        "y": 10,
+        "y": 15,
         "w": 3,
         "h": 4
       }
@@ -585,7 +730,7 @@
       "id": 8,
       "gridPos": {
         "x": 13,
-        "y": 10,
+        "y": 15,
         "w": 2,
         "h": 4
       }
@@ -654,7 +799,7 @@
       "id": 9,
       "gridPos": {
         "x": 15,
-        "y": 10,
+        "y": 15,
         "w": 3,
         "h": 4
       }
@@ -723,7 +868,7 @@
       "id": 10,
       "gridPos": {
         "x": 18,
-        "y": 10,
+        "y": 15,
         "w": 3,
         "h": 4
       }
@@ -795,7 +940,7 @@
       "id": 11,
       "gridPos": {
         "x": 21,
-        "y": 10,
+        "y": 15,
         "w": 3,
         "h": 4
       }
@@ -808,7 +953,7 @@
       "id": 12,
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 19,
         "w": 24,
         "h": 1
       }
@@ -883,7 +1028,7 @@
       "id": 13,
       "gridPos": {
         "x": 0,
-        "y": 15,
+        "y": 20,
         "w": 8,
         "h": 8
       }
@@ -980,7 +1125,7 @@
       "id": 14,
       "gridPos": {
         "x": 8,
-        "y": 15,
+        "y": 20,
         "w": 8,
         "h": 8
       }
@@ -1077,7 +1222,7 @@
       "id": 15,
       "gridPos": {
         "x": 16,
-        "y": 15,
+        "y": 20,
         "w": 8,
         "h": 8
       }
@@ -1152,7 +1297,7 @@
       "id": 16,
       "gridPos": {
         "x": 0,
-        "y": 23,
+        "y": 28,
         "w": 12,
         "h": 8
       }
@@ -1227,7 +1372,7 @@
       "id": 17,
       "gridPos": {
         "x": 12,
-        "y": 23,
+        "y": 28,
         "w": 12,
         "h": 8
       }
@@ -1240,7 +1385,7 @@
       "id": 18,
       "gridPos": {
         "x": 0,
-        "y": 31,
+        "y": 36,
         "w": 24,
         "h": 1
       }
@@ -1412,7 +1557,7 @@
       "id": 19,
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 37,
         "w": 12,
         "h": 10
       }
@@ -1487,7 +1632,7 @@
       "id": 20,
       "gridPos": {
         "x": 12,
-        "y": 32,
+        "y": 37,
         "w": 6,
         "h": 10
       }
@@ -1566,7 +1711,7 @@
       "id": 21,
       "gridPos": {
         "x": 18,
-        "y": 32,
+        "y": 37,
         "w": 6,
         "h": 10
       }
@@ -1685,7 +1830,7 @@
       "id": 22,
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 47,
         "w": 8,
         "h": 8
       }
@@ -1771,7 +1916,7 @@
       "id": 23,
       "gridPos": {
         "x": 8,
-        "y": 42,
+        "y": 47,
         "w": 8,
         "h": 8
       }
@@ -1868,7 +2013,7 @@
       "id": 24,
       "gridPos": {
         "x": 16,
-        "y": 42,
+        "y": 47,
         "w": 8,
         "h": 8
       }
@@ -1943,7 +2088,7 @@
       "id": 25,
       "gridPos": {
         "x": 0,
-        "y": 50,
+        "y": 55,
         "w": 8,
         "h": 8
       }
@@ -1956,7 +2101,7 @@
       "id": 26,
       "gridPos": {
         "x": 0,
-        "y": 58,
+        "y": 63,
         "w": 24,
         "h": 1
       }
@@ -2031,7 +2176,7 @@
       "id": 27,
       "gridPos": {
         "x": 0,
-        "y": 59,
+        "y": 64,
         "w": 8,
         "h": 8
       }
@@ -2106,7 +2251,7 @@
       "id": 28,
       "gridPos": {
         "x": 8,
-        "y": 59,
+        "y": 64,
         "w": 8,
         "h": 8
       }
@@ -2185,7 +2330,7 @@
       "id": 29,
       "gridPos": {
         "x": 16,
-        "y": 59,
+        "y": 64,
         "w": 8,
         "h": 8
       }
@@ -2271,7 +2416,7 @@
       "id": 30,
       "gridPos": {
         "x": 0,
-        "y": 67,
+        "y": 72,
         "w": 12,
         "h": 8
       }
@@ -2357,7 +2502,7 @@
       "id": 31,
       "gridPos": {
         "x": 12,
-        "y": 67,
+        "y": 72,
         "w": 12,
         "h": 8
       }
@@ -2370,7 +2515,7 @@
       "id": 32,
       "gridPos": {
         "x": 0,
-        "y": 75,
+        "y": 80,
         "w": 24,
         "h": 1
       }
@@ -2508,7 +2653,7 @@
       "id": 33,
       "gridPos": {
         "x": 0,
-        "y": 76,
+        "y": 81,
         "w": 8,
         "h": 8
       }
@@ -2621,7 +2766,7 @@
       "id": 34,
       "gridPos": {
         "x": 8,
-        "y": 76,
+        "y": 81,
         "w": 8,
         "h": 8
       }
@@ -2756,7 +2901,7 @@
       "id": 35,
       "gridPos": {
         "x": 16,
-        "y": 76,
+        "y": 81,
         "w": 8,
         "h": 8
       }
@@ -2842,7 +2987,7 @@
       "id": 36,
       "gridPos": {
         "x": 0,
-        "y": 84,
+        "y": 89,
         "w": 8,
         "h": 8
       }
@@ -2928,7 +3073,7 @@
       "id": 37,
       "gridPos": {
         "x": 8,
-        "y": 84,
+        "y": 89,
         "w": 8,
         "h": 8
       }
@@ -3041,7 +3186,7 @@
       "id": 38,
       "gridPos": {
         "x": 16,
-        "y": 84,
+        "y": 89,
         "w": 8,
         "h": 8
       }
@@ -3054,7 +3199,7 @@
       "id": 39,
       "gridPos": {
         "x": 0,
-        "y": 92,
+        "y": 97,
         "w": 24,
         "h": 1
       }
@@ -3140,7 +3285,7 @@
       "id": 40,
       "gridPos": {
         "x": 0,
-        "y": 93,
+        "y": 98,
         "w": 8,
         "h": 8
       }
@@ -3226,7 +3371,7 @@
       "id": 41,
       "gridPos": {
         "x": 8,
-        "y": 93,
+        "y": 98,
         "w": 8,
         "h": 8
       }
@@ -3312,7 +3457,7 @@
       "id": 42,
       "gridPos": {
         "x": 16,
-        "y": 93,
+        "y": 98,
         "w": 8,
         "h": 8
       }
@@ -3325,7 +3470,7 @@
       "id": 43,
       "gridPos": {
         "x": 0,
-        "y": 101,
+        "y": 106,
         "w": 24,
         "h": 1
       }
@@ -3438,7 +3583,7 @@
       "id": 44,
       "gridPos": {
         "x": 0,
-        "y": 102,
+        "y": 107,
         "w": 8,
         "h": 8
       }
@@ -3565,7 +3710,7 @@
       "id": 45,
       "gridPos": {
         "x": 8,
-        "y": 102,
+        "y": 107,
         "w": 8,
         "h": 8
       }
@@ -3651,7 +3796,7 @@
       "id": 46,
       "gridPos": {
         "x": 16,
-        "y": 102,
+        "y": 107,
         "w": 8,
         "h": 8
       }
@@ -3664,7 +3809,7 @@
       "id": 47,
       "gridPos": {
         "x": 0,
-        "y": 110,
+        "y": 115,
         "w": 24,
         "h": 1
       }
@@ -3780,7 +3925,7 @@
       "id": 48,
       "gridPos": {
         "x": 0,
-        "y": 111,
+        "y": 116,
         "w": 8,
         "h": 8
       }
@@ -3855,7 +4000,7 @@
       "id": 49,
       "gridPos": {
         "x": 8,
-        "y": 111,
+        "y": 116,
         "w": 8,
         "h": 8
       }
@@ -3930,7 +4075,7 @@
       "id": 50,
       "gridPos": {
         "x": 16,
-        "y": 111,
+        "y": 116,
         "w": 8,
         "h": 8
       }
@@ -3943,7 +4088,7 @@
       "id": 51,
       "gridPos": {
         "x": 0,
-        "y": 119,
+        "y": 124,
         "w": 24,
         "h": 1
       }
@@ -4060,7 +4205,7 @@
       "id": 52,
       "gridPos": {
         "x": 0,
-        "y": 120,
+        "y": 125,
         "w": 8,
         "h": 8
       }
@@ -4227,7 +4372,7 @@
       "id": 53,
       "gridPos": {
         "x": 8,
-        "y": 120,
+        "y": 125,
         "w": 8,
         "h": 8
       }
@@ -4313,7 +4458,7 @@
       "id": 54,
       "gridPos": {
         "x": 16,
-        "y": 120,
+        "y": 125,
         "w": 8,
         "h": 8
       }

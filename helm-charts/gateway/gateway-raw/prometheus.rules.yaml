@@ -1,0 +1,23 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# Istio standard metrics (https://istio.io/latest/docs/reference/config/metrics/) from the gateway Envoys (PodMonitor
+# gateway-envoy in istio-raw, job istio-system/gateway-envoy, reporter="source", namespace=gateway).
+groups:
+    - name: gateway
+      rules:
+          # Derived: 5 % = the red threshold (success rate < 95 %) of the official Istio Mesh dashboard
+          # (https://github.com/istio/istio/blob/1.30.8/manifests/addons/dashboards/istio-mesh.libsonnet), per backend,
+          # for 10m, as written in docs/dashboards/networking.md. Gateway mcp is left to MCPServerHigh5xxRate
+          # (mcp-servers-raw) so one failure does not raise two alerts. A dead gateway pod is TargetDown /
+          # KubeDeploymentReplicasMismatch (kube-prometheus-stack).
+          - alert: GatewayBackendHigh5xxRate
+            expr: |-
+                sum by (namespace, source_workload, destination_service_namespace, destination_service_name) (rate(istio_requests_total{job="istio-system/gateway-envoy", reporter="source", source_workload!="mcp-istio", response_code=~"5.."}[5m]))
+                /
+                sum by (namespace, source_workload, destination_service_namespace, destination_service_name) (rate(istio_requests_total{job="istio-system/gateway-envoy", reporter="source", source_workload!="mcp-istio"}[5m]))
+                > 0.05
+            for: 10m
+            labels:
+                severity: warning
+            annotations:
+                summary: More than 5 % of requests from gateway {{ $labels.source_workload }} to {{ $labels.destination_service_namespace }}/{{ $labels.destination_service_name }} return 5xx — check the backend pods and the access logs (Ingress / Gateway dashboard)
+                description: "5xx ratio {{ $value | humanizePercentage }} for 10m. Response flags (UH, UF, URX) in the access logs tell gateway-side from backend-side errors."

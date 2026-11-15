@@ -34,7 +34,7 @@ because `VaultDown` uses `absent()` and carries no namespace) and
 
 **Here:** `vault/vault-0`, standalone, `file` storage on `local-path`, Kubernetes auth for External Secrets (role
 `external-secrets`), KV v2 at `secret/homelab/*`. Sealed after every restart; CronJob `vault-autounseal` unseals within
-15 min. Scrape job `vault-internal` (chart ServiceMonitor, `/v1/sys/metrics?format=prometheus`, 60s,
+5 min. Scrape job `vault-internal` (chart ServiceMonitor, `/v1/sys/metrics?format=prometheus`, 60s,
 `unauthenticated_metrics_access = true` on the listener — cluster-internal only, the HTTPRoute exposes the UI).
 
 **Metrics change (pending sync + restart):** `telemetry.prometheus_retention_time` was `30s` (the example value of the
@@ -68,7 +68,7 @@ grafana.com 12904 rev 2, dates from 2020). Built from the [vault-mixin](https://
 [telemetry reference](https://developer.hashicorp.com/vault/docs/internals/telemetry/metrics), without its HA, Raft,
 replication and audit panels.
 - Is Vault usable?: seal status, scrape, active node, up since, auto-unseal CronJob last success (KSM
-  `kube_cronjob_status_last_successful_time`, yellow > 30 min / red > 1 h — derived: the CronJob runs every 15 min and
+  `kube_cronjob_status_last_successful_time`, yellow > 10 min / red > 20 min — derived: the CronJob runs every 5 min and
   exits 0 when unsealed), response success rate (mixin `VaultLowResponseSuccessRate`, red < 95 %), seal state timeline.
 - Requests: responses by status class, request/login rate, request latency p50/p99, requests by route (mixin "Route
   Read Rate" generalised to all operations), in-flight requests.
@@ -82,9 +82,15 @@ replication and audit panels.
   `vault_core_handle_request_count`, `vault_core_handle_request{quantile="0.99"}`, `vault_token_creation`,
   `vault_token_count_by_ttl`, `vault_secret_kv_count`, `vault_route_read_secret___count`, `vault_barrier_put`.
 
-**Gaps / recommendations:** add the vault-mixin alerts `VaultTooManyInfinityTokens` and
-`VaultLowResponseSuccessRate` to `vault-raw/prometheus.rules.yaml`; an alert on the auto-unseal CronJob (no success in
-1 h) would catch a missing `vault-unseal` Secret before the next reboot. Volume usage cannot be shown per volume:
+**Alerts added** (`vault-raw/prometheus.rules.yaml`):
+- `VaultTooManyInfinityTokens`: `vault_token_count_by_ttl{creation_ttl="+Inf"} > 3` for 5m, warning (vault-mixin, as is).
+- `VaultLowResponseSuccessRate`: non-5xx share of `vault_core_response_status_code` < 95 % and > 1 5xx/s, for 1m,
+  warning (vault-mixin; aggregated `by (namespace, job, instance)` to keep `namespace=vault`).
+- `VaultAutoUnsealNotSucceeding`: `time() - kube_cronjob_status_last_successful_time{cronjob="vault-autounseal"} > 20 min`,
+  warning (derived: the dashboard's red threshold; the CronJob runs every 5 min). Catches a missing `vault-unseal` Secret
+  before the next reboot.
+
+**Gaps:** volume usage cannot be shown per volume:
 `local-path` volumes report the node filesystem (use the node dashboards).
 
 ## cert-manager
@@ -92,7 +98,8 @@ replication and audit panels.
 **Here:** v1.21.3, ClusterIssuers `letsencrypt-prod`/`letsencrypt-staging` (ACME DNS-01 on Cloudflare, token from
 Vault via ExternalSecret `cert-manager/cloudflare-api-token`), Certificate `gateway/wildcard` (`*.staffops.space`), plus
 the OpenTelemetry operator's self-signed Issuer/Certificate. Jobs `cert-manager` (controller), `webhook`, `cainjector`.
-Lab alerts: `CertificateNotReady` (False for 30m), `CertificateExpiringSoon` (< 14 days).
+Lab alerts: `CertificateNotReady` (not True for 30m), `CertificateExpiringSoon` (< 14 days), plus the mixin's
+`CertManagerAbsent` and `CertManagerHittingRateLimits`.
 
 **Metrics (families):**
 - Certificates: `certmanager_certificate_ready_status{condition}`, `certmanager_certificate_expiration_timestamp_seconds`,
@@ -123,8 +130,11 @@ have, and uses kube-state-metrics v1 names (`kube_pod_container_resource_limits_
 - Annotations: alerts, restarts, **Certificate issued/renewed** (`changes(certmanager_certificate_not_before_timestamp_seconds[10m]) > 0`).
 - EMPTY: none at validation time (error panels return zero-valued series).
 
-**Gaps / recommendations:** add the mixin alerts `CertManagerHittingRateLimits` and `CertManagerAbsent`; the lab's
-`CertificateNotReady` matches only `condition="False"` (the mixin also catches `Unknown`).
+**Alerts added** (`cert-manager-raw/prometheus.rules.yaml`, mixin = cert-manager-mixin):
+- `CertManagerAbsent`: `absent(up{job="cert-manager"})` for 10m, critical (mixin, static `namespace: cert-manager`).
+- `CertManagerHittingRateLimits`: ACME `status="429"` rate > 0 for 5m, critical (mixin; `by (namespace, host)`).
+- `CertificateNotReady` now matches `condition!="True"` (mixin `CertManagerCertNotReady` matcher, so `Unknown` is caught);
+  the lab's 30m / warning are kept and the summary shows the Certificate's own namespace (`exported_namespace`).
 
 ## External Secrets Operator
 
@@ -160,9 +170,9 @@ sync errors — all "no errors in the window".
 - Annotations: alerts (namespace or `VaultSealed`), restarts, **ExternalSecret not Ready**, **Vault sealed**.
 - EMPTY: "Sync errors per ExternalSecret" (`externalsecret_sync_calls_error` exists only after an error).
 
-**Gaps / recommendations:** no alert covers ESO itself: add `ExternalSecretNotReady`
-(`externalsecret_status_condition{condition="Ready",status="False"} == 1` for 15m) and a ClusterSecretStore not-ready
-alert.
+**Alerts added** (`external-secrets-raw/prometheus.rules.yaml`; ESO ships no rules, metric semantics from the docs):
+- `ExternalSecretNotReady`: `externalsecret_status_condition{condition="Ready",status="False"} == 1` for 15m, warning.
+- `ClusterSecretStoreNotReady`: same on `clustersecretstore_status_condition`, for 15m, warning (derived, same duration).
 
 ## Kyverno
 
@@ -251,8 +261,14 @@ lists for Keycloak ≥ 26.3).
 - Annotations: alerts, restarts, **Realm import Job running** (Argo CD PostSync `keycloak-realm-import`).
 - EMPTY (pending sync): auth requests < 250 ms, the three user-event panels, auth latency.
 
-**Gaps / recommendations:** alerts on the SLIs (availability, `SERVER_ERROR` ratio) and on a burst of
-`invalid_user_credentials` once event metrics exist.
+**Alerts added** (`keycloak-raw/prometheus.rules.yaml`):
+- `KeycloakAuthErrorBudgetBurn`: `SERVER_ERROR` share of authentication requests (SLI guide query and URI regex, recorded
+  as `keycloak:auth_server_error_ratio:rate{5m,30m,1h,6h}`) against the guide's 0.1 % SLO with the SRE-workbook
+  multiwindow burn rates: > 14.4x over 1h and 5m (critical), > 6x over 6h and 30m (warning). Derived (no upstream rule).
+
+**Not added:** availability alert (the SLI is `up`: kube-prometheus-stack `TargetDown` / `KubeStatefulSetReplicasMismatch`
+already cover it); burst of `invalid_user_credentials` (no upstream threshold; Keycloak's brute-force detection is the
+control — revisit with a measured baseline once `keycloak_user_events_total` exists).
 
 ## Dependency-Track
 

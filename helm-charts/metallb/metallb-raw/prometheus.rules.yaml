@@ -1,0 +1,22 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+groups:
+    - name: metallb-announcements
+      rules:
+          # Derived (docs/dashboards/networking.md): a LoadBalancer Service with an IP (kube-state-metrics
+          # kube_service_status_load_balancer_ingress) that no speaker announces (metallb_speaker_announced, MetalLB
+          # https://metallb.io/prometheus-metrics/) is unreachable from the LAN. The chart's metallb.rules do not cover it.
+          # The Service namespace moves to exported_namespace; namespace=metallb-system for the dashboards.
+          - alert: MetalLBServiceNotAnnounced
+            expr: |-
+                label_replace(
+                  max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)
+                  unless on (ip)
+                  (metallb_speaker_announced == 1),
+                  "exported_namespace", "$1", "namespace", "(.*)"
+                )
+            for: 10m
+            labels:
+                severity: warning
+                namespace: metallb-system
+            annotations:
+                summary: LoadBalancer IP {{ $labels.ip }} of {{ $labels.exported_namespace }}/{{ $labels.service }} is not announced by any MetalLB speaker — check the speaker pod and L2Advertisement lan

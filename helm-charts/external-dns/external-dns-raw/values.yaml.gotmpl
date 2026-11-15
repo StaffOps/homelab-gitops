@@ -16,3 +16,10 @@ resources:
                 remoteRef:
                     key: {{ .Values.vault.prefix }}/cloudflare
                     property: api-token
+    # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+          name: external-dns
+      spec:
+          {{- readFile "./prometheus.rules.yaml" | nindent 10 }}

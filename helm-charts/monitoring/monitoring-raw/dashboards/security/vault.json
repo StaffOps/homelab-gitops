@@ -122,7 +122,7 @@
       "description": "How to read this dashboard.",
       "options": {
         "mode": "markdown",
-        "content": "### Vault: the lab's only secret store\n**What it does here.** `vault/vault-0` (standalone, `file` storage on a `local-path` volume) holds every credential under\n`secret/homelab/*`. External Secrets logs in with Kubernetes auth (role `external-secrets`) and copies the values into\nKubernetes Secrets. Nobody else talks to Vault day to day.\n\n**The #1 risk: sealed.** Vault starts **sealed** after every restart of `vault-0` (node reboot included). While sealed,\nexisting Kubernetes Secrets keep working, but nothing refreshes and new ExternalSecrets stay pending. Alert `VaultSealed`\nfires after 5 min; the CronJob `vault-autounseal` unseals within 15 min (`docs/runbooks/vault.md`).\n\n**Healthy looks like:** *Seal status* = UNSEALED, *Active node* = 1, scrape UP, success rate 100 %, a few requests per\nminute (ESO logins and reads every refresh), no irrevocable leases.\n\n**When something is red:** sealed → `kubectl --context k8s01 -n vault create job --from=cronjob/vault-autounseal unseal-now`\nor `scripts/vault.sh unseal`. Scrape DOWN → is `vault-0` running (`kubectl --context k8s01 -n vault get pod`)?\n5xx responses → `kubectl --context k8s01 -n vault logs vault-0`. Then check the *External Secrets* dashboard.\n\nRequest/token/lease panels need `prometheus_retention_time = \"24h\"` (set in `helm-charts/vault`, active after the next\n`vault-0` restart); with the old 30s value they are mostly empty. Docs: [telemetry](https://developer.hashicorp.com/vault/docs/internals/telemetry/metrics), [vault-mixin](https://github.com/adinhodovic/vault-mixin).",
+        "content": "### Vault: the lab's only secret store\n**What it does here.** `vault/vault-0` (standalone, `file` storage on a `local-path` volume) holds every credential under\n`secret/homelab/*`. External Secrets logs in with Kubernetes auth (role `external-secrets`) and copies the values into\nKubernetes Secrets. Nobody else talks to Vault day to day.\n\n**The #1 risk: sealed.** Vault starts **sealed** after every restart of `vault-0` (node reboot included). While sealed,\nexisting Kubernetes Secrets keep working, but nothing refreshes and new ExternalSecrets stay pending. Alert `VaultSealed`\nfires after 5 min; the CronJob `vault-autounseal` unseals within 5 min (`docs/runbooks/vault.md`).\n\n**Healthy looks like:** *Seal status* = UNSEALED, *Active node* = 1, scrape UP, success rate 100 %, a few requests per\nminute (ESO logins and reads every refresh), no irrevocable leases.\n\n**When something is red:** sealed → `kubectl --context k8s01 -n vault create job --from=cronjob/vault-autounseal unseal-now`\nor `scripts/vault.sh unseal`. Scrape DOWN → is `vault-0` running (`kubectl --context k8s01 -n vault get pod`)?\n5xx responses → `kubectl --context k8s01 -n vault logs vault-0`. Then check the *External Secrets* dashboard.\n\nRequest/token/lease panels need `prometheus_retention_time = \"24h\"` (set in `helm-charts/vault`, active after the next\n`vault-0` restart); with the old 30s value they are mostly empty. Docs: [telemetry](https://developer.hashicorp.com/vault/docs/internals/telemetry/metrics), [vault-mixin](https://github.com/adinhodovic/vault-mixin).",
         "code": {
           "language": "markdown",
           "showLineNumbers": false,
@@ -138,13 +138,158 @@
       }
     },
     {
+      "type": "table",
+      "title": "Active alerts for this service",
+      "id": 27,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Prometheus alerts of this service that are FIRING (condition true for longer than the rule's `for`) or PENDING (condition true, waiting for `for`). Same filter as the red alert annotations of this dashboard; Watchdog/InfoInhibitor are excluded. Empty = healthy. Alertmanager has no receiver in this lab, so dashboards are where alerts are seen: the rule, its threshold and source are in the rule files (helm-charts/<app>/**/prometheus.rules.yaml or the -raw release) and in docs/dashboards/. All alerts of the lab: dashboard \"Alerts overview\" (Observability folder).",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "ALERTS{alertname!~\"Watchdog|InfoInhibitor\", alertstate=~\"firing|pending\", alertname=~\"Vault.*\"} or ALERTS{alertname!~\"Watchdog|InfoInhibitor\", alertstate=~\"firing|pending\", namespace=\"vault\"}",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "No active alerts"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alertstate"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "state"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "firing": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "pending": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "critical": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "warning": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "info": {
+                        "color": "blue",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "prometheus": true,
+              "endpoint": true,
+              "service": true,
+              "instance": true,
+              "uid": true
+            },
+            "indexByName": {
+              "alertname": 0,
+              "alertstate": 1,
+              "severity": 2,
+              "namespace": 3
+            }
+          }
+        }
+      ]
+    },
+    {
       "type": "row",
       "title": "Is Vault usable?",
       "id": 2,
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 9,
+        "y": 14,
         "w": 24,
         "h": 1
       },
@@ -229,7 +374,7 @@
       "id": 3,
       "gridPos": {
         "x": 0,
-        "y": 10,
+        "y": 15,
         "w": 4,
         "h": 4
       }
@@ -313,7 +458,7 @@
       "id": 4,
       "gridPos": {
         "x": 4,
-        "y": 10,
+        "y": 15,
         "w": 3,
         "h": 4
       }
@@ -397,7 +542,7 @@
       "id": 5,
       "gridPos": {
         "x": 7,
-        "y": 10,
+        "y": 15,
         "w": 3,
         "h": 4
       }
@@ -466,7 +611,7 @@
       "id": 6,
       "gridPos": {
         "x": 10,
-        "y": 10,
+        "y": 15,
         "w": 3,
         "h": 4
       }
@@ -474,7 +619,7 @@
     {
       "type": "stat",
       "title": "Auto-unseal CronJob: last success",
-      "description": "Age of the last successful run of CronJob vault-autounseal (kube_cronjob_status_last_successful_time). It runs every 15 min and exits 0 when there is nothing to do, so the age stays below 15 min. Yellow > 30 min (2 runs missed), red > 1 h: the Secret vault-unseal may be missing (scripts/vault.sh autounseal-secret) and a reboot would leave Vault sealed. Derived from the documented KSM metric (https://github.com/kubernetes/kube-state-metrics/tree/main/docs/metrics).",
+      "description": "Age of the last successful run of CronJob vault-autounseal (kube_cronjob_status_last_successful_time). It runs every 5 min and exits 0 when there is nothing to do, so the age stays below 5 min. Yellow > 10 min (2 runs missed), red > 20 min: the Secret vault-unseal may be missing (scripts/vault.sh autounseal-secret) and a reboot would leave Vault sealed. Derived from the documented KSM metric (https://github.com/kubernetes/kube-state-metrics/tree/main/docs/metrics).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -504,11 +649,11 @@
               },
               {
                 "color": "#EAB839",
-                "value": 1800
+                "value": 600
               },
               {
                 "color": "red",
-                "value": 3600
+                "value": 1200
               }
             ]
           },
@@ -539,7 +684,7 @@
       "id": 7,
       "gridPos": {
         "x": 13,
-        "y": 10,
+        "y": 15,
         "w": 4,
         "h": 4
       }
@@ -612,7 +757,7 @@
       "id": 8,
       "gridPos": {
         "x": 17,
-        "y": 10,
+        "y": 15,
         "w": 4,
         "h": 4
       }
@@ -699,7 +844,7 @@
       "id": 9,
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 19,
         "w": 24,
         "h": 4
       }
@@ -711,7 +856,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 18,
+        "y": 23,
         "w": 24,
         "h": 1
       },
@@ -833,7 +978,7 @@
       "id": 11,
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 24,
         "w": 8,
         "h": 8
       }
@@ -919,7 +1064,7 @@
       "id": 12,
       "gridPos": {
         "x": 8,
-        "y": 19,
+        "y": 24,
         "w": 8,
         "h": 8
       }
@@ -1005,7 +1150,7 @@
       "id": 13,
       "gridPos": {
         "x": 16,
-        "y": 19,
+        "y": 24,
         "w": 8,
         "h": 8
       }
@@ -1080,7 +1225,7 @@
       "id": 14,
       "gridPos": {
         "x": 0,
-        "y": 27,
+        "y": 32,
         "w": 12,
         "h": 8
       }
@@ -1155,7 +1300,7 @@
       "id": 15,
       "gridPos": {
         "x": 12,
-        "y": 27,
+        "y": 32,
         "w": 12,
         "h": 8
       }
@@ -1167,7 +1312,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 40,
         "w": 24,
         "h": 1
       },
@@ -1243,7 +1388,7 @@
       "id": 17,
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 41,
         "w": 8,
         "h": 8
       }
@@ -1334,7 +1479,7 @@
       "id": 18,
       "gridPos": {
         "x": 8,
-        "y": 36,
+        "y": 41,
         "w": 8,
         "h": 8
       }
@@ -1436,7 +1581,7 @@
       "id": 19,
       "gridPos": {
         "x": 16,
-        "y": 36,
+        "y": 41,
         "w": 8,
         "h": 8
       }
@@ -1500,7 +1645,7 @@
       "id": 20,
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 49,
         "w": 6,
         "h": 5
       }
@@ -1564,7 +1709,7 @@
       "id": 21,
       "gridPos": {
         "x": 6,
-        "y": 44,
+        "y": 49,
         "w": 6,
         "h": 5
       }
@@ -1639,7 +1784,7 @@
       "id": 22,
       "gridPos": {
         "x": 12,
-        "y": 44,
+        "y": 49,
         "w": 12,
         "h": 5
       }
@@ -1651,7 +1796,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 49,
+        "y": 54,
         "w": 24,
         "h": 1
       },
@@ -1758,7 +1903,7 @@
       "id": 24,
       "gridPos": {
         "x": 0,
-        "y": 50,
+        "y": 55,
         "w": 8,
         "h": 7
       }
@@ -1833,7 +1978,7 @@
       "id": 25,
       "gridPos": {
         "x": 8,
-        "y": 50,
+        "y": 55,
         "w": 8,
         "h": 7
       }
@@ -1908,7 +2053,7 @@
       "id": 26,
       "gridPos": {
         "x": 16,
-        "y": 50,
+        "y": 55,
         "w": 8,
         "h": 7
       }

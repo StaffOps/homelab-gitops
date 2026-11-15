@@ -1,0 +1,28 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# ESO ships no alert rules. Metric semantics: https://github.com/external-secrets/external-secrets/blob/v2.15.0/docs/api/metrics.md
+# (status_condition gauges are 1 on the current condition). The scrape sets namespace=external-secrets; the object's
+# namespace is exported_namespace.
+groups:
+    - name: external-secrets
+      rules:
+          # Derived: expression and "for: 15m" from docs/dashboards/security.md (External Secrets Operator).
+          - alert: ExternalSecretNotReady
+            expr: |-
+                max by (namespace, exported_namespace, name) (externalsecret_status_condition{condition="Ready", status="False"}) == 1
+            for: 15m
+            labels:
+                severity: warning
+            annotations:
+                summary: ExternalSecret {{ $labels.exported_namespace }}/{{ $labels.name }} is not Ready — check its status message, the Vault key and VaultSealed
+                description: The target Secret is no longer refreshed from Vault. `kubectl --context k8s01 -n {{ $labels.exported_namespace }} describe externalsecret {{ $labels.name }}`.
+          # Derived: same metric family and duration as ExternalSecretNotReady, for the ClusterSecretStore (every
+          # ExternalSecret here uses ClusterSecretStore vault).
+          - alert: ClusterSecretStoreNotReady
+            expr: |-
+                max by (namespace, name) (clustersecretstore_status_condition{condition="Ready", status="False"}) == 1
+            for: 15m
+            labels:
+                severity: warning
+            annotations:
+                summary: ClusterSecretStore {{ $labels.name }} is not Ready — no ExternalSecret can sync; check Vault (sealed?) and the Kubernetes auth role external-secrets
+                description: "`kubectl --context k8s01 describe clustersecretstore {{ $labels.name }}`."

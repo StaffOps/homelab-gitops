@@ -154,6 +154,151 @@
       }
     },
     {
+      "type": "table",
+      "title": "Active alerts for this service",
+      "id": 28,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Prometheus alerts of this service that are FIRING (condition true for longer than the rule's `for`) or PENDING (condition true, waiting for `for`). Same filter as the red alert annotations of this dashboard; Watchdog/InfoInhibitor are excluded. Empty = healthy. Alertmanager has no receiver in this lab, so dashboards are where alerts are seen: the rule, its threshold and source are in the rule files (helm-charts/<app>/**/prometheus.rules.yaml or the -raw release) and in docs/dashboards/. All alerts of the lab: dashboard \"Alerts overview\" (Observability folder).",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "ALERTS{alertname!~\"Watchdog|InfoInhibitor\", alertstate=~\"firing|pending\", namespace=~\"velero\"}",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "No active alerts"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alertstate"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "state"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "firing": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "pending": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "critical": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "warning": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "info": {
+                        "color": "blue",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "prometheus": true,
+              "endpoint": true,
+              "service": true,
+              "instance": true,
+              "uid": true
+            },
+            "indexByName": {
+              "alertname": 0,
+              "alertstate": 1,
+              "severity": 2,
+              "namespace": 3
+            }
+          }
+        }
+      ]
+    },
+    {
       "type": "row",
       "title": "Is the last backup good?",
       "collapsed": false,
@@ -161,7 +306,7 @@
       "id": 2,
       "gridPos": {
         "x": 0,
-        "y": 9,
+        "y": 14,
         "w": 24,
         "h": 1
       }
@@ -235,7 +380,7 @@
       "id": 3,
       "gridPos": {
         "x": 0,
-        "y": 10,
+        "y": 15,
         "w": 6,
         "h": 5
       }
@@ -308,7 +453,7 @@
       "id": 4,
       "gridPos": {
         "x": 6,
-        "y": 10,
+        "y": 15,
         "w": 4,
         "h": 5
       }
@@ -394,7 +539,7 @@
       "id": 5,
       "gridPos": {
         "x": 10,
-        "y": 10,
+        "y": 15,
         "w": 4,
         "h": 5
       }
@@ -479,7 +624,7 @@
       "id": 6,
       "gridPos": {
         "x": 14,
-        "y": 10,
+        "y": 15,
         "w": 4,
         "h": 5
       }
@@ -549,7 +694,7 @@
       "id": 7,
       "gridPos": {
         "x": 18,
-        "y": 10,
+        "y": 15,
         "w": 3,
         "h": 5
       }
@@ -614,7 +759,7 @@
       "id": 8,
       "gridPos": {
         "x": 21,
-        "y": 10,
+        "y": 15,
         "w": 3,
         "h": 5
       }
@@ -627,7 +772,7 @@
       "id": 9,
       "gridPos": {
         "x": 0,
-        "y": 15,
+        "y": 20,
         "w": 24,
         "h": 1
       }
@@ -807,7 +952,7 @@
       "id": 10,
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 21,
         "w": 12,
         "h": 8
       }
@@ -890,7 +1035,7 @@
       "id": 11,
       "gridPos": {
         "x": 12,
-        "y": 16,
+        "y": 21,
         "w": 12,
         "h": 8
       }
@@ -1005,7 +1150,7 @@
       "id": 12,
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 29,
         "w": 8,
         "h": 8
       }
@@ -1088,7 +1233,7 @@
       "id": 13,
       "gridPos": {
         "x": 8,
-        "y": 24,
+        "y": 29,
         "w": 8,
         "h": 8
       }
@@ -1171,7 +1316,7 @@
       "id": 14,
       "gridPos": {
         "x": 16,
-        "y": 24,
+        "y": 29,
         "w": 8,
         "h": 8
       }
@@ -1184,7 +1329,7 @@
       "id": 15,
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 37,
         "w": 24,
         "h": 1
       }
@@ -1279,7 +1424,7 @@
       "id": 16,
       "gridPos": {
         "x": 0,
-        "y": 33,
+        "y": 38,
         "w": 8,
         "h": 8
       }
@@ -1367,7 +1512,7 @@
       "id": 17,
       "gridPos": {
         "x": 8,
-        "y": 33,
+        "y": 38,
         "w": 8,
         "h": 8
       }
@@ -1470,7 +1615,7 @@
       "id": 18,
       "gridPos": {
         "x": 16,
-        "y": 33,
+        "y": 38,
         "w": 8,
         "h": 8
       }
@@ -1483,7 +1628,7 @@
       "id": 19,
       "gridPos": {
         "x": 0,
-        "y": 41,
+        "y": 46,
         "w": 24,
         "h": 1
       }
@@ -1594,7 +1739,7 @@
       "id": 20,
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 47,
         "w": 12,
         "h": 8
       }
@@ -1677,7 +1822,7 @@
       "id": 21,
       "gridPos": {
         "x": 12,
-        "y": 42,
+        "y": 47,
         "w": 12,
         "h": 8
       }
@@ -1690,7 +1835,7 @@
       "id": 22,
       "gridPos": {
         "x": 0,
-        "y": 50,
+        "y": 55,
         "w": 24,
         "h": 1
       }
@@ -1809,7 +1954,7 @@
       "id": 23,
       "gridPos": {
         "x": 0,
-        "y": 51,
+        "y": 56,
         "w": 12,
         "h": 8
       }
@@ -1904,7 +2049,7 @@
       "id": 24,
       "gridPos": {
         "x": 12,
-        "y": 51,
+        "y": 56,
         "w": 12,
         "h": 8
       }
@@ -1917,7 +2062,7 @@
       "id": 25,
       "gridPos": {
         "x": 0,
-        "y": 59,
+        "y": 64,
         "w": 24,
         "h": 1
       }
@@ -2035,7 +2180,7 @@
       "id": 26,
       "gridPos": {
         "x": 0,
-        "y": 60,
+        "y": 65,
         "w": 12,
         "h": 8
       }
@@ -2118,7 +2263,7 @@
       "id": 27,
       "gridPos": {
         "x": 12,
-        "y": 60,
+        "y": 65,
         "w": 12,
         "h": 8
       }

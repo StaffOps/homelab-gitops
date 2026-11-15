@@ -1,0 +1,15 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# llama.cpp server /metrics (https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): no upstream
+# alert rules. Scrape loss is kube-prometheus-stack TargetDown.
+groups:
+    - name: llm
+      rules:
+          # Derived: llamacpp:requests_deferred = requests waiting for a free slot (README); any value > 0 means callers
+          # queue, sustained 10 min = demand above capacity (docs/dashboards/ai.md, panel "Requests deferred").
+          - alert: LlamaCppRequestsDeferred
+            expr: max by (namespace, job) (llamacpp:requests_deferred) > 0
+            for: 10m
+            labels:
+                severity: warning
+            annotations:
+                summary: llama.cpp has had {{ $value }} requests waiting for a free slot for 10 minutes — demand is above what the GPU serves; check the LLM dashboard (generation speed, callers)

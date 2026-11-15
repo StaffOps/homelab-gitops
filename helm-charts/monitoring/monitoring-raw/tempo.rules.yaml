@@ -1,0 +1,55 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# tempo-mixin alerts at the installed tag (Tempo 3.1.1):
+# https://github.com/grafana/tempo/blob/v3.1.1/operations/tempo-mixin-compiled/alerts.yaml
+# Only the rules whose metrics the v3 single binary exports (docs/dashboards/observability.md). Expressions and
+# thresholds as upstream; "cluster" dropped from the aggregations (no such label here) and job="tempo" added so the
+# rules ignore any other Tempo. Expect ~1/min "no jobs found" backend worker retries at idle (under the 5/min threshold).
+groups:
+    - name: tempo
+      rules:
+          - alert: TempoLiveStoreUnhealthy
+            expr: max by (namespace, job) (tempo_ring_members{job="tempo", state="Unhealthy", name="live-store"}) > 0
+            for: 15m
+            labels:
+                severity: critical
+            annotations:
+                summary: Tempo has {{ $value }} unhealthy live-store ring member(s) — check tempo-0 logs; recent traces may be missing
+                runbook_url: https://github.com/grafana/tempo/tree/main/operations/tempo-mixin/runbook.md#TempoLiveStoreUnhealthy
+          - alert: TempoCompactionsFailing
+            expr: |-
+                sum by (namespace, job) (increase(tempodb_compaction_errors_total{job="tempo"}[1h])) > 2
+                and
+                sum by (namespace, job) (increase(tempodb_compaction_errors_total{job="tempo"}[5m])) > 0
+            for: 1h
+            labels:
+                severity: critical
+            annotations:
+                summary: More than 2 Tempo compactions failed in the past hour — check tempo-0 logs and free disk space on the node
+                runbook_url: https://github.com/grafana/tempo/tree/main/operations/tempo-mixin/runbook.md#TempoCompactionsFailing
+          - alert: TempoBadOverrides
+            expr: sum by (namespace, job) (tempo_runtime_config_last_reload_successful{job="tempo"} == 0)
+            for: 15m
+            labels:
+                severity: critical
+            annotations:
+                summary: Tempo failed to reload its overrides — check the overrides ConfigMap and tempo-0 logs
+                runbook_url: https://github.com/grafana/tempo/tree/main/operations/tempo-mixin/runbook.md#TempoBadOverrides
+          - alert: TempoUserConfigurableOverridesReloadFailing
+            expr: |-
+                sum by (namespace, job) (increase(tempo_overrides_user_configurable_overrides_reload_failed_total{job="tempo"}[1h])) > 5
+                and
+                sum by (namespace, job) (increase(tempo_overrides_user_configurable_overrides_reload_failed_total{job="tempo"}[5m])) > 0
+            for: 15m
+            labels:
+                severity: critical
+            annotations:
+                summary: More than 5 user-configurable overrides reloads failed in the past hour — check tempo-0 logs
+                runbook_url: https://github.com/grafana/tempo/tree/main/operations/tempo-mixin/runbook.md#TempoUserConfigurableOverridesReloadFailing
+          - alert: TempoBackendWorkerCallRetriesHigh
+            expr: sum by (namespace, job) (increase(tempo_backend_worker_call_retries_total{job="tempo"}[1m])) > 5
+            for: 10m
+            labels:
+                severity: warning
+            annotations:
+                summary: Tempo backend worker retries {{ printf "%0.2f" $value }} calls/minute to the scheduler — check tempo-0 logs (compaction/retention jobs)
+                runbook_url: https://github.com/grafana/tempo/tree/main/operations/tempo-mixin/runbook.md#TempoBackendWorkerCallRetriesHigh
