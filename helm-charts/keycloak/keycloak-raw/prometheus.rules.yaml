@@ -1,0 +1,52 @@
+# Inserted as-is (readFile, no tpl): write Prometheus templates plainly.
+# Keycloak ships no alert rules. SLI and SLO from the Keycloak guide
+# https://www.keycloak.org/observability/keycloak-service-level-indicators : server errors (outcome="SERVER_ERROR") on
+# authentication requests (uri regex below) should stay under 0.1 %. Alerting on that SLO uses the multiwindow,
+# multi-burn-rate method of the Google SRE workbook (https://sre.google/workbook/alerting-on-slos/, table 5-8):
+# 14.4x budget burn over 1h confirmed over 5m (page), 6x over 6h confirmed over 30m. Derived: no upstream Keycloak rule.
+# Availability (the guide's "up" SLI) is already covered by kube-prometheus-stack TargetDown and KubeStatefulSet*.
+groups:
+    - name: keycloak
+      rules:
+          - record: keycloak:auth_server_error_ratio:rate5m
+            expr: |-
+                sum by (namespace) (rate(http_server_requests_seconds_count{container="keycloak", outcome="SERVER_ERROR", uri=~"/realms/{realm}/protocol/{protocol}.*|/realms/{realm}/login-actions.*"}[5m]))
+                /
+                sum by (namespace) (rate(http_server_requests_seconds_count{container="keycloak", uri=~"/realms/{realm}/protocol/{protocol}.*|/realms/{realm}/login-actions.*"}[5m]))
+          - record: keycloak:auth_server_error_ratio:rate30m
+            expr: |-
+                sum by (namespace) (rate(http_server_requests_seconds_count{container="keycloak", outcome="SERVER_ERROR", uri=~"/realms/{realm}/protocol/{protocol}.*|/realms/{realm}/login-actions.*"}[30m]))
+                /
+                sum by (namespace) (rate(http_server_requests_seconds_count{container="keycloak", uri=~"/realms/{realm}/protocol/{protocol}.*|/realms/{realm}/login-actions.*"}[30m]))
+          - record: keycloak:auth_server_error_ratio:rate1h
+            expr: |-
+                sum by (namespace) (rate(http_server_requests_seconds_count{container="keycloak", outcome="SERVER_ERROR", uri=~"/realms/{realm}/protocol/{protocol}.*|/realms/{realm}/login-actions.*"}[1h]))
+                /
+                sum by (namespace) (rate(http_server_requests_seconds_count{container="keycloak", uri=~"/realms/{realm}/protocol/{protocol}.*|/realms/{realm}/login-actions.*"}[1h]))
+          - record: keycloak:auth_server_error_ratio:rate6h
+            expr: |-
+                sum by (namespace) (rate(http_server_requests_seconds_count{container="keycloak", outcome="SERVER_ERROR", uri=~"/realms/{realm}/protocol/{protocol}.*|/realms/{realm}/login-actions.*"}[6h]))
+                /
+                sum by (namespace) (rate(http_server_requests_seconds_count{container="keycloak", uri=~"/realms/{realm}/protocol/{protocol}.*|/realms/{realm}/login-actions.*"}[6h]))
+          - alert: KeycloakAuthErrorBudgetBurn
+            expr: |-
+                keycloak:auth_server_error_ratio:rate1h > (14.4 * 0.001)
+                and
+                keycloak:auth_server_error_ratio:rate5m > (14.4 * 0.001)
+            labels:
+                severity: critical
+                burn: fast
+            annotations:
+                summary: Keycloak authentication requests fail with server errors (14.4x the 0.1 % SLO budget) — check keycloak-0 logs and keycloak-db
+                description: "{{ $value | humanizePercentage }} of login/token requests answered 5xx in the last hour. Dashboard: Keycloak (Service level)."
+          - alert: KeycloakAuthErrorBudgetBurn
+            expr: |-
+                keycloak:auth_server_error_ratio:rate6h > (6 * 0.001)
+                and
+                keycloak:auth_server_error_ratio:rate30m > (6 * 0.001)
+            labels:
+                severity: warning
+                burn: slow
+            annotations:
+                summary: Keycloak authentication server errors are burning the 0.1 % SLO budget 6x too fast — check keycloak-0 logs and keycloak-db
+                description: "{{ $value | humanizePercentage }} of login/token requests answered 5xx in the last 6 hours. Dashboard: Keycloak (Service level)."

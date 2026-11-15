@@ -15,12 +15,92 @@ resources:
                   owner: dtrack
           monitoring:
               enablePodMonitor: true
+          # Base backups + WAL to R2 through the Barman Cloud plugin (ObjectStore dtrack-db-r2 below)
+          plugins:
+              - name: barman-cloud.cloudnative-pg.io
+                isWALArchiver: true
+                parameters:
+                    barmanObjectName: dtrack-db-r2
+          # Velero backs up this namespace but not the database files (inconsistent while running)
+          inheritedMetadata:
+              annotations:
+                  backup.velero.io/backup-volumes-excludes: pgdata
           resources:
               requests:
                   cpu: 250m
                   memory: 1Gi
               limits:
                   memory: 2Gi
+    # Object store for dtrack-db (Barman Cloud plugin): s3://<bucket>/<prefix>/dtrack-db/. Credentials: the Velero R2 token
+    # (Vault homelab/velero); endpoint: R2_ENDPOINT from the Argo CD render env, never in git.
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: dtrack-db-r2
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: dtrack-db-r2
+          data:
+              - secretKey: ACCESS_KEY_ID
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/velero
+                    property: access-key-id
+              - secretKey: ACCESS_SECRET_KEY
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/velero
+                    property: secret-access-key
+    - apiVersion: barmancloud.cnpg.io/v1
+      kind: ObjectStore
+      metadata:
+          name: dtrack-db-r2
+      spec:
+          retentionPolicy: {{ .Values.backup.postgres.retention | quote }}
+          configuration:
+              destinationPath: s3://{{ .Values.backup.bucket }}/{{ .Values.backup.postgres.prefix }}/
+              {{- with env "R2_ENDPOINT" }}
+              endpointURL: {{ . }}
+              {{- end }}
+              s3Credentials:
+                  accessKeyId:
+                      name: dtrack-db-r2
+                      key: ACCESS_KEY_ID
+                  secretAccessKey:
+                      name: dtrack-db-r2
+                      key: ACCESS_SECRET_KEY
+              wal:
+                  compression: gzip
+              data:
+                  compression: gzip
+          instanceSidecarConfiguration:
+              # R2 rejects the boto3 default checksum headers (plugin docs, "Object Store Providers")
+              env:
+                  - name: AWS_REQUEST_CHECKSUM_CALCULATION
+                    value: when_required
+                  - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+                    value: when_required
+              resources:
+                  requests:
+                      cpu: 10m
+                      memory: 64Mi
+                  limits:
+                      memory: 256Mi
+    - apiVersion: postgresql.cnpg.io/v1
+      kind: ScheduledBackup
+      metadata:
+          name: dtrack-db-daily
+      spec:
+          schedule: {{ .Values.backup.postgres.schedule | quote }}
+          backupOwnerReference: self
+          immediate: true # first base backup as soon as it is created
+          cluster:
+              name: dtrack-db
+          method: plugin
+          pluginConfiguration:
+              name: barman-cloud.cloudnative-pg.io
     # KEK that encrypts the secrets Dependency-Track stores in its database (Vault homelab/dependency-track: kek,
     # a base64 32-byte key: openssl rand -base64 32). Losing it makes those stored secrets unreadable.
     - apiVersion: external-secrets.io/v1

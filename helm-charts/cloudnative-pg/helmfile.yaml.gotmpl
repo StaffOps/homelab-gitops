@@ -16,6 +16,9 @@ environments:
             - cloudnative-pg-raw:
                   enabled: true
                   version: 2.0.2
+            - plugin-barman-cloud:
+                  enabled: true
+                  version: 0.9.0 # plugin v0.16.0
 ---
 releases:
     - chart: cnpg/cloudnative-pg
@@ -25,6 +28,17 @@ releases:
       version: '{{ .Values | get "cloudnative-pg" | get "version" }}'
       values:
           - ./cloudnative-pg/values.yaml.gotmpl
+    # Barman Cloud plugin (CNPG-I): backups and WAL archiving to object storage (R2). CloudNativePG 1.30 no longer
+    # ships the in-tree barmanObjectStore. Needs cert-manager (the chart creates its own Issuer and certificates).
+    - chart: cnpg/plugin-barman-cloud
+      name: plugin-barman-cloud
+      namespace: cnpg-system
+      condition: plugin-barman-cloud.enabled
+      version: '{{ .Values | get "plugin-barman-cloud" | get "version" }}'
+      needs:
+          - cloudnative-pg
+      values:
+          - ./plugin-barman-cloud/values.yaml.gotmpl
     # PrometheusRule for every CloudNativePG cluster of the lab (the operator chart ships none)
     - chart: bedag/raw
       name: cloudnative-pg-raw

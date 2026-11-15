@@ -39,6 +39,13 @@ backup:
         - vault
         - keycloak
         - dependency-track
+    # PostgreSQL (CloudNativePG clusters): Barman Cloud plugin, daily base backup + continuous WAL archiving
+    # (point-in-time recovery) to s3://<bucket>/<prefix>/<cluster>/, same bucket and R2 token as Velero (Vault
+    # homelab/velero). Velero skips the pgdata volumes: a file copy of a running database is not consistent.
+    postgres:
+        prefix: cnpg
+        retention: 30d
+        schedule: "0 0 2 * * *" # 6-field cron (seconds first), UTC; an hour before Velero
 # Keycloak realm that holds the lab's users and OIDC clients (Argo CD, Grafana, Vault)
 keycloak:
     realm: staffops

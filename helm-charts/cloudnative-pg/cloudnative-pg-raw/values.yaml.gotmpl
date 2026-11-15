@@ -63,3 +63,21 @@ resources:
                           severity: warning
                       annotations:
                           summary: 'Metrics collection keeps failing on {{`{{ $labels.namespace }}/{{ $labels.pod }}`}}: PostgreSQL panels show stale data'
+                    # Backups (Barman Cloud plugin metrics, https://cloudnative-pg.io/plugin-barman-cloud/docs/observability/).
+                    # Derived: same 36h freshness rule as the Velero daily schedule (one missed daily run + margin).
+                    - alert: CNPGBackupTooOld
+                      expr: time() - barman_cloud_cloudnative_pg_io_last_available_backup_timestamp > 36 * 3600
+                      for: 15m
+                      labels:
+                          severity: warning
+                      annotations:
+                          summary: 'No base backup of {{`{{ $labels.namespace }}/{{ $labels.pod }}`}} in R2 for 36h'
+                    - alert: CNPGBackupFailed
+                      expr: |
+                          barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp
+                              > barman_cloud_cloudnative_pg_io_last_available_backup_timestamp
+                      for: 5m
+                      labels:
+                          severity: warning
+                      annotations:
+                          summary: 'The last base backup of {{`{{ $labels.namespace }}/{{ $labels.pod }}`}} failed (kubectl --context k8s01 -n {{`{{ $labels.namespace }}`}} get backups)'

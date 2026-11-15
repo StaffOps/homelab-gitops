@@ -1,0 +1,8 @@
+# Image tags default to the chart appVersion (v0.16.0, pinned by the chart version). The sidecar runs inside each
+# PostgreSQL pod that uses the plugin; its resources are set per ObjectStore (instanceSidecarConfiguration).
+resources:
+    requests:
+        cpu: 10m
+        memory: 64Mi
+    limits:
+        memory: 256Mi

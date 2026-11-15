@@ -1,4 +1,15 @@
-# Backup (Velero → Cloudflare R2)
+# Backup (Velero and CloudNativePG → Cloudflare R2)
+
+Two tools, one bucket, no overlap:
+
+| What | Tool | Where in the bucket | Schedule / retention |
+|------|------|---------------------|----------------------|
+| Kubernetes objects of `backup.namespaces` (Cluster CRs, generated Secrets such as `keycloak-db-app`, PVCs) and every volume **except** PostgreSQL data (Vault storage, Dependency-Track data) | Velero | `k8s01/` | 03:00 UTC, 30 days |
+| PostgreSQL `keycloak-db`, `dtrack-db`: base backup + continuous WAL (point-in-time recovery) | CloudNativePG Barman Cloud plugin | `cnpg/<cluster>/` | base 02:00 UTC + WAL every ≤ 5 min, 30 days |
+
+Monitoring data (Prometheus, Loki, Tempo, Grafana, Alertmanager) is not backed up: it is not worth the cost.
+
+## Velero
 
 Velero backs up, every day at 03:00 UTC, the objects **and volume data** of the namespaces listed in
 `helm-charts/environment.yaml` `backup.namespaces` (vault, keycloak, dependency-track) to the R2 bucket
@@ -41,6 +52,74 @@ Full rebuild: first-install up to Velero `Available` (Vault put of the R2 token 
 
 ## Caveats
 
-- PostgreSQL (CloudNativePG) volumes are copied live: crash-consistent, normally recoverable. For
-  point-in-time recovery, add CloudNativePG's own backups (barman-cloud) to R2 later.
+- Velero skips the PostgreSQL `pgdata` volumes (Cluster `inheritedMetadata` annotation
+  `backup.velero.io/backup-volumes-excludes: pgdata`): a file copy of a running database is not consistent.
+  Restore databases from the CloudNativePG backups below.
 - Vault data is encrypted at rest by Vault: a restore is useless without the unseal key.
+
+## PostgreSQL (CloudNativePG + Barman Cloud plugin)
+
+Config: `helm-charts/environment.yaml` `backup.postgres`; plugin release `plugin-barman-cloud` in
+`helm-charts/cloudnative-pg`; per database an `ObjectStore` `<cluster>-r2`, an ExternalSecret `<cluster>-r2` (the
+Velero R2 token, Vault `homelab/velero`) and a `ScheduledBackup` `<cluster>-daily` in the app's `-raw` release
+(keycloak, dependency-track). Alerts: `CNPGBackupTooOld` (36 h), `CNPGBackupFailed`, `CNPGWalArchivingFailing`.
+Dashboard: Databases → CloudNativePG.
+
+```bash
+kubectl --context k8s01 -n keycloak get scheduledbackups,backups
+kubectl --context k8s01 -n keycloak get objectstore keycloak-db-r2 -o jsonpath='{.status}'   # first/last recoverability point
+kubectl --context k8s01 -n keycloak get cluster keycloak-db -o jsonpath='{.status.conditions}'   # ContinuousArchiving=True
+```
+
+On-demand base backup:
+
+```bash
+kubectl --context k8s01 -n keycloak create -f - <<'YAML'
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+    generateName: keycloak-db-manual-
+spec:
+    cluster:
+        name: keycloak-db
+    method: plugin
+    pluginConfiguration:
+        name: barman-cloud.cloudnative-pg.io
+YAML
+```
+
+### Restore a database
+
+CloudNativePG restores into a **new** Cluster (it never overwrites a running one). In git, change the app's Cluster
+(`keycloak-raw` / `dependency-track-raw`):
+
+1. Stop the app (scale its Deployment/StatefulSet to 0, or disable auto-sync for the app in Argo CD).
+2. Replace `bootstrap.initdb` with a recovery from the object store and add the source as an external cluster. Give
+   the new Cluster's WAL archive a different `serverName` so it does not write over the backups it restores from:
+   ```yaml
+   bootstrap:
+       recovery:
+           source: origin
+           # recoveryTarget:            # optional point in time; default = latest WAL
+           #     targetTime: "2026-11-15 10:00:00+00"
+   externalClusters:
+       - name: origin
+         plugin:
+             name: barman-cloud.cloudnative-pg.io
+             parameters:
+                 barmanObjectName: keycloak-db-r2
+                 serverName: keycloak-db
+   plugins:
+       - name: barman-cloud.cloudnative-pg.io
+         isWALArchiver: true
+         parameters:
+             barmanObjectName: keycloak-db-r2
+             serverName: keycloak-db-r1   # new archive path after the restore
+   ```
+3. Delete the old Cluster (`kubectl --context k8s01 -n keycloak delete cluster keycloak-db`; its PVC goes with it),
+   push, let Argo CD create the restored one, check `kubectl cnpg status`, start the app again.
+4. Later, a follow-up commit can move `bootstrap` back to `initdb` (ignored once the cluster exists) and keep the new
+   `serverName`.
+
+Full rebuild order: Vault (Velero) → External Secrets → CloudNativePG + plugin → databases (recovery as above) →
+apps. Docs: https://cloudnative-pg.io/plugin-barman-cloud/docs/usage/ (restore section).

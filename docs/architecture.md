@@ -20,11 +20,11 @@ Argo CD reconciles everything from `main`; the operator only bootstraps, unseals
 | `gateway` | gateway | Gateway `public` on `192.168.68.240` + wildcard certificate; Gateway `mcp` on `192.168.68.241` (only `mcp.staffops.space`, Keycloak JWT required) | istio, metallb, cert-manager |
 | `monitoring` | monitoring | kube-prometheus-stack, short names `kps-*` (Prometheus with OTLP receiver, Alertmanager, Grafana), Loki 3.7, Tempo 3.1 | prometheus-operator CRDs |
 | `opentelemetry` | opentelemetry | OpenTelemetry Operator, collectors otel-agent / otel-logs / otel-gateway, OBI (eBPF) | cert-manager |
-| `cloudnative-pg` | cnpg-system | PostgreSQL operator (`Cluster` resources) | — |
+| `cloudnative-pg` | cnpg-system | PostgreSQL operator (`Cluster` resources) + Barman Cloud plugin (base backups and WAL to R2) | cert-manager |
 | `keycloak` | keycloak | identity provider (OIDC/SAML), PostgreSQL `keycloak-db` (CloudNativePG) | cloudnative-pg, external-secrets |
 | `keda` | keda | event-driven autoscaling (ScaledObject, ScaledJob) | — |
 | `dependency-track` | dependency-track | SBOM analysis (API server + frontend), PostgreSQL `dtrack-db` | cloudnative-pg, external-secrets |
-| `velero` | velero | daily backup of stateful namespaces (objects + volumes) to Cloudflare R2 | external-secrets |
+| `velero` | velero | daily backup of stateful namespaces (objects + volumes, except PostgreSQL data) to Cloudflare R2 | external-secrets |
 | `kyverno` | kyverno | policy engine; Pod Security Standards baseline in Audit (PolicyReports); label `topology.kubernetes.io/zone=k8s-local` on every new Pod | — |
 | `nvidia-device-plugin` | nvidia-device-plugin | RuntimeClass `nvidia` + device plugin → `nvidia.com/gpu: 1` (GT 740, driver 470 on the host) | GPU setup in Ansible |
 | `mcp-servers` | mcp-servers | MCP servers at `mcp.staffops.space/<name>`: kubernetes, grafana, argocd, dependency-track, keycloak, prometheus, kubectl (+ tempo built-in), read-only, Keycloak JWT at the Gateway | keycloak, external-secrets |
@@ -83,7 +83,7 @@ Kubernetes Secrets keep working but nothing refreshes; alert `VaultSealed` fires
 | `homelab/otel` | `external-token` | otel-gateway external receiver (VPS) |
 | `homelab/oidc` | `argocd`, `grafana`, `vault` | Keycloak client secrets (keycloak, argo, monitoring) |
 | `homelab/dependency-track` | `kek` | dependency-track (encryption key of stored secrets) |
-| `homelab/velero` | `access-key-id`, `secret-access-key`, `endpoint` | velero (R2 API token + S3 endpoint) |
+| `homelab/velero` | `access-key-id`, `secret-access-key`, `endpoint` | velero and the CloudNativePG object stores (R2 API token + S3 endpoint) |
 
 ## GitOps flow
 
