@@ -7,7 +7,7 @@ acmeEmail: contact@staffops.space
 storageClass: local-path # default StorageClass from helm-charts/local-path-provisioner (single node)
 zone: k8s-local # topology.kubernetes.io/zone stamped on every Pod by Kyverno (helm-charts/kyverno/kyverno-raw)
 gitops:
-    repoURL: https://github.com/karlipegomes/homelab-gitops.git
+    repoURL: https://github.com/StaffOps/homelab-gitops.git
     revision: main
 # MetalLB L2 pool on the home LAN (outside the router's DHCP range)
 metallb:

@@ -126,7 +126,7 @@
     },
     {
       "title": "Runbook: GitOps workflow",
-      "url": "https://github.com/karlipegomes/homelab-gitops/blob/main/docs/gitops-workflow.md",
+      "url": "https://github.com/StaffOps/homelab-gitops/blob/main/docs/gitops-workflow.md",
       "type": "link",
       "targetBlank": true,
       "icon": "doc"

@@ -40,3 +40,8 @@ scripts/render-app.sh <app>         # before every push
 Requires the kube context `k8s01` (see [docs/runbooks/node.md](docs/runbooks/node.md)), `kubectl`, `helm`
 (+ `helm-diff`), `helmfile`, `yq` and `jq`. After the first install Argo CD manages itself: change it by
 commit + push to `main`, never with Helm.
+
+## License
+
+[MIT-0](LICENSE): use, copy, modify and redistribute freely, no attribution required, no warranty. Dashboards and
+alert rules copied from upstream projects keep their own license: see [THIRD_PARTY.md](THIRD_PARTY.md).
