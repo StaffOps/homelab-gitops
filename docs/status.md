@@ -45,7 +45,7 @@ The exact pins are in each `helm-charts/<app>/helmfile.yaml.gotmpl`.
   password out of the default and OIDC groups mapped.
 - **Data**: CloudNativePG backups to R2 (6 clusters, Grafana included), restore switch, disaster-recovery runbook.
 - **Resilience**: 2 replicas for the components whose outage blocks the cluster; etcd CPU request 500m and a
-  defragmentation (latency came from CPU contention, not the disk).
+  defragmentation (database 210 → 60 MB; latency came from CPU contention, not the disk); kubelet `maxPods` 110 → 200.
 
 The full history is `git log`.
 
@@ -59,11 +59,13 @@ The full history is `git log`.
 | Alertmanager without receiver | alerts are only seen in Grafana | on purpose while the lab is built |
 | DefectDojo without SSO | local accounts | SSO is DefectDojo Pro-only since 3.0 |
 | Services only on the home network | no access from outside without a VPN | on purpose |
+| Pods per node | the kubelet allows 200 Pods (raised from 110 on 2026-11-15, when CronJobs stopped being scheduled) | watch it; an alert on Pods vs capacity is worth adding |
 
 ## Backlog (decided, not started)
 
 | Item | Notes |
 |------|-------|
+| Right-size the resource requests | Requests reserve 91% CPU / 86% memory of the node while real use is ~1.9 cores / ~14.5 GiB: the scheduler refuses new Pods at 100% of requests even on an idle node. Plan: per container, request ≈ p95 usage × 1.3 over the Prometheus history (memory never below the observed peak); keep memory limits; leave etcd, ztunnel, istiod, Vault, Kyverno and CoreDNS with extra margin; review a before/after table per app before committing. |
 | Per-user OAuth for the MCP servers | Pre-registered public Keycloak client for Claude Code (PKCE, no dynamic registration), Gateway `mcp` advertising `/.well-known/oauth-protected-resource`, access by `/mcp/*` groups. Hermes and Backstage stay on client credentials. |
 | Security integrations | Harbor (Trivy) and Dependency-Track findings into DefectDojo; Harbor image push → Argo Events → workflow. Design still open. |
 | First workload app | in `homelab-gitops-apps` (candidates: aigent-squad, maturity-scorecard, anomaly-detection) |
