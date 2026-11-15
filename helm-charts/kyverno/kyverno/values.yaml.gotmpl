@@ -12,7 +12,12 @@ config:
             matchExpressions: [] # replaces the chart default (NotIn kube-system)
 # Single node: one replica per controller
 admissionController:
-    replicas: 1
+    # 2 replicas (not HA: one node): a crash, restart or rollout of one Pod does not stop it. No PDB (single node). Six webhooks fail closed.
+    replicas: 2
+    # The chart always creates a PDB when replicas > 1; maxUnavailable 2 keeps it from blocking a node drain
+    podDisruptionBudget:
+        minAvailable: null
+        maxUnavailable: 2
     container:
         resources:
             requests:

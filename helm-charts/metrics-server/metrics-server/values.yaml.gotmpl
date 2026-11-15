@@ -1,4 +1,7 @@
 fullnameOverride: metrics-server
+# 2 replicas (not HA: one node): a crash, restart or rollout of one Pod does not stop it. No PDB (single node).
+# Aggregated API: while it is down, API discovery fails (kubectl, Argo CD, namespace deletion).
+replicas: 2
 # No --kubelet-insecure-tls: the kubelet runs with serverTLSBootstrap, so its serving certificate is signed by
 # the cluster CA (approved by helm-charts/kubelet-csr-approver).
 metrics:

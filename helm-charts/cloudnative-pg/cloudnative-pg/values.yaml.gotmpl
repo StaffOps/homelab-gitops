@@ -1,5 +1,6 @@
 fullnameOverride: cnpg
-replicaCount: 1
+# 2 replicas (not HA: one node): a crash, restart or rollout of one Pod does not stop it. No PDB (single node). Operator with leader election; its webhook fails closed.
+replicaCount: 2
 crds:
     create: true
 monitoring:

@@ -20,6 +20,8 @@ prometheus:
     servicemonitor:
         enabled: true
 webhook:
+    # 2 replicas (not HA: one node): a crash, restart or rollout of one Pod does not stop it. No PDB (single node). The webhook fails closed.
+    replicaCount: 2
     resources:
         requests:
             cpu: 10m
