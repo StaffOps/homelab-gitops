@@ -112,7 +112,7 @@ case "$cmd" in
         jq -j '.unseal_keys_b64[0]' "$INIT_FILE" |
             k -n "$NS" create secret generic vault-unseal --from-file=key=/dev/stdin --dry-run=client -o yaml |
             k apply -f - >/dev/null
-        ok "Secret $NS/vault-unseal written; CronJob vault-autounseal unseals vault-0 within 15 minutes of a restart"
+        ok "Secret $NS/vault-unseal written; CronJob vault-autounseal unseals vault-0 within 5 minutes of a restart"
         ;;
     oidc)
         # Needs the Keycloak realm (keycloak app synced) and secret/<prefix>/oidc with key "vault"

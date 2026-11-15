@@ -6,8 +6,9 @@ GitOps for a single-node kubeadm homelab (Kubernetes v1.37, Calico): node and ku
 manages itself and every platform app from this repository (`main` on GitHub, public). Secrets live in Vault
 inside the cluster; DNS and certificates use Cloudflare.
 
-Read first: [docs/architecture.md](docs/architecture.md), [docs/gitops-workflow.md](docs/gitops-workflow.md),
-[docs/adr/](docs/adr/README.md), [docs/runbooks/](docs/runbooks/README.md).
+Read first: [docs/overview.md](docs/overview.md), [docs/architecture.md](docs/architecture.md),
+[docs/gitops-workflow.md](docs/gitops-workflow.md), [docs/status.md](docs/status.md); then
+[docs/adr/](docs/adr/README.md) and [docs/runbooks/](docs/runbooks/README.md) as needed.
 
 ## How changes reach the cluster
 
@@ -50,13 +51,23 @@ Read first: [docs/architecture.md](docs/architecture.md), [docs/gitops-workflow.
 - **Exposure**: an HTTPRoute with `parentRefs: [{name: public, namespace: gateway, sectionName: https}]` and
   hostname `<app>.{{ .Values.domain }}`. external-dns creates the Cloudflare record, the Gateway's wildcard
   certificate covers TLS. Never an Ingress, never a LoadBalancer Service per app.
+- **Namespace**: add it to `platform.namespaces` in `helm-charts/environment.yaml` (ClusterSecretStore allow list and
+  AppProject `apps` deny list) and to the ApplicationSet `platform`.
 - **Secrets**: an ExternalSecret to `ClusterSecretStore vault`, `remoteRef.key: {{ .Values.vault.prefix }}/<name>`;
-  add the `put` command to docs/runbooks/vault.md.
-- **Observability**: enable the chart's ServiceMonitor/PodMonitor (Prometheus selects every namespace) and ship
-  a PrometheusRule when the app has known failure modes.
+  add the key to docs/runbooks/vault.md. Values a chart would generate randomly (`randAlphaNum`, `genCA`, `lookup`)
+  must come from an existing Secret, or every Argo CD render differs: render twice and diff.
+- **Mesh**: every namespace is Istio ambient (Kyverno). A NetworkPolicy must allow TCP 15008 and
+  `169.254.7.127/32` (see `argo-cd-raw/resources/networkpolicy-ambient.yaml`).
+- **Database**: a CloudNativePG `Cluster` in the `-raw` release with the Barman Cloud ObjectStore and ScheduledBackup
+  (copy `helm-charts/harbor/harbor-raw/resources/database.yaml`, including the `backup.postgres` restore switch).
+- **Observability**: enable the chart's ServiceMonitor/PodMonitor (Prometheus selects every namespace), ship a
+  PrometheusRule from upstream sources, and a dashboard in `monitoring-raw/dashboards/<folder>/`
+  ([docs/dashboards/README.md](docs/dashboards/README.md)).
 - **Storage**: StorageClass `local-path` from `helm-charts/local-path-provisioner` (single node: data lives on
   the node's disk, no replication).
-- **Single node**: 1 replica, no PodDisruptionBudgets (they only block drains).
+- **Single node**: 1 replica, no PodDisruptionBudgets (they only block drains). Exception: components whose outage
+  blocks the cluster (fail-closed webhooks, aggregated APIs, DNS, gateways) run 2 replicas
+  ([docs/architecture.md](docs/architecture.md#9-resilience-on-a-single-node)).
 
 ## Templating gotchas
 
