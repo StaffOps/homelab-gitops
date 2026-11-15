@@ -41,6 +41,20 @@ so `https://vault.staffops.space` still answers and Vault can also be unsealed f
 
 `put` replaces the whole secret: pass every key of it each time. Adding an app with a secret: add a row here.
 
+## Secrets of workload apps (homelab-gitops-apps)
+
+Path `secret/homelab/apps/<namespace>/<name>`, written by the operator:
+
+```bash
+vault kv put secret/homelab/apps/<namespace>/<name> <key>=<value>     # after: vault login (root token or OIDC admin)
+```
+
+The app reads it through its own SecretStore `vault` (ServiceAccount `vault-reader`, Kubernetes auth role `apps`).
+`scripts/vault.sh configure` creates the role and the templated policy `apps-read`: only ServiceAccounts
+`vault-reader` of namespaces labelled `staffops.space/tier=apps`, each limited to its own namespace path. Vault reads
+the Namespace to check the label (ClusterRole `vault-namespace-read` in vault-raw). The platform's ClusterSecretStore
+`vault` only serves `platform.namespaces` (environment.yaml): add new platform namespaces there.
+
 ## Force a refresh
 
 ```bash

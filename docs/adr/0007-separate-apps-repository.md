@@ -30,6 +30,8 @@ often, have other owners and should not be able to break or read the platform.
 - Anything cluster-scoped an app needs (CRDs, operators, ClusterRoles, dashboards in Grafana folders) is a platform
   change here.
 - New platform namespaces must be added to the deny list of `appproject-apps.yaml`.
-- Open: apps still could use ClusterSecretStore `vault` (all of `homelab/*`). Planned: Vault path
-  `homelab/apps/<app>` + a store limited to namespaces labelled `staffops.space/tier=apps`, and the platform store
-  limited to the platform namespaces.
+- Secrets: ClusterSecretStore `vault` only serves the platform namespaces (`platform.namespaces` in
+  environment.yaml). Each app namespace has its own SecretStore with ServiceAccount `vault-reader` and the Vault role
+  `apps`, bound to namespaces labelled `staffops.space/tier=apps` (set by ApplicationSet apps); its templated policy
+  allows only `secret/homelab/apps/<that namespace>/*`. Tested 2026-11-15: own path read, another app's path and a
+  platform path denied (403).

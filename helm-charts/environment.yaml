@@ -13,6 +13,43 @@ gitops:
 apps:
     repoURL: https://github.com/StaffOps/homelab-gitops-apps.git
     revision: main
+# Namespaces of the platform (system ones + every element of ApplicationSet platform). Used by AppProject apps (workload
+# apps may not deploy there) and by ClusterSecretStore vault (only these namespaces may read secret/homelab/*).
+# Add a namespace here when a platform app is added.
+platform:
+    namespaces:
+        - default
+        - kube-system
+        - kube-public
+        - kube-node-lease
+        - argo
+        - calico-system
+        - calico-apiserver
+        - tigera-operator
+        - local-path-storage
+        - metallb-system
+        - vault
+        - external-secrets
+        - cert-manager
+        - external-dns
+        - istio-system
+        - gateway
+        - monitoring
+        - opentelemetry
+        - cnpg-system
+        - keycloak
+        - keda
+        - dependency-track
+        - velero
+        - kyverno
+        - nvidia-device-plugin
+        - mcp-servers
+        - llm
+        - harbor
+        - argo-rollouts
+        - argo-events
+        - argo-workflows
+        - defectdojo
 # MetalLB L2 pool on the home LAN (outside the router's DHCP range)
 metallb:
     addresses:

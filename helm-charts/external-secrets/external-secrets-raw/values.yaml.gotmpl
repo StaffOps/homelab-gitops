@@ -17,6 +17,12 @@ resources:
                           serviceAccountRef:
                               name: external-secrets
                               namespace: external-secrets
+          # Only platform namespaces (environment.yaml platform.namespaces) may use it. Workload apps
+          # (homelab-gitops-apps) read their own secret/homelab/apps/<namespace>/* through a SecretStore of their
+          # namespace and the Vault role "apps" (docs/runbooks/vault.md).
+          conditions:
+              - namespaces:
+                    {{- toYaml .Values.platform.namespaces | nindent 22 }}
     # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates
     - apiVersion: monitoring.coreos.com/v1
       kind: PrometheusRule

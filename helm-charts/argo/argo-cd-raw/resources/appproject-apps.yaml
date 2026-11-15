@@ -2,7 +2,7 @@
 # change the platform: only the apps repo as source; any namespace except the platform's and the system ones;
 # no cluster-scoped objects except the app's own Namespace (CreateNamespace needs it), so no CRDs, RBAC
 # ClusterRoles, webhooks, ClusterSecretStores or StorageClasses. Platform pieces an app needs go in homelab-gitops.
-# Keep the deny list in sync with the namespaces of applicationset-platform.yaml.
+# Deny list: platform.namespaces in environment.yaml.
 - apiVersion: argoproj.io/v1alpha1
   kind: AppProject
   metadata:
@@ -14,7 +14,7 @@
       destinations:
           - server: https://kubernetes.default.svc
             namespace: '*'
-          {{- range list "default" "kube-system" "kube-public" "kube-node-lease" "argo" "calico-system" "calico-apiserver" "tigera-operator" "local-path-storage" "metallb-system" "vault" "external-secrets" "cert-manager" "external-dns" "istio-system" "gateway" "monitoring" "opentelemetry" "cnpg-system" "keycloak" "keda" "dependency-track" "velero" "kyverno" "nvidia-device-plugin" "mcp-servers" "llm" "harbor" "argo-rollouts" "argo-events" "argo-workflows" "defectdojo" }}
+          {{- range .Values.platform.namespaces }}
           - server: https://kubernetes.default.svc
             namespace: '!{{ . }}'
           {{- end }}

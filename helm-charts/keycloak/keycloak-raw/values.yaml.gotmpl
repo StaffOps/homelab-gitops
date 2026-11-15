@@ -16,8 +16,9 @@ resources:
               initdb:
                   database: keycloak
                   owner: keycloak
+          # metrics: one PodMonitor for every cluster (cloudnative-pg-raw); the per-cluster one is deprecated
           monitoring:
-              enablePodMonitor: true
+              enablePodMonitor: false
           # Base backups + WAL to R2 through the Barman Cloud plugin (ObjectStore keycloak-db-r2 below)
           plugins:
               - name: barman-cloud.cloudnative-pg.io
@@ -289,9 +290,10 @@ resources:
                     directAccessGrantsEnabled: false
                     serviceAccountsEnabled: true
                     attributes:
-                        # Keycloak 26.8 issues client_credentials tokens on a transient session that its own admin
-                        # API and introspection reject (401 / active:false); a real session fixes it
-                        client_credentials.use_refresh_token: "true"
+                        # Off (deprecated in 26.8): the Admin API 401 of 26.8.2 is the audience check, fixed by the
+                        # kc-admin-api scope below; tested 2026-11-15, Admin API answers 200 without a session.
+                        # Kept explicit because the realm import never removes an attribute it does not list.
+                        client_credentials.use_refresh_token: "false"
                     defaultClientScopes:
                         - basic
                         - profile

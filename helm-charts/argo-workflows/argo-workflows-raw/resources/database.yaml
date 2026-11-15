@@ -12,8 +12,9 @@
           initdb:
               database: argo
               owner: argo
+      # metrics: one PodMonitor for every cluster (cloudnative-pg-raw); the per-cluster one is deprecated
       monitoring:
-          enablePodMonitor: true
+          enablePodMonitor: false
       # Base backups + WAL to R2 through the Barman Cloud plugin (ObjectStore workflows-db-r2 below)
       plugins:
           - name: barman-cloud.cloudnative-pg.io

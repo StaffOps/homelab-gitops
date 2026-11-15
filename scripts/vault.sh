@@ -92,8 +92,19 @@ case "$cmd" in
                 bound_service_account_names=external-secrets \
                 bound_service_account_namespaces=external-secrets \
                 policies=external-secrets-read ttl=1h >/dev/null
+            # Workload apps (homelab-gitops-apps): ServiceAccount vault-reader of a namespace labelled
+            # staffops.space/tier=apps reads only $KV_MOUNT/$PREFIX/apps/<its namespace>/* (templated policy)
+            accessor=\$(vault read -field=accessor sys/auth/kubernetes)
+            printf '%s\n' \
+                \"path \\\"$KV_MOUNT/data/$PREFIX/apps/{{identity.entity.aliases.\$accessor.metadata.service_account_namespace}}/*\\\" { capabilities = [\\\"read\\\"] }\" \
+                \"path \\\"$KV_MOUNT/metadata/$PREFIX/apps/{{identity.entity.aliases.\$accessor.metadata.service_account_namespace}}/*\\\" { capabilities = [\\\"read\\\", \\\"list\\\"] }\" |
+                vault policy write apps-read - >/dev/null
+            vault write auth/kubernetes/role/apps \
+                bound_service_account_names=vault-reader \
+                bound_service_account_namespace_selector='{\"matchLabels\":{\"staffops.space/tier\":\"apps\"}}' \
+                policies=apps-read ttl=1h >/dev/null
         "
-        ok "KV v2 at $KV_MOUNT/, Kubernetes auth, policy external-secrets-read, role external-secrets"
+        ok "KV v2 at $KV_MOUNT/, Kubernetes auth, policies external-secrets-read + apps-read, roles external-secrets + apps"
         ;;
     autounseal-secret)
         # The key goes from the local init file to the cluster on stdin; it never touches git or a command line

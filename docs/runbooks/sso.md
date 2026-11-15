@@ -37,9 +37,9 @@ as a person. Create it once in the admin console:
 1. Realm `master` → Clients → Create client → Client ID `keycloak-config-cli` → Next → *Client
    authentication* on, *Service accounts roles* on, other flows off → Save.
 2. Tab *Service accounts roles* → Assign role → filter *realm roles* → `admin`.
-   Tab *Advanced* → *OpenID Connect Compatibility Modes* → **Use refresh tokens for client credentials grant: On**
-   → Save. Without it Keycloak 26.8 issues the token on a transient session that its own admin API rejects
-   (401, introspection `active:false`).
+   Tab *Advanced* → *OpenID Connect Compatibility Modes* → **Use refresh tokens for client credentials grant: Off**
+   (deprecated in Keycloak 26.8 and not needed: the 401 of 26.8.2 is the audience check that the `kc-admin-api`
+   scope below fixes).
    Tab *Client scopes* → Add client scope → `kc-admin-api` → Add → **Default**. Since Keycloak 26.8.2 the
    Admin REST API answers 401 to any token without this scope (only `admin-cli` and `security-admin-console`
    get it on upgrade).
