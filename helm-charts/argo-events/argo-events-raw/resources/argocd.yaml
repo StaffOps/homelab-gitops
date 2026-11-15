@@ -1,0 +1,56 @@
+# ServiceAccount of the Sensors: may submit workflows in argo-workflows (RoleBinding argo-events-sensor there)
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+      name: argo-events-sensor
+# Argo CD → Argo Events: the Argo CD notifications controller posts application events here (service webhook
+# "argo-events", triggers on-sync-succeeded / on-sync-failed / on-health-degraded, helm-charts/argo). Body:
+# {app, project, revision, sync, health, phase, message}. In-cluster only (Service argocd-eventsource-svc).
+- apiVersion: argoproj.io/v1alpha1
+  kind: EventSource
+  metadata:
+      name: argocd
+  spec:
+      service:
+          ports:
+              - port: 12000
+                targetPort: 12000
+      webhook:
+          app-event:
+              port: "12000"
+              endpoint: /argocd
+              method: POST
+      template:
+          container:
+              resources:
+                  requests:
+                      cpu: 5m
+                      memory: 32Mi
+                  limits:
+                      memory: 128Mi
+# Sensor for Argo CD events. Today it only logs them (kubectl -n argo-events logs -l sensor-name=argocd); add a
+# trigger that submits a workflow to act on a deploy, e.g. an argoWorkflow trigger with
+# source.resource = a Workflow using workflowTemplateRef, and parameters from dependency app-event body.app.
+- apiVersion: argoproj.io/v1alpha1
+  kind: Sensor
+  metadata:
+      name: argocd
+  spec:
+      template:
+          serviceAccountName: argo-events-sensor
+          container:
+              resources:
+                  requests:
+                      cpu: 5m
+                      memory: 32Mi
+                  limits:
+                      memory: 128Mi
+      dependencies:
+          - name: app-event
+            eventSourceName: argocd
+            eventName: app-event
+      triggers:
+          - template:
+                name: log
+                log:
+                    intervalSeconds: 0

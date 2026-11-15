@@ -1,0 +1,121 @@
+{{- $gw := .Values.gateway }}
+{{- $host := printf "argo-workflows.%s" .Values.domain }}
+{{- $r2 := env "R2_ENDPOINT" | trimPrefix "https://" }}
+fullnameOverride: argo-workflows
+crds:
+    install: true
+    keep: true
+createAggregateRoles: true # ClusterRoles argo-workflows-admin/-edit/-view (bound by the SSO ServiceAccounts)
+# Workflows run in namespace argo-workflows with ServiceAccount argo-workflow (argo-workflows-raw)
+workflow:
+    serviceAccount:
+        create: false
+    rbac:
+        create: false
+controller:
+    replicas: 1
+    logging:
+        format: json
+    metricsConfig:
+        enabled: true
+    telemetryConfig:
+        enabled: true
+    serviceMonitor:
+        enabled: true
+    workflowDefaults:
+        spec:
+            serviceAccountName: argo-workflow
+            # finished workflows leave the cluster after a week (the archive keeps them 30 days)
+            ttlStrategy:
+                secondsAfterCompletion: 604800
+            podGC:
+                strategy: OnPodCompletion
+                deleteDelayDuration: 1h
+    # Archive of finished workflows (UI "Workflows → Archived") in CloudNativePG Cluster workflows-db
+    persistence:
+        archive: true
+        archiveTTL: 30d
+        postgresql:
+            host: workflows-db-rw
+            port: 5432
+            database: argo
+            tableName: argo_workflows
+            userNameSecret:
+                name: workflows-db-app
+                key: username
+            passwordSecret:
+                name: workflows-db-app
+                key: password
+            ssl: true
+            sslMode: require
+    resources:
+        requests:
+            cpu: 20m
+            memory: 64Mi
+        limits:
+            memory: 512Mi
+executor:
+    resources:
+        requests:
+            cpu: 10m
+            memory: 32Mi
+        limits:
+            memory: 128Mi
+server:
+    replicas: 1
+    authModes:
+        - sso # people: Keycloak
+        - client # automation: Kubernetes ServiceAccount bearer tokens
+    logging:
+        format: json
+    httproute:
+        enabled: true
+        parentRefs:
+            - name: {{ $gw.name }}
+              namespace: {{ $gw.namespace }}
+              sectionName: https
+        hostnames:
+            - {{ $host }}
+    sso:
+        enabled: true
+        issuer: https://keycloak.{{ .Values.domain }}/realms/{{ .Values.keycloak.realm }}
+        clientId:
+            name: argo-workflows-sso
+            key: client-id
+        clientSecret:
+            name: argo-workflows-sso
+            key: client-secret
+        redirectUrl: https://{{ $host }}/oauth2/callback
+        scopes:
+            - openid
+            - profile
+            - email
+            - groups
+        # who can do what: ServiceAccounts with workflows.argoproj.io/rbac-rule (argo-workflows-raw)
+        rbac:
+            enabled: true
+        filterGroupsRegex:
+            - ^/argo-workflows/
+    resources:
+        requests:
+            cpu: 20m
+            memory: 64Mi
+        limits:
+            memory: 256Mi
+# Logs and artifacts of every workflow in R2 (same bucket and token as Velero, prefix argo-workflows/). Endpoint from
+# R2_ENDPOINT (Argo CD render env), never in git; credentials from Vault homelab/velero (ExternalSecret).
+useStaticCredentials: true
+artifactRepository:
+    archiveLogs: true
+    s3:
+        bucket: {{ .Values.backup.bucket }}
+        endpoint: {{ $r2 | default "r2.invalid" }}
+        region: auto
+        insecure: false
+        keyFormat: "argo-workflows/{{`{{workflow.namespace}}/{{workflow.name}}/{{pod.name}}`}}"
+        accessKeySecret:
+            name: argo-workflows-r2
+            key: accessKey
+        secretKeySecret:
+            name: argo-workflows-r2
+            key: secretKey

@@ -15,6 +15,19 @@ configs:
     cm:
         admin.enabled: true # local admin kept as break-glass (Keycloak down)
         accounts.mcp: apiKey # token for the Argo CD MCP server (Vault homelab/mcp: argocd-token)
+        # token for Argo Workflows (ClusterWorkflowTemplate argocd-sync; Vault homelab/argo-workflows: argocd-token)
+        accounts.argo-workflows: apiKey
+        # Links from Argo Workflows objects to their page in the Argo Workflows UI
+        resource.links: |
+            - title: Argo Workflows
+              url: https://argo-workflows.{{ .Values.domain }}/workflows/{{`{{ .resource.metadata.namespace }}/{{ .resource.metadata.name }}`}}
+              if: resource.kind == "Workflow"
+            - title: Argo Workflows
+              url: https://argo-workflows.{{ .Values.domain }}/cron-workflows/{{`{{ .resource.metadata.namespace }}/{{ .resource.metadata.name }}`}}
+              if: resource.kind == "CronWorkflow"
+            - title: Argo Workflows
+              url: https://argo-workflows.{{ .Values.domain }}/workflow-templates/{{`{{ .resource.metadata.namespace }}/{{ .resource.metadata.name }}`}}
+              if: resource.kind == "WorkflowTemplate"
         # Login with Keycloak (realm keycloak.realm, client argocd); the secret comes from Secret argocd-oidc
         # (ExternalSecret in argo-cd-raw, label part-of=argocd so Argo CD can reference it)
         oidc.config: |
@@ -75,6 +88,9 @@ configs:
             g, /argocd/admin, role:admin
             g, /argocd/viewer, role:readonly
             g, mcp, role:readonly
+            p, role:workflows, applications, get, */*, allow
+            p, role:workflows, applications, sync, */*, allow
+            g, argo-workflows, role:workflows
     params:
         create: true
         server.insecure: true # TLS terminates at the Gateway
@@ -147,8 +163,51 @@ controller:
                       summary: 'Argo CD repo-server failed to render manifests {{`{{ $value | humanize }}`}} times in 15m. Check the app conditions and scripts/render-app.sh'
 dex:
     enabled: false
+# Notifications → Argo Events (EventSource argocd in argo-events): every app reports sync succeeded/failed and
+# health degraded, so Sensors can start Argo Workflows after a deploy. Triggers follow the upstream catalog.
 notifications:
-    enabled: false
+    enabled: true
+    argocdUrl: https://argocd.{{ .Values.domain }}
+    metrics:
+        enabled: true
+        serviceMonitor:
+            enabled: true
+    notifiers:
+        service.webhook.argo-events: |
+            url: http://argocd-eventsource-svc.argo-events.svc:12000/argocd
+            headers:
+                - name: Content-Type
+                  value: application/json
+    templates:
+        template.app-event: |
+            webhook:
+                argo-events:
+                    method: POST
+                    body: |
+                        {"app": "{{`{{ .app.metadata.name }}`}}", "project": "{{`{{ .app.spec.project }}`}}", "revision": "{{`{{ .app.status.sync.revision }}`}}", "sync": "{{`{{ .app.status.sync.status }}`}}", "health": "{{`{{ .app.status.health.status }}`}}", "phase": "{{`{{ if .app.status.operationState }}{{ .app.status.operationState.phase }}{{ end }}`}}"}
+    triggers:
+        trigger.on-sync-succeeded: |
+            - when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded']
+              send: [app-event]
+        trigger.on-sync-failed: |
+            - when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']
+              send: [app-event]
+        trigger.on-health-degraded: |
+            - when: app.status.health.status == 'Degraded'
+              send: [app-event]
+    subscriptions:
+        - recipients:
+              - argo-events
+          triggers:
+              - on-sync-succeeded
+              - on-sync-failed
+              - on-health-degraded
+    resources:
+        requests:
+            cpu: 10m
+            memory: 32Mi
+        limits:
+            memory: 128Mi
 commitServer:
     enabled: false
 server:
@@ -165,6 +224,16 @@ server:
               sectionName: https
         hostnames:
             - *fqdn
+    # UI extension: Rollout tab (canary/blue-green steps, promote/abort) on Argo Rollouts resources
+    extensions:
+        enabled: true
+        extensionList:
+            - name: rollout-extension
+              env:
+                  - name: EXTENSION_URL
+                    value: https://github.com/argoproj-labs/rollout-extension/releases/download/v0.4.1/extension.tar
+                  - name: EXTENSION_VERSION
+                    value: v0.4.1
     resources:
         requests:
             cpu: 50m

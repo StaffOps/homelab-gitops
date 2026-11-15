@@ -8,3 +8,4 @@
 | [backup.md](backup.md) | Velero and CloudNativePG (Barman Cloud) to Cloudflare R2: setup, manual backup, restore |
 | [argocd.md](argocd.md) | Argo CD broken or stuck, uninstalling an app |
 | [node.md](node.md) | node and cluster facts, kube context on the Mac, node reboot |
+| [argo-workflows.md](argo-workflows.md) | Argo Workflows, Events and Rollouts: access, Argo CD integration, watching GitHub repositories |

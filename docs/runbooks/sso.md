@@ -14,6 +14,7 @@ access by joining the groups of the tools they need. Client secrets: Vault `home
 | Argo CD | "Log in via Keycloak" | `role:admin` | `role:readonly` | no access |
 | Grafana | "Sign in with Keycloak" | Admin | Viewer | login refused |
 | Vault | method OIDC, role `default` | policy `admin` | policy `viewer` (read/list) | `default` policy only |
+| Argo Workflows | "Login" (SSO) | ClusterRole `argo-workflows-admin` | `argo-workflows-view` | no access |
 | Harbor | "Login via OIDC provider" (Keycloak) | system admin | onboarded user; project access by adding the group to a project | onboarded, no project access |
 | Dependency-Track | "Login with Keycloak" | team mapped in the UI (below) | team mapped in the UI | no permissions |
 

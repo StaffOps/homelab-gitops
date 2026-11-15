@@ -1,0 +1,176 @@
+# argocd-sync: sync one Argo CD Application and wait until it is Synced and Healthy (Workflows → Argo CD).
+# Runs as the Argo CD local account "argo-workflows" (get + sync only), token in Secret argocd-token.
+#   steps: [[{name: deploy, templateRef: {name: argocd-sync, template: sync, clusterScope: true},
+#             arguments: {parameters: [{name: app, value: harbor}]}}]]
+- apiVersion: argoproj.io/v1alpha1
+  kind: ClusterWorkflowTemplate
+  metadata:
+      name: argocd-sync
+  spec:
+      entrypoint: sync
+      arguments:
+          parameters:
+              - name: app
+              - name: timeout
+                value: "600"
+      templates:
+          - name: sync
+            inputs:
+                parameters:
+                    - name: app
+                    - name: timeout
+                      value: "600"
+            container:
+                image: quay.io/argoproj/argocd:v3.6.1
+                command: [sh, -c]
+                args:
+                    - argocd app sync "$APP" --timeout "$TIMEOUT" && argocd app wait "$APP" --sync --health --timeout "$TIMEOUT"
+                env:
+                    - name: APP
+                      value: '{{`{{inputs.parameters.app}}`}}'
+                    - name: TIMEOUT
+                      value: '{{`{{inputs.parameters.timeout}}`}}'
+                    - name: ARGOCD_SERVER
+                      value: argo-cd-server.argo.svc:80
+                    - name: ARGOCD_OPTS
+                      value: --plaintext --grpc-web
+                    - name: ARGOCD_AUTH_TOKEN
+                      valueFrom:
+                          secretKeyRef:
+                              name: argocd-token
+                              key: token
+                resources:
+                    requests:
+                        cpu: 10m
+                        memory: 32Mi
+                    limits:
+                        memory: 128Mi
+# github-watch: poll a GitHub repository for a new release or tag (GitHub cannot reach the lab, so no webhook).
+# The last value seen is kept in ConfigMap github-watch-<owner>-<repo>-<what>. The first run only records it; when
+# it changes, the WorkflowTemplate on-change (if set) is submitted with parameters repo and version.
+# Run it from a CronWorkflow (example in docs/runbooks/argo-workflows.md). Anonymous GitHub API: 60 requests/h per
+# IP; for more, put a read-only token in Secret github-token (key token), used when present.
+- apiVersion: argoproj.io/v1alpha1
+  kind: ClusterWorkflowTemplate
+  metadata:
+      name: github-watch
+  spec:
+      entrypoint: watch
+      arguments:
+          parameters:
+              - name: repo # owner/name
+              - name: what # release | tag
+                value: release
+              - name: on-change # WorkflowTemplate to submit when it changes ("" = only record)
+                value: ""
+      templates:
+          - name: watch
+            inputs:
+                parameters:
+                    - name: repo
+                    - name: what
+                      value: release
+                    - name: on-change
+                      value: ""
+            steps:
+                - - name: check
+                    template: check
+                    arguments:
+                        parameters:
+                            - name: repo
+                              value: '{{`{{inputs.parameters.repo}}`}}'
+                            - name: what
+                              value: '{{`{{inputs.parameters.what}}`}}'
+                - - name: trigger
+                    template: trigger
+                    when: '"{{`{{steps.check.outputs.parameters.changed}}`}}" == "true" && "{{`{{inputs.parameters.on-change}}`}}" != ""'
+                    arguments:
+                        parameters:
+                            - name: template
+                              value: '{{`{{inputs.parameters.on-change}}`}}'
+                            - name: repo
+                              value: '{{`{{inputs.parameters.repo}}`}}'
+                            - name: version
+                              value: '{{`{{steps.check.outputs.parameters.version}}`}}'
+          - name: check
+            inputs:
+                parameters:
+                    - name: repo
+                    - name: what
+            outputs:
+                parameters:
+                    - name: changed
+                      valueFrom:
+                          path: /tmp/changed
+                    - name: version
+                      valueFrom:
+                          path: /tmp/version
+            script:
+                image: docker.io/alpine/k8s:1.37.1 # kubectl, curl, jq
+                command: [sh]
+                env:
+                    - name: REPO
+                      value: '{{`{{inputs.parameters.repo}}`}}'
+                    - name: WHAT
+                      value: '{{`{{inputs.parameters.what}}`}}'
+                    - name: GITHUB_TOKEN
+                      valueFrom:
+                          secretKeyRef:
+                              name: github-token
+                              key: token
+                              optional: true
+                source: |
+                    set -eu
+                    api="https://api.github.com/repos/$REPO"
+                    set -- -fsS -H "Accept: application/vnd.github+json"
+                    [ -n "${GITHUB_TOKEN:-}" ] && set -- "$@" -H "Authorization: Bearer $GITHUB_TOKEN"
+                    case "$WHAT" in
+                        release) version=$(curl "$@" "$api/releases/latest" | jq -r .tag_name) ;;
+                        tag) version=$(curl "$@" "$api/tags?per_page=1" | jq -r '.[0].name') ;;
+                        *) echo "what must be release or tag" >&2; exit 1 ;;
+                    esac
+                    [ -n "$version" ] && [ "$version" != null ] || { echo "no $WHAT found in $REPO" >&2; exit 1; }
+                    cm="github-watch-$(echo "$REPO-$WHAT" | tr '/A-Z_' '-a-z-')"
+                    previous=$(kubectl get configmap "$cm" -o jsonpath='{.data.last}' 2>/dev/null || true)
+                    printf %s "$version" > /tmp/version
+                    if [ "$version" = "$previous" ]; then
+                        printf false > /tmp/changed
+                        echo "$REPO $WHAT unchanged: $version"
+                        exit 0
+                    fi
+                    kubectl create configmap "$cm" --from-literal=last="$version" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+                    if [ -z "$previous" ]; then
+                        printf false > /tmp/changed
+                        echo "$REPO $WHAT first seen: $version (recorded, nothing triggered)"
+                    else
+                        printf true > /tmp/changed
+                        echo "$REPO $WHAT changed: $previous -> $version"
+                    fi
+                resources:
+                    requests:
+                        cpu: 10m
+                        memory: 32Mi
+                    limits:
+                        memory: 128Mi
+          - name: trigger
+            inputs:
+                parameters:
+                    - name: template
+                    - name: repo
+                    - name: version
+            resource:
+                action: create
+                manifest: |
+                    apiVersion: argoproj.io/v1alpha1
+                    kind: Workflow
+                    metadata:
+                        generateName: {{`{{inputs.parameters.template}}`}}-
+                    spec:
+                        workflowTemplateRef:
+                            name: {{`{{inputs.parameters.template}}`}}
+                        arguments:
+                            parameters:
+                                - name: repo
+                                  value: "{{`{{inputs.parameters.repo}}`}}"
+                                - name: version
+                                  value: "{{`{{inputs.parameters.version}}`}}"

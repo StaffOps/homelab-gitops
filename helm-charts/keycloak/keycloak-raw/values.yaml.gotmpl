@@ -174,11 +174,15 @@ resources:
           dataFrom:
               - extract:
                     key: {{ .Values.vault.prefix }}/oidc
-          # Harbor keeps its client secret with its other secrets (Vault homelab/harbor)
+          # Harbor and Argo Workflows keep their client secret with their other secrets (Vault homelab/<app>)
           data:
               - secretKey: harbor
                 remoteRef:
                     key: {{ .Values.vault.prefix }}/harbor
+                    property: oidc-client-secret
+              - secretKey: argo-workflows
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/argo-workflows
                     property: oidc-client-secret
     # Realm keycloak.realm (environment.yaml): groups /<tool>/admin and /<tool>/viewer for every tool in
     # keycloak.apps, scope "groups" (claim groups, full path), one client per app. Users are created by hand in
@@ -217,7 +221,7 @@ resources:
                               access.token.claim: "true"
                               userinfo.token.claim: "true"
               clients:
-                  {{- range $id, $c := dict "argocd" (dict "url" (printf "https://argocd.%s" $d) "callback" "/auth/callback") "grafana" (dict "url" (printf "https://grafana.%s" $d) "callback" "/login/generic_oauth") "vault" (dict "url" (printf "https://vault.%s" $d) "callback" "/ui/vault/auth/oidc/oidc/callback") "harbor" (dict "url" (printf "https://harbor.%s" $d) "callback" "/c/oidc/callback") }}
+                  {{- range $id, $c := dict "argocd" (dict "url" (printf "https://argocd.%s" $d) "callback" "/auth/callback") "grafana" (dict "url" (printf "https://grafana.%s" $d) "callback" "/login/generic_oauth") "vault" (dict "url" (printf "https://vault.%s" $d) "callback" "/ui/vault/auth/oidc/oidc/callback") "harbor" (dict "url" (printf "https://harbor.%s" $d) "callback" "/c/oidc/callback") "argo-workflows" (dict "url" (printf "https://argo-workflows.%s" $d) "callback" "/oauth2/callback") }}
                   - clientId: {{ $id }}
                     name: {{ $id }}
                     protocol: openid-connect
@@ -383,7 +387,7 @@ resources:
                               value: no-delete
                             - name: IMPORT_MANAGED_ROLE
                               value: no-delete
-                            {{- range $id := list "argocd" "grafana" "vault" "hermes" "backstage" "keycloak-mcp" "harbor" }}
+                            {{- range $id := list "argocd" "grafana" "vault" "hermes" "backstage" "keycloak-mcp" "harbor" "argo-workflows" }}
                             - name: {{ upper $id | replace "-" "_" }}_CLIENT_SECRET
                               valueFrom:
                                   secretKeyRef:

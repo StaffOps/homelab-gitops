@@ -1,0 +1,36 @@
+# Argo Workflows: container-native workflows and CronWorkflows at https://argo-workflows.<domain> (login with
+# Keycloak, groups /argo-workflows/admin and /argo-workflows/viewer). Archive of finished workflows in PostgreSQL
+# (CloudNativePG Cluster workflows-db, backed up to R2); logs and artifacts in R2. Integrates with Argo CD (sync
+# from a workflow: ClusterWorkflowTemplate argocd-sync) and Argo Events (Sensors submit workflows here).
+repositories:
+    - name: argo
+      url: https://argoproj.github.io/argo-helm
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - argo-workflows:
+                  enabled: true
+                  version: 2.0.18 # Argo Workflows v4.1.6
+            - argo-workflows-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: argo-workflows
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    # Database, secrets, SSO RBAC, workflow ServiceAccount (needed before the server starts)
+    - chart: bedag/raw
+      name: argo-workflows-raw
+      condition: argo-workflows-raw.enabled
+      <<: *default
+    - chart: argo/argo-workflows
+      name: argo-workflows
+      condition: argo-workflows.enabled
+      <<: *default

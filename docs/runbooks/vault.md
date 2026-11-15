@@ -35,6 +35,7 @@ so `https://vault.staffops.space` still answers and Vault can also be unsealed f
 | `scripts/vault.sh put llm api-key` | llama.cpp server (`Authorization: Bearer <key>` on llm.staffops.space) |
 | `scripts/vault.sh put dependency-track kek` | Dependency-Track (`openssl rand -base64 32`; keep a copy: losing it loses the secrets DT stores) |
 | `scripts/vault.sh put harbor admin-password secret-key oidc-client-secret` | Harbor (`secret-key`: exactly 16 characters, `openssl rand -hex 8`, keep it; `oidc-client-secret`: any random string, Keycloak client `harbor` uses the same value) |
+| `secret/homelab/argo-workflows`: `oidc-client-secret`, `argocd-token` | Argo Workflows (Keycloak client; Argo CD account token, see [argo-workflows.md](argo-workflows.md)) |
 | `scripts/vault.sh put velero access-key-id secret-access-key endpoint` | Velero (R2 API token, see [backup.md](backup.md)) |
 
 `put` replaces the whole secret: pass every key of it each time. Adding an app with a secret: add a row here.

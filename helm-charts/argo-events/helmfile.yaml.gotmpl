@@ -1,0 +1,38 @@
+# Argo Events: event-driven automation. EventSources receive or poll events, the EventBus (NATS JetStream, one
+# node) carries them, Sensors act on them (submit an Argo Workflow, call HTTP, log). Today: Argo CD notifications
+# (sync succeeded/failed, health degraded) arrive at EventSource argocd. GitHub cannot reach the lab, so repositories
+# are watched by polling with Argo Workflows (ClusterWorkflowTemplate github-watch), not by webhooks.
+repositories:
+    - name: argo
+      url: https://argoproj.github.io/argo-helm
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - argo-events:
+                  enabled: true
+                  version: 2.4.28 # Argo Events v1.9.11
+            - argo-events-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: argo-events
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    - chart: argo/argo-events
+      name: argo-events
+      condition: argo-events.enabled
+      <<: *default
+    # EventBus, EventSources, Sensors (need the chart's CRDs)
+    - chart: bedag/raw
+      name: argo-events-raw
+      condition: argo-events-raw.enabled
+      needs:
+          - argo-events
+      <<: *default

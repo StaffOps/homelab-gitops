@@ -24,6 +24,9 @@ Argo CD reconciles everything from `main`; the operator only bootstraps, unseals
 | `keycloak` | keycloak | identity provider (OIDC/SAML), PostgreSQL `keycloak-db` (CloudNativePG) | cloudnative-pg, external-secrets |
 | `keda` | keda | event-driven autoscaling (ScaledObject, ScaledJob) | — |
 | `dependency-track` | dependency-track | SBOM analysis (API server + frontend), PostgreSQL `dtrack-db` | cloudnative-pg, external-secrets |
+| `argo-rollouts` | argo-rollouts | progressive delivery (canary, blue-green) with Gateway API traffic split; seen in Argo CD (rollout-extension) | — |
+| `argo-events` | argo-events | event-driven automation: EventBus (NATS JetStream), EventSource `argocd` (Argo CD notifications), Sensors | argo-workflows |
+| `argo-workflows` | argo-workflows | workflows and CronWorkflows at `argo-workflows.<domain>` (Keycloak); archive in `workflows-db`, logs/artifacts in R2 | cloudnative-pg, external-secrets, keycloak |
 | `harbor` | harbor | container image + Helm (OCI) registry with Trivy scanning at `harbor.<domain>`; PostgreSQL `harbor-db` (CloudNativePG), images on a local-path volume, Keycloak login | cloudnative-pg, external-secrets, cert-manager, keycloak |
 | `velero` | velero | daily backup of stateful namespaces (objects + volumes, except PostgreSQL data) to Cloudflare R2 | external-secrets |
 | `kyverno` | kyverno | policy engine; Pod Security Standards baseline in Audit (PolicyReports); label `topology.kubernetes.io/zone=k8s-local` on every new Pod | — |

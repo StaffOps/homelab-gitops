@@ -114,6 +114,15 @@
                     - appName: harbor
                       path: harbor
                       namespace: harbor
+                    - appName: argo-rollouts
+                      path: argo-rollouts
+                      namespace: argo-rollouts
+                    - appName: argo-events
+                      path: argo-events
+                      namespace: argo-events
+                    - appName: argo-workflows
+                      path: argo-workflows
+                      namespace: argo-workflows
       template:
           metadata:
               name: '{{`{{ .appName }}`}}'

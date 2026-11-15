@@ -1,0 +1,39 @@
+fullnameOverride: argo-rollouts
+installCRDs: true
+keepCRDs: true
+controller:
+    replicas: 1
+    logging:
+        format: json
+    metrics:
+        enabled: true
+        serviceMonitor:
+            enabled: true
+    # Gateway API traffic router (argoproj-labs), downloaded by the controller at start and checked by sha256.
+    # A canary Rollout then shifts HTTPRoute backend weights on the shared Gateway.
+    trafficRouterPlugins:
+        - name: argoproj-labs/gatewayAPI
+          location: https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.17.0/gatewayapi-plugin-linux-amd64
+          sha256: 1904ca787d33107c140521899d61fff030ee75d99908bd175fca5a4647759061
+    resources:
+        requests:
+            cpu: 20m
+            memory: 64Mi
+        limits:
+            memory: 256Mi
+providerRBAC:
+    enabled: true
+    # only what this lab has: Istio (mesh) and Gateway API
+    providers:
+        istio: true
+        gatewayAPI: true
+        smi: false
+        ambassador: false
+        awsLoadBalancerController: false
+        awsAppMesh: false
+        traefik: false
+        apisix: false
+        contour: false
+        glooPlatform: false
+dashboard:
+    enabled: false

@@ -1,0 +1,30 @@
+crds:
+    install: true
+    keep: true
+configs:
+    jetstream:
+        # One NATS server: streams cannot have more replicas than servers
+        streamConfig:
+            maxMsgs: 100000
+            maxAge: 72h
+            maxBytes: 1GB
+            replicas: 1
+            duplicates: 300s
+controller:
+    replicas: 1
+    rbac:
+        enabled: true
+        namespaced: false
+    metrics:
+        enabled: true
+        serviceMonitor:
+            enabled: true
+    resources:
+        requests:
+            cpu: 20m
+            memory: 64Mi
+        limits:
+            memory: 256Mi
+# Validating admission webhook for Argo Events objects: off (Argo CD shows invalid objects as degraded anyway)
+webhook:
+    enabled: false

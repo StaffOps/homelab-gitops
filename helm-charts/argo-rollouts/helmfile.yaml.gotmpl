@@ -1,0 +1,38 @@
+# Argo Rollouts: progressive delivery (canary, blue-green) for Deployments replaced by Rollout resources, with
+# Gateway API traffic splitting (plugin) and Prometheus analysis (ClusterAnalysisTemplates in argo-rollouts-raw).
+# No standalone dashboard (it has no authentication): Rollouts are seen and promoted from Argo CD (rollout-extension
+# in helm-charts/argo), behind Keycloak and Argo CD RBAC.
+repositories:
+    - name: argo
+      url: https://argoproj.github.io/argo-helm
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - argo-rollouts:
+                  enabled: true
+                  version: 2.43.12 # Argo Rollouts v1.10.2
+            - argo-rollouts-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: argo-rollouts
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    - chart: argo/argo-rollouts
+      name: argo-rollouts
+      condition: argo-rollouts.enabled
+      <<: *default
+    # ClusterAnalysisTemplates (need the chart's CRDs)
+    - chart: bedag/raw
+      name: argo-rollouts-raw
+      condition: argo-rollouts-raw.enabled
+      needs:
+          - argo-rollouts
+      <<: *default

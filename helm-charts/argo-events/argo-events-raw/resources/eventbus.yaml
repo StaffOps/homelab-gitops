@@ -1,0 +1,35 @@
+# EventBus "default" (EventSources and Sensors of this namespace use it): NATS JetStream, one server (1 is allowed;
+# 2 is not), messages on a local-path volume.
+- apiVersion: argoproj.io/v1alpha1
+  kind: EventBus
+  metadata:
+      name: default
+  spec:
+      jetstream:
+          version: 2.10.29
+          replicas: 1
+          persistence:
+              storageClassName: {{ .Values.storageClass }}
+              accessMode: ReadWriteOnce
+              volumeSize: 5Gi
+          containerTemplate:
+              resources:
+                  requests:
+                      cpu: 20m
+                      memory: 64Mi
+                  limits:
+                      memory: 512Mi
+          metricsContainerTemplate:
+              resources:
+                  requests:
+                      cpu: 5m
+                      memory: 16Mi
+                  limits:
+                      memory: 64Mi
+          reloaderContainerTemplate:
+              resources:
+                  requests:
+                      cpu: 5m
+                      memory: 16Mi
+                  limits:
+                      memory: 64Mi
