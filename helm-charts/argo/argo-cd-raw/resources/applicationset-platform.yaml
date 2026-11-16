@@ -33,10 +33,6 @@
                     - appName: kubelet-csr-approver
                       path: kubelet-csr-approver
                       namespace: kube-system
-                    # trial: image bumps written back to git for the sandbox app (helm-charts/argocd-image-updater)
-                    - appName: argocd-image-updater
-                      path: argocd-image-updater
-                      namespace: argo
                     - appName: metallb
                       path: metallb
                       namespace: metallb-system
