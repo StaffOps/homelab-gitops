@@ -66,6 +66,11 @@
                             - from: connection
               resource:
                   attributes:
+                      # cluster: the one label every signal carries in every cluster (metrics, logs, traces);
+                      # k8s.cluster.name stays for the OTel semantic conventions
+                      - key: cluster
+                        value: {{ .Values.cluster.name }}
+                        action: upsert
                       - key: k8s.cluster.name
                         value: {{ .Values.cluster.name }}
                         action: upsert

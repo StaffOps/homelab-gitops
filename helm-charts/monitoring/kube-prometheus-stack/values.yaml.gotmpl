@@ -79,6 +79,7 @@ prometheus:
             translationStrategy: UnderscoreEscapingWithSuffixes
             keepIdentifyingResourceAttributes: true
             promoteResourceAttributes:
+                - cluster
                 - service.name
                 - service.namespace
                 - service.version

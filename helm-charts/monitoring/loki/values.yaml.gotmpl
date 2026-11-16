@@ -21,6 +21,14 @@ loki:
         enabled: true
     limits_config:
         allow_structured_metadata: true
+        # cluster is a stream label in every cluster (same name as in Prometheus and Tempo); the OTLP defaults
+        # (service_name, k8s_*) stay index labels too
+        otlp_config:
+            resource_attributes:
+                attributes_config:
+                    - action: index_label
+                      attributes:
+                          - cluster
         volume_enabled: true
         retention_period: 168h
     compactor:

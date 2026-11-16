@@ -53,6 +53,16 @@
                   check_interval: 5s
                   limit_percentage: 80
                   spike_limit_percentage: 15
+              # Data that arrives without a cluster (an app sending OTLP straight here) gets this cluster's name;
+              # insert never overwrites, so what the agents or the VPS (Alloy, cluster=vps) set is kept
+              resource/cluster:
+                  attributes:
+                      - key: cluster
+                        value: {{ .Values.cluster.name }}
+                        action: insert
+                      - key: k8s.cluster.name
+                        value: {{ .Values.cluster.name }}
+                        action: insert
               batch:
                   send_batch_size: 2000
                   send_batch_max_size: 5000
@@ -76,11 +86,13 @@
                   resource_metrics_key_attributes:
                       - service.name
                       - service.namespace
+                      - cluster
                       - k8s.cluster.name
                       - k8s.namespace.name
               service_graph:
                   latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
                   dimensions:
+                      - cluster
                       - k8s.cluster.name
                   store:
                       ttl: 10s
@@ -117,11 +129,11 @@
               pipelines:
                   traces:
                       receivers: [otlp, otlp/external]
-                      processors: [memory_limiter, batch]
+                      processors: [memory_limiter, resource/cluster, batch]
                       exporters: [otlp_grpc/tempo, span_metrics, service_graph]
                   metrics:
                       receivers: [otlp, otlp/external]
-                      processors: [memory_limiter, batch]
+                      processors: [memory_limiter, resource/cluster, batch]
                       exporters: [otlp_http/prometheus]
                   metrics/traces:
                       receivers: [span_metrics, service_graph]
@@ -129,7 +141,7 @@
                       exporters: [otlp_http/prometheus]
                   logs:
                       receivers: [otlp, otlp/external]
-                      processors: [memory_limiter, batch]
+                      processors: [memory_limiter, resource/cluster, batch]
                       exporters: [otlp_http/loki]
 - apiVersion: v1
   kind: ServiceAccount
