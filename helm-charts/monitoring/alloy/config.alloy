@@ -87,11 +87,13 @@ prometheus.scrape "kubelet" {
 }
 
 prometheus.relabel "kubelet" {
+    // up and scrape_* (one set per target) always pass: the mixin's cluster variable reads
+    // up{job="kubelet", metrics_path="/metrics/cadvisor"}
     // /metrics: k3s is one binary, so this endpoint also carries the embedded apiserver, kine, scheduler and
     // controllers (~88k samples). Keep the kubelet's own families (kubelet dashboard and alerts), drop the rest.
     rule {
         source_labels = ["metrics_path", "__name__"]
-        regex         = "/metrics;((kubelet|volume_manager|storage_operation|prober|csi_operations|kubernetes_build)_.+|process_(cpu_seconds_total|resident_memory_bytes|start_time_seconds)|go_goroutines|rest_client_requests_total)|/metrics/(cadvisor|probes);.+"
+        regex         = ".*;(up|scrape_.+)|/metrics;((kubelet|volume_manager|storage_operation|prober|csi_operations|kubernetes_build)_.+|process_(cpu_seconds_total|resident_memory_bytes|start_time_seconds)|go_goroutines|rest_client_requests_total)|/metrics/(cadvisor|probes);.+"
         action        = "keep"
     }
     // kubelet HTTP server latency histogram: no dashboard or alert reads it (_sum/_count stay)
@@ -104,7 +106,7 @@ prometheus.relabel "kubelet" {
     // OOM, network, filesystem I/O, machine size); ~50 others (spec, pressure, page faults, blkio, threads) go.
     rule {
         source_labels = ["metrics_path", "__name__"]
-        regex         = "/metrics/cadvisor;(container_(cpu_usage_seconds_total|cpu_cfs_(periods|throttled_periods)_total|memory_(working_set_bytes|rss|cache|swap)|oom_events_total|network_(receive|transmit)_(bytes|packets|packets_dropped)_total|fs_(reads|writes)(_bytes)?_total)|machine_(cpu_cores|memory_bytes))|/metrics(/probes)?;.+"
+        regex         = ".*;(up|scrape_.+)|/metrics/cadvisor;(container_(cpu_usage_seconds_total|cpu_cfs_(periods|throttled_periods)_total|memory_(working_set_bytes|rss|cache|swap)|oom_events_total|network_(receive|transmit)_(bytes|packets|packets_dropped)_total|fs_(reads|writes)(_bytes)?_total)|machine_(cpu_cores|memory_bytes))|/metrics(/probes)?;.+"
         action        = "keep"
     }
     // Network of the host's own interfaces (pod="", Docker bridges, tailscale): node-exporter has them
