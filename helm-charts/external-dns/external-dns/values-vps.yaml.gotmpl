@@ -1,3 +1,10 @@
 # VPS k3s: no prometheus-operator, so no ServiceMonitor (Alloy scrapes the metrics Service instead).
 serviceMonitor:
     enabled: false
+# Memory-bound host: only Ingresses to watch there. Request below k8s01's 7-day peak, limit above it.
+resources:
+    requests:
+        cpu: 5m
+        memory: 48Mi
+    limits:
+        memory: 160Mi

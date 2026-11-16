@@ -1,3 +1,32 @@
 # VPS k3s: no prometheus-operator, so no ServiceMonitor (Alloy scrapes the metrics Service instead).
 serviceMonitor:
     enabled: false
+# Memory-bound host (7.8 GB shared with docker compose until the cutover): one webhook replica, an exception to the
+# two-replica rule for fail-closed webhooks (AGENTS.md); a webhook restart only delays ExternalSecret writes there.
+# Requests below k8s01's 7-day peaks (it has far more Secrets and CRDs), limits above them.
+# Only ExternalSecret + (Cluster)SecretStore run on the VPS: the other controllers are off (CRDs stay).
+processClusterExternalSecret: false
+processClusterPushSecret: false
+processPushSecret: false
+processClusterGenerator: false
+resources:
+    requests:
+        cpu: 10m
+        memory: 48Mi
+    limits:
+        memory: 160Mi
+webhook:
+    replicaCount: 1
+    resources:
+        requests:
+            cpu: 5m
+            memory: 48Mi
+        limits:
+            memory: 192Mi
+certController:
+    resources:
+        requests:
+            cpu: 5m
+            memory: 64Mi
+        limits:
+            memory: 224Mi
