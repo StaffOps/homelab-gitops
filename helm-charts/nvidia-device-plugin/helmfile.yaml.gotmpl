@@ -15,13 +15,13 @@ environments:
         values:
             - ../environment.yaml
             - nvidia-device-plugin:
-                  enabled: true
+                  enabled: false # off with the llm (2026-11-16); true turns it back on
                   version: 0.20.1
             - nvidia-device-plugin-raw:
-                  enabled: true
+                  enabled: false # off with the llm (2026-11-16); true turns it back on
                   version: 2.0.2
             - nvidia-gpu-exporter:
-                  enabled: true
+                  enabled: false # off with the llm (2026-11-16); true turns it back on
                   version: 2.18.0 # nvidia_gpu_exporter 1.18.0
 ---
 templates:
