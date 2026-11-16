@@ -221,6 +221,9 @@ resources:
               enabled: true
               displayName: {{ .Values.keycloak.realm }}
               loginWithEmailAllowed: true
+              # SSO session: 8 h without activity (default 30 min logged people out during the day), at most 10 h
+              ssoSessionIdleTimeout: 28800
+              ssoSessionMaxLifespan: 36000
               groups:
                   {{- range .Values.keycloak.apps }}
                   - name: {{ . }}
