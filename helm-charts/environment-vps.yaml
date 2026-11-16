@@ -1,0 +1,40 @@
+# Values of the VPS k3s (helmfile environment "vps", ADR 0008), the counterpart of environment.yaml (environment
+# "default" = k8s01). A helmfile that also runs on the VPS declares an environment vps that loads this file
+# instead of ../environment.yaml; its values.yaml.gotmpl reads the keys below, so names (namespaces, releases,
+# charts, versions) stay the same in both clusters and only what is unique to a cluster lives in its file.
+# Release-level differences go in <release>/values-vps.yaml.gotmpl.
+# ApplicationSet platform-vps renders helm-charts/<app> with --environment vps.
+cluster:
+    name: vps # external label cluster="vps" (alert rules filter on it)
+    distribution: k3s
+domain: staffops.space
+acmeEmail: contact@staffops.space
+storageClass: local-path # bundled with k3s
+# No Istio and no Gateway API controller on the VPS: exposure is a Traefik Ingress (k3s add-on in kube-system,
+# enabled at cutover) with Authelia forwardAuth.
+mesh:
+    enabled: false
+ingress:
+    className: traefik
+# external-dns on the VPS: distinct owner id and prefix so it never fights the k8s01 one; upsert-only so it
+# never deletes records made by hand. grafana. and prometheus. belong to k8s01 (LAN-only) and are not managed here.
+externalDns:
+    txtOwnerId: vps-srv1853985
+    txtPrefix: vps-
+# Namespaces of the VPS base (ApplicationSet platform-vps): the same names as on k8s01. AppProject vps denies
+# them to the apps (helm-charts/argo reads this list).
+platform:
+    namespaces:
+        - kube-system
+        - kube-public
+        - kube-node-lease
+        - default
+        - cert-manager
+        - external-secrets
+        - external-dns
+        - monitoring
+vault:
+    prefix: homelab
+# Central SSO on k8s01 (same realm); read by values shared with k8s01
+keycloak:
+    realm: staffops

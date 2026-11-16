@@ -4,7 +4,8 @@
 #   scripts/render-app.sh --list                 apps (helmfile directories under helm-charts/)
 #   scripts/render-app.sh <path>                 e.g. monitoring, cert-manager, argo
 #   scripts/render-app.sh <path> --out <file>    keep the rendered manifests
-#   scripts/render-app.sh --all                  render every app (what CI would run)
+#   scripts/render-app.sh <path> --env vps       render another helmfile environment (VPS k3s, ADR 0008)
+#   scripts/render-app.sh --all                  render every app, plus env vps where a helmfile declares it
 #
 # Runs "helmfile template --include-crds" (the plugin's HELMFILE_TEMPLATE_OPTIONS) with the Prometheus and
 # Gateway API capabilities. For argo it renders releases argo-cd + argo-cd-raw (the root Application's
@@ -29,6 +30,9 @@ case "${1:-}" in
         for app in $(list_apps); do
             echo "=== $app"
             "$0" "$app" >/dev/null 2>"$(mktemp)" && echo "✔ $app" || { echo "✘ $app"; rc=1; }
+            if grep -qE '^    vps:$' "$CHARTS/$app/helmfile.yaml.gotmpl"; then
+                "$0" "$app" --env vps >/dev/null 2>"$(mktemp)" && echo "✔ $app (vps)" || { echo "✘ $app (vps)"; rc=1; }
+            fi
         done
         exit $rc
         ;;
@@ -39,7 +43,15 @@ APP="$1"
 DIR="$CHARTS/$APP"
 [ -f "$DIR/helmfile.yaml.gotmpl" ] || fail "no helm-charts/$APP/helmfile.yaml.gotmpl (apps: $(list_apps | tr '\n' ' '))"
 OUT=""
-[ "${2:-}" = "--out" ] && OUT="${3:?--out needs a file}"
+ENV="default"
+shift
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --out) OUT="${2:?--out needs a file}"; shift 2 ;;
+        --env) ENV="${2:?--env needs a name}"; shift 2 ;;
+        *) fail "unknown option $1" ;;
+    esac
+done
 
 for t in helmfile helm yq; do command -v "$t" >/dev/null || fail "$t not found"; done
 
@@ -51,13 +63,20 @@ RENDER="$TMP/render.yaml"
 SELECTORS=()
 [ "$APP" = "argo" ] && SELECTORS=(--selector name=argo-cd --selector name=argo-cd-raw)
 
-echo "Rendering helm-charts/$APP…"
-(cd "$DIR" && helmfile "${SELECTORS[@]}" template --include-crds --args "$API_ARGS" >"$RENDER" 2>"$TMP/err") || {
-    grep -vE 'Adding repo|has been added|already exists|Building dependency|Templating release' "$TMP/err" |
-        grep -viE 'password|token' | tail -25 >&2
-    fail "render failed"
-}
+echo "Rendering helm-charts/$APP (environment $ENV)…"
+if ! (cd "$DIR" && helmfile --environment "$ENV" "${SELECTORS[@]}" template --include-crds --args "$API_ARGS" >"$RENDER" 2>"$TMP/err"); then
+    # every release disabled in this environment (a VPS-only app on k8s01): nothing to deploy, not an error
+    if grep -q 'no releases found that matches' "$TMP/err"; then
+        : >"$RENDER"
+    else
+        grep -vE 'Adding repo|has been added|already exists|Building dependency|Templating release' "$TMP/err" |
+            grep -viE 'password|token' | tail -25 >&2
+        fail "render failed"
+    fi
+fi
 
+# An environment with every release disabled (a VPS-only app on k8s01) renders nothing: that is fine
+if [ ! -s "$RENDER" ]; then echo "(environment $ENV renders nothing)"; echo; echo "✔ helm-charts/$APP renders ($ENV)"; exit 0; fi
 yq -e '.' "$RENDER" >/dev/null 2>&1 || fail "rendered output is not valid YAML"
 
 images() {
@@ -106,4 +125,4 @@ fi
 [ -n "$OUT" ] && cp "$RENDER" "$OUT" && echo && echo "Manifests saved to $OUT"
 [ "$problems" -eq 0 ] || exit 1
 echo
-echo "✔ helm-charts/$APP renders"
+echo "✔ helm-charts/$APP renders ($ENV)"

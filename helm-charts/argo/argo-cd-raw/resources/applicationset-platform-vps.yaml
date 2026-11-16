@@ -1,10 +1,11 @@
-# Base of the VPS k3s (ADR 0008): one Application vps-<appName> per list element, source helm-charts/vps/<path>,
-# destination the vps cluster. Explicit list like ApplicationSet platform: only listed directories are deployed.
-# Each element's namespace must also be in remoteClusters.vps.platformNamespaces (environment.yaml), so the
-# apps of AppProject vps cannot write there. Escaped once like applicationset-platform.yaml.
+# Base of the VPS k3s (ADR 0008): one Application vps-<appName> per list element. Same directories as the platform
+# (helm-charts/<path>) rendered with --environment vps: each helmfile declares an environment vps that loads
+# environment-vps.yaml, so names and versions are shared and only what is unique to the VPS changes. Explicit
+# list like ApplicationSet platform: only listed directories are deployed there. Each element's namespace must
+# also be in platform.namespaces of environment-vps.yaml (AppProject vps denies it to the apps). Escaped once
+# like applicationset-platform.yaml.
 #
-# Element fields: appName, path (relative to helm-charts/vps/), namespace.
-# Empty until the k3s is up and registered (cluster Secret argocd-cluster-vps).
+# Element fields: appName, path (relative to helm-charts/), namespace.
 #
 # Removing an element deletes the Application but keeps its resources (preserveResourcesOnDeletion).
 - apiVersion: argoproj.io/v1alpha1
@@ -18,7 +19,11 @@
           preserveResourcesOnDeletion: true
       generators:
           - list:
-                elements: []
+                elements:
+                    # kube-prometheus-stack reduced to kube-state-metrics (values-vps); Alloy next
+                    - appName: monitoring
+                      path: monitoring
+                      namespace: monitoring
       template:
           metadata:
               name: 'vps-{{`{{ .appName }}`}}'
@@ -26,15 +31,19 @@
                   type: platform
                   cluster: vps
               annotations:
-                  argocd.argoproj.io/manifest-generate-paths: .
+                  # relative to source.path: the app itself and the VPS environment values
+                  argocd.argoproj.io/manifest-generate-paths: '.;../environment-vps.yaml'
           spec:
               project: platform-vps
               source:
                   repoURL: {{ .Values.gitops.repoURL }}
                   targetRevision: {{ .Values.gitops.revision }}
-                  path: 'helm-charts/vps/{{`{{ .path }}`}}'
+                  path: 'helm-charts/{{`{{ .path }}`}}'
                   plugin:
                       name: helmfile
+                      env:
+                          - name: HELMFILE_GLOBAL_OPTIONS
+                            value: --environment vps
               destination:
                   server: {{ .Values.remoteClusters.vps.server }}
                   namespace: '{{`{{ .namespace }}`}}'

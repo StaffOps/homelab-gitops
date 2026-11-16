@@ -27,6 +27,23 @@ environments:
             - monitoring-raw:
                   enabled: true
                   version: 2.0.2
+    # VPS k3s (ADR 0008): an edge cluster. The central pieces stay on k8s01; kube-prometheus-stack runs reduced to
+    # kube-state-metrics (values-vps.yaml.gotmpl) and Alloy (next) ships metrics and logs to k8s01 over the tailnet.
+    vps:
+        values:
+            - ../environment-vps.yaml
+            - kube-prometheus-stack:
+                  enabled: true
+                  version: 93.3.0
+            - loki:
+                  enabled: false
+                  version: 21.2.3
+            - tempo:
+                  enabled: false
+                  version: 3.2.1
+            - monitoring-raw:
+                  enabled: false
+                  version: 2.0.2
 ---
 templates:
     default: &default
@@ -34,6 +51,10 @@ templates:
         namespace: monitoring
         values:
             - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+            # values-<environment>.yaml.gotmpl overlays the shared file in every environment but default (k8s01)
+            # {{ if ne .Environment.Name "default" }}
+            - ./{{`{{ .Release.Name }}`}}/values-{{`{{ .Environment.Name }}`}}.yaml.gotmpl
+            # {{ end }}
 releases:
     # Grafana admin (ExternalSecret) and HTTPRoutes for Grafana, Prometheus and Alertmanager
     - chart: bedag/raw

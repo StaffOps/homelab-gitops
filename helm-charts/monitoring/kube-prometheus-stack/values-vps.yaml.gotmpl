@@ -1,0 +1,48 @@
+# VPS k3s (environment vps, ADR 0008): over values.yaml.gotmpl, only kube-state-metrics stays. Prometheus, Alertmanager,
+# Grafana and the rules live on k8s01; Alloy scrapes kube-state-metrics and remote-writes there. No prometheus-operator
+# (and no ServiceMonitor CRD) on the VPS, so every ServiceMonitor and PrometheusRule is off. Node metrics come from
+# Alloy's built-in exporter, not node-exporter.
+prometheus:
+    enabled: false
+alertmanager:
+    enabled: false
+grafana:
+    enabled: false
+prometheusOperator:
+    enabled: false
+nodeExporter:
+    enabled: false
+defaultRules:
+    create: false
+# additionalPrometheusRulesMap: the shared file adds it only in environment default
+kubeApiServer:
+    enabled: false
+kubelet:
+    enabled: false
+kubeControllerManager:
+    enabled: false
+kubeScheduler:
+    enabled: false
+kubeProxy:
+    enabled: false
+kubeEtcd:
+    enabled: false
+coreDns:
+    enabled: false
+kubeDns:
+    enabled: false
+kube-state-metrics:
+    # Alloy finds it by the prometheus.io/scrape annotation on the Service
+    prometheusScrape: true
+    prometheus:
+        monitor:
+            enabled: false
+    selfMonitor:
+        enabled: false
+    metricLabelsAllowlist: []
+    resources:
+        requests:
+            cpu: 10m
+            memory: 32Mi
+        limits:
+            memory: 128Mi

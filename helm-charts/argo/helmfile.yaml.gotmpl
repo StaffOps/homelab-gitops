@@ -10,6 +10,10 @@ environments:
         kubeContext: k8s01
         values:
             - ../environment.yaml
+            # The VPS base namespaces come from environment-vps.yaml (one list): AppProject vps denies them
+            - remoteClusters:
+                  vps:
+                      platformNamespaces: {{ (readFile "../environment-vps.yaml" | fromYaml).platform.namespaces | toJson }}
             - argo-cd:
                   enabled: true
                   version: 10.18.0

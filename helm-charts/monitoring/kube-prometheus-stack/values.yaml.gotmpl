@@ -248,7 +248,10 @@ defaultRules:
         prometheusOperator: false
     disabled:
         etcdGRPCRequestsSlow: true # lab copy in etcd.rules.yaml (Status excluded)
-# Alert rules the chart does not ship (inserted as-is with readFile: plain Prometheus templates in the file)
+# Alert rules the chart does not ship (inserted as-is with readFile: plain Prometheus templates in the file).
+# Only where Prometheus runs (k8s01): an edge environment has no PrometheusRule CRD, and an overlay cannot drop
+# these keys (the chart fails on a null entry).
+{{- if eq .Environment.Name "default" }}
 additionalPrometheusRulesMap:
     coredns:
         {{- readFile "./coredns.rules.yaml" | nindent 8 }}
@@ -256,3 +259,4 @@ additionalPrometheusRulesMap:
         {{- readFile "./prometheus-operator.rules.yaml" | nindent 8 }}
     etcd-lab:
         {{- readFile "./etcd.rules.yaml" | nindent 8 }}
+{{- end }}
