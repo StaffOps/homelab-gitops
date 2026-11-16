@@ -29,6 +29,20 @@ environments:
                   keycloakMcpImage: ghcr.io/tetra-2023/keycloak-mcp:1.9.24
                   prometheusMcpImage: ghcr.io/tjhop/prometheus-mcp-server:v0.18.0
                   kubectlMcpImage: docker.io/rohitghumare64/kubectl-mcp-server:2.0.0
+                  # ServiceAccounts bound to ClusterRole mcp-read (rbac.yaml)
+                  readers: [kubernetes-mcp, kubectl-mcp]
+    # Edge cluster (VPS k3s, ADR 0008): no MCP server there, only the read-only identity the k8s01 servers use to see
+    # it (ServiceAccount mcp-reader, same ClusterRole mcp-read). Its token goes to Vault homelab/mcp-vps.
+    vps:
+        values:
+            - ../environment-vps.yaml
+            - grafana-mcp:
+                  enabled: false
+                  version: 0.35.0
+            - mcp-servers-raw:
+                  enabled: true
+                  version: 2.0.2
+                  readers: [mcp-reader]
 ---
 templates:
     default: &default
@@ -40,7 +54,8 @@ releases:
       condition: mcp-servers-raw.enabled
       <<: *default
       values:
-          - ./mcp-servers-raw/values.yaml.gotmpl
+          # k8s01: values.yaml.gotmpl. An edge environment uses only its own file (the k8s01 objects need k8s01 values).
+          - ./mcp-servers-raw/values{{ if ne .Environment.Name "default" }}-{{ .Environment.Name }}{{ end }}.yaml.gotmpl
     - chart: grafana-community/grafana-mcp
       name: grafana-mcp
       condition: grafana-mcp.enabled

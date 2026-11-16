@@ -71,7 +71,7 @@
             - storage.k8s.io
         resources: ["*"]
         verbs: [get, list, watch]
-{{- range $sa := list "kubernetes-mcp" "kubectl-mcp" }}
+{{- range $sa := index .Values "mcp-servers-raw" "readers" }}
 - apiVersion: rbac.authorization.k8s.io/v1
   kind: ClusterRoleBinding
   metadata:

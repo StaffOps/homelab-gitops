@@ -1,0 +1,7 @@
+# Edge cluster (VPS k3s): only the read-only identity of the k8s01 MCP servers (/kubernetes, /kubectl). Used instead of
+# values.yaml.gotmpl: the shared RBAC (resources/rbac.yaml, readers = mcp-reader) plus vps/.
+resources:
+    {{- tpl (readFile "./resources/rbac.yaml") $ | nindent 4 }}
+    {{- range $f := readDir "./vps" }}
+    {{- tpl (readFile (printf "./%s" $f)) $ | nindent 4 }}
+    {{- end }}

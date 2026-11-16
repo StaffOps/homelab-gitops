@@ -1,0 +1,32 @@
+# Identity of the k8s01 MCP servers on this cluster, bound to ClusterRole mcp-read (resources/rbac.yaml: read-only,
+# never Secrets). Long-lived token in Secret mcp-reader-token (filled by the token controller); the operator copies
+# it, with ca.crt, to Vault homelab/mcp-vps (keys token, ca.crt), which builds the servers' kubeconfig on k8s01.
+# Rotate: delete the Secret (Argo CD recreates it, new token) and copy again.
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+      name: mcp-reader
+- apiVersion: v1
+  kind: Secret
+  type: kubernetes.io/service-account-token
+  metadata:
+      name: mcp-reader-token
+      annotations:
+          kubernetes.io/service-account.name: mcp-reader
+# CRDs on this cluster (no Kyverno here to generate one role per CRD as on k8s01). None of them holds secret data.
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+      name: mcp-read-crd-vps
+      labels:
+          homelab.rbac/aggregate-to-mcp-read: "true"
+  rules:
+      - apiGroups:
+            - cert-manager.io
+            - acme.cert-manager.io
+            - external-secrets.io
+            - traefik.io
+            - helm.cattle.io
+            - k3s.cattle.io
+        resources: ["*"]
+        verbs: [get, list, watch]
