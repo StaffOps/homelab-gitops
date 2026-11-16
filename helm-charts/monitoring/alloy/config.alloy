@@ -192,6 +192,9 @@ prometheus.remote_write "central" {
 // path (cluster attribute, otel-gateway); metrics are scraped from the component and remote-written like the rest.
 beyla.ebpf "apps" {
     discovery {
+        // Route harvesting of the big Node.js processes (openclaw, 9router) pushed the container past its limit;
+        // their HTTP spans and RED metrics stay (routes fall back to the heuristic matcher)
+        disabled_route_harvesters = ["nodejs"]
         instrument {
             kubernetes {
                 namespace = "edge"
