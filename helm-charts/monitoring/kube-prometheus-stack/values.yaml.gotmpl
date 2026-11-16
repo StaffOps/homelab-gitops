@@ -150,7 +150,7 @@ grafana:
               derivedFields:
                   - name: trace_id
                     matcherType: label
-                    matcherRegex: trace_id
+                    matcherRegex: ^trace_id$ # anchored: the label matcher is a regex on label keys (parent_trace_id would match too)
                     datasourceUid: tempo
                     url: "$${__value.raw}"
         - name: Tempo
