@@ -304,6 +304,14 @@ discovery.relabel "annotated_pods" {
         source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
         target_label  = "job"
     }
+    // Collectors of the OpenTelemetry operator: same job as on k8s01, where their ServiceMonitor names it after the
+    // Service <collector>-collector-monitoring (instance label "<namespace>.<collector>")
+    rule {
+        source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_managed_by", "__meta_kubernetes_pod_label_app_kubernetes_io_instance"]
+        regex         = "opentelemetry-operator;[^.]+\\.(.+)"
+        replacement   = "$1-collector-monitoring"
+        target_label  = "job"
+    }
 }
 
 prometheus.scrape "annotated" {
