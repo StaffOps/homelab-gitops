@@ -3,13 +3,17 @@
 # https://opentelemetry.io/docs/collector/internal-telemetry/#use-internal-telemetry-to-monitor-the-collector
 # Counters here have no _total suffix (Collector default without_type_suffix: true). send_failed / enqueue_failed /
 # refused series appear only after the first failure. Thresholds ("> 0 for 10m", queue "> 0.8 for 10m") are derived:
-# docs/dashboards/observability.md; the docs give "sustained rates" without numbers.
+# docs/dashboards/observability.md; the docs give "sustained rates" without numbers. One rate per signal, joined with
+# "or": a {__name__=~...} selector loses the metric name in rate(), and the three signals of one component collide
+# ("vector cannot contain metrics with the same labelset"). Per cluster.
 groups:
     - name: otel-collector
       rules:
           - alert: OtelCollectorExporterSendFailed
             expr: |-
-                sum by (namespace, job, exporter) (rate({__name__=~"otelcol_exporter_send_failed_(spans|metric_points|log_records)"}[5m])) > 0
+                (sum by (cluster, namespace, job, exporter) (rate(otelcol_exporter_send_failed_spans[5m])) > 0)
+                or (sum by (cluster, namespace, job, exporter) (rate(otelcol_exporter_send_failed_metric_points[5m])) > 0)
+                or (sum by (cluster, namespace, job, exporter) (rate(otelcol_exporter_send_failed_log_records[5m])) > 0)
             for: 10m
             labels:
                 severity: warning
@@ -18,7 +22,9 @@ groups:
                 description: Sustained send failures mean the Collector cannot export as expected; data is lost once retries and the queue are exhausted.
           - alert: OtelCollectorExporterEnqueueFailed
             expr: |-
-                sum by (namespace, job, exporter) (rate({__name__=~"otelcol_exporter_enqueue_failed_(spans|metric_points|log_records)"}[5m])) > 0
+                (sum by (cluster, namespace, job, exporter) (rate(otelcol_exporter_enqueue_failed_spans[5m])) > 0)
+                or (sum by (cluster, namespace, job, exporter) (rate(otelcol_exporter_enqueue_failed_metric_points[5m])) > 0)
+                or (sum by (cluster, namespace, job, exporter) (rate(otelcol_exporter_enqueue_failed_log_records[5m])) > 0)
             for: 10m
             labels:
                 severity: warning
@@ -26,7 +32,9 @@ groups:
                 summary: Exporter {{ $labels.exporter }} of {{ $labels.job }} drops data because its sending queue is full — check the backend and the queue size
           - alert: OtelCollectorReceiverRefused
             expr: |-
-                sum by (namespace, job, receiver) (rate({__name__=~"otelcol_receiver_refused_(spans|metric_points|log_records)"}[5m])) > 0
+                (sum by (cluster, namespace, job, receiver) (rate(otelcol_receiver_refused_spans[5m])) > 0)
+                or (sum by (cluster, namespace, job, receiver) (rate(otelcol_receiver_refused_metric_points[5m])) > 0)
+                or (sum by (cluster, namespace, job, receiver) (rate(otelcol_receiver_refused_log_records[5m])) > 0)
             for: 10m
             labels:
                 severity: warning
@@ -34,7 +42,7 @@ groups:
                 summary: Receiver {{ $labels.receiver }} of {{ $labels.job }} keeps refusing data — clients may be losing telemetry; check memory_limiter and the exporters
           - alert: OtelCollectorExporterQueueNearlyFull
             expr: |-
-                max by (namespace, job, exporter) (otelcol_exporter_queue_size / otelcol_exporter_queue_capacity) > 0.8
+                max by (cluster, namespace, job, exporter) (otelcol_exporter_queue_size / otelcol_exporter_queue_capacity) > 0.8
             for: 10m
             labels:
                 severity: warning
