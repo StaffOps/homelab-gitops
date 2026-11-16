@@ -49,9 +49,11 @@ cleanupController:
         enabled: true
 reportsController:
     replicas: 1
+    # Mostly ~20m; the hourly background scan (backgroundScanInterval 1h) bursts to 150-450m for a few minutes on
+    # idle CPU (no CPU limit), so the request does not reserve the burst
     resources:
         requests:
-            cpu: 200m
+            cpu: 50m
             memory: 160Mi
         limits:
             memory: 320Mi
