@@ -13,6 +13,9 @@ environments:
                   version: 2.0.2
                   # ghcr.io/ggml-org/llama.cpp:server-vulkan, build b12359 (no per-build tag is published)
                   image: ghcr.io/ggml-org/llama.cpp:server-vulkan@sha256:784bb87c7b22cf8653322f3680f33e1fd013d122d817441d5d2fc6410dee68da
+                  # 0 = off (frees 1 CPU, 2 GiB requested and the GPU) while keeping the PVC with the downloaded
+                  # model; 1 = on. Turned off 2026-11-16 to free room on k8s01.
+                  replicas: 0
                   model: Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M
                   contextSize: 4096
 ---

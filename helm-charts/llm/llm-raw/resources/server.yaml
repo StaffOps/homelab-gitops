@@ -32,7 +32,7 @@
   metadata:
       name: llama
   spec:
-      replicas: 1
+      replicas: {{ index .Values "llm-raw" "replicas" }}
       strategy:
           type: Recreate # one GPU: a rolling update would sit Pending
       selector:
