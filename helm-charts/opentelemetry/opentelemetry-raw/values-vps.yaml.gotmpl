@@ -1,9 +1,3 @@
-# Edge cluster (VPS k3s): only the agent. SDKs send OTLP to it (fixed ClusterIP for the host's Hermes) and it
-# forwards to the gateway published on k8s01 (https://otel.<domain>, bearer token). Gateway, logs collector and
-# rules live on k8s01; logs and scraped metrics of the VPS go through Alloy (helm-charts/monitoring).
-resources:
-    {{- range $c := list "agent" "external-token" "host-service" }}
-    {{- range $f := readDir (printf "./%s" $c) }}
-    {{- tpl (readFile (printf "./%s" $f)) $ | nindent 4 }}
-    {{- end }}
-    {{- end }}
+# Edge cluster (VPS k3s): no collector here, Alloy plays the agent's role (helm-charts/monitoring/alloy). Empty on
+# purpose: Argo CD prunes the otel-agent, its token and its fixed-IP Service that an earlier version created.
+resources: []

@@ -76,7 +76,7 @@ if ! (cd "$DIR" && helmfile --environment "$ENV" "${SELECTORS[@]}" template --in
 fi
 
 # An environment with every release disabled (a VPS-only app on k8s01) renders nothing: that is fine
-if [ ! -s "$RENDER" ]; then echo "(environment $ENV renders nothing)"; echo; echo "✔ helm-charts/$APP renders ($ENV)"; exit 0; fi
+if ! grep -q "[^[:space:]]" "$RENDER"; then echo "(environment $ENV renders nothing)"; echo; echo "✔ helm-charts/$APP renders ($ENV)"; exit 0; fi
 yq -e '.' "$RENDER" >/dev/null 2>&1 || fail "rendered output is not valid YAML"
 
 images() {

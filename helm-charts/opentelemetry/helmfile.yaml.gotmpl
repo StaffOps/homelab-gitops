@@ -24,13 +24,14 @@ environments:
             - obi:
                   enabled: true
                   version: 0.16.1 # OBI v1.0.0
-    # Edge cluster (VPS k3s, ADR 0008): operator + otel-agent only, forwarding to the gateway published on k8s01.
-    # No OBI there (memory-bound host).
+    # Edge cluster (VPS k3s, ADR 0008): nothing. Alloy receives OTLP there and forwards it to the gateway published on
+    # k8s01 (helm-charts/monitoring/alloy). The raw release stays enabled with an empty list so Argo CD prunes what
+    # the earlier otel-agent created; remove this environment and the platform-vps element once it is gone.
     vps:
         values:
             - ../environment-vps.yaml
             - opentelemetry-operator:
-                  enabled: true
+                  enabled: false
                   version: 0.129.0
             - opentelemetry-raw:
                   enabled: true
