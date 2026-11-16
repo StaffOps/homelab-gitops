@@ -161,7 +161,8 @@ resources:
           method: plugin
           pluginConfiguration:
               name: barman-cloud.cloudnative-pg.io
-    {{- range $host, $svc := dict "grafana" (list "grafana" 80) "prometheus" (list "kps-prometheus" 9090) "alertmanager" (list "kps-alertmanager" 9093) }}
+    {{- /* loki: push endpoint for edge clusters (Alloy on the VPS, over the tailnet) */}}
+    {{- range $host, $svc := dict "grafana" (list "grafana" 80) "prometheus" (list "kps-prometheus" 9090) "alertmanager" (list "kps-alertmanager" 9093) "loki" (list "loki" 3100) }}
     - apiVersion: gateway.networking.k8s.io/v1
       kind: HTTPRoute
       metadata:

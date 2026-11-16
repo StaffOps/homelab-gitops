@@ -73,6 +73,9 @@ prometheus:
                   - action: replace
                     targetLabel: cluster
                     replacement: {{ .Values.cluster.name }}
+        # Remote-write from edge clusters (Alloy on the VPS, cluster="vps") at prometheus.<domain>/api/v1/write, reachable
+        # from the LAN and the tailnet only (Gateway public)
+        enableRemoteWriteReceiver: true
         # OTLP metrics from the otel-gateway (apps, OBI, span metrics, service graph): /api/v1/otlp
         enableOTLPReceiver: true
         otlp:

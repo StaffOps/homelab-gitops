@@ -1,6 +1,9 @@
-// Grafana Alloy on an edge cluster (the VPS k3s, ADR 0008): scrapes and tails locally and ships everything as OTLP
-// to the otel-gateway on k8s01 (https://otel.<domain>, bearer token), which forwards metrics to Prometheus, logs
-// to Loki and traces to Tempo. Every signal carries cluster=<CLUSTER> (and k8s.cluster.name), like on k8s01.
+// Grafana Alloy on an edge cluster (the VPS k3s, ADR 0008). Each signal goes to its own backend on k8s01, over the
+// tailnet through the k8s01 Gateway:
+//   scraped metrics → Prometheus remote-write (https://prometheus.<domain>/api/v1/write)
+//   logs            → Loki push (https://loki.<domain>/loki/api/v1/push)
+//   OTLP from the host's SDKs (Hermes) → otel-gateway (https://otel.<domain>, bearer token), like k8s01's OTel path
+// Every signal carries cluster=<CLUSTER> (OTLP also k8s.cluster.name), the same label k8s01 puts on its own.
 // Inserted as-is (readFile, no tpl): settings come from environment variables set in values.yaml.gotmpl.
 
 logging {
@@ -38,7 +41,7 @@ prometheus.scrape "kubelet" {
     tls_config {
         insecure_skip_verify = true
     }
-    forward_to = [otelcol.receiver.prometheus.default.receiver]
+    forward_to = [prometheus.remote_write.central.receiver]
 }
 
 prometheus.scrape "cadvisor" {
@@ -50,7 +53,7 @@ prometheus.scrape "cadvisor" {
     tls_config {
         insecure_skip_verify = true
     }
-    forward_to = [otelcol.receiver.prometheus.default.receiver]
+    forward_to = [prometheus.remote_write.central.receiver]
 }
 
 // Node metrics (node_exporter equivalent) from the host's /proc, /sys and / mounted read-only
@@ -66,7 +69,7 @@ prometheus.exporter.unix "node" {
 prometheus.scrape "node" {
     job_name   = "node-exporter"
     targets    = prometheus.exporter.unix.node.targets
-    forward_to = [otelcol.receiver.prometheus.default.receiver]
+    forward_to = [prometheus.remote_write.central.receiver]
 }
 
 // Services and pods annotated prometheus.io/scrape=true (kube-state-metrics, authelia, nats exporter, ...)
@@ -108,7 +111,7 @@ discovery.relabel "annotated_endpoints" {
 
 prometheus.scrape "annotated_endpoints" {
     targets    = discovery.relabel.annotated_endpoints.output
-    forward_to = [otelcol.receiver.prometheus.default.receiver]
+    forward_to = [prometheus.remote_write.central.receiver]
 }
 
 discovery.relabel "annotated_pods" {
@@ -154,30 +157,37 @@ discovery.relabel "annotated_pods" {
 
 prometheus.scrape "annotated_pods" {
     targets    = discovery.relabel.annotated_pods.output
-    forward_to = [otelcol.receiver.prometheus.default.receiver]
+    forward_to = [prometheus.remote_write.central.receiver]
 }
 
-otelcol.receiver.prometheus "default" {
-    output {
-        metrics = [otelcol.processor.transform.cluster.input]
+prometheus.remote_write "central" {
+    external_labels = {
+        cluster = sys.env("CLUSTER"),
+    }
+    endpoint {
+        url = sys.env("PROMETHEUS_REMOTE_WRITE_URL")
+        queue_config {
+            capacity = 10000
+        }
     }
 }
 
 // ---------- Logs ----------
-// Pod logs through the Kubernetes API (no hostPath), with namespace/pod/container labels
+// Pod logs through the Kubernetes API (no hostPath). Label names as on k8s01, where logs arrive by OTLP:
+// k8s_namespace_name, k8s_pod_name, k8s_container_name, service_name
 discovery.relabel "pod_logs" {
     targets = discovery.kubernetes.pods.targets
     rule {
         source_labels = ["__meta_kubernetes_namespace"]
-        target_label  = "namespace"
+        target_label  = "k8s_namespace_name"
     }
     rule {
         source_labels = ["__meta_kubernetes_pod_name"]
-        target_label  = "pod"
+        target_label  = "k8s_pod_name"
     }
     rule {
         source_labels = ["__meta_kubernetes_pod_container_name"]
-        target_label  = "container"
+        target_label  = "k8s_container_name"
     }
     rule {
         source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_container_name"]
@@ -188,7 +198,7 @@ discovery.relabel "pod_logs" {
 
 loki.source.kubernetes "pods" {
     targets    = discovery.relabel.pod_logs.output
-    forward_to = [otelcol.receiver.loki.default.receiver]
+    forward_to = [loki.write.central.receiver]
 }
 
 // Host journal: the systemd units that stay on the host (Hermes, center-agent, poller...) and the node itself
@@ -212,12 +222,15 @@ loki.source.journal "host" {
     labels        = {
         job = "systemd-journal",
     }
-    forward_to = [otelcol.receiver.loki.default.receiver]
+    forward_to = [loki.write.central.receiver]
 }
 
-otelcol.receiver.loki "default" {
-    output {
-        logs = [otelcol.processor.transform.cluster.input]
+loki.write "central" {
+    external_labels = {
+        cluster = sys.env("CLUSTER"),
+    }
+    endpoint {
+        url = sys.env("LOKI_PUSH_URL")
     }
 }
 
@@ -236,7 +249,7 @@ otelcol.receiver.otlp "host" {
     }
 }
 
-// ---------- To k8s01 ----------
+// ---------- OTLP to the otel-gateway on k8s01 ----------
 otelcol.processor.transform "cluster" {
     error_mode = "ignore"
     metric_statements {

@@ -1,5 +1,5 @@
-# Grafana Alloy, only on edge clusters (environment vps): metrics, logs and the host's OTLP to k8s01 over the
-# tailnet (config.alloy). The pipeline is read as-is from config.alloy; what differs per cluster comes in as env.
+# Grafana Alloy, only on edge clusters (environment vps): metrics to Prometheus, logs to Loki and the host's OTLP to
+# the otel-gateway, all on k8s01 over the tailnet (config.alloy). The pipeline is read as-is from config.alloy; what differs per cluster comes in as env.
 alloy:
     configMap:
         create: true
@@ -9,6 +9,10 @@ alloy:
     extraEnv:
         - name: CLUSTER
           value: {{ .Values.cluster.name }}
+        - name: PROMETHEUS_REMOTE_WRITE_URL
+          value: https://prometheus.{{ .Values.domain }}/api/v1/write
+        - name: LOKI_PUSH_URL
+          value: https://loki.{{ .Values.domain }}/loki/api/v1/push
         - name: OTEL_ENDPOINT
           value: https://otel.{{ .Values.domain }}
         - name: OTEL_EXTERNAL_TOKEN
