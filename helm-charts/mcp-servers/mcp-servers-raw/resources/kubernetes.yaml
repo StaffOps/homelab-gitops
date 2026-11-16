@@ -1,6 +1,6 @@
 # kubernetes-mcp-server, read-only, as its own ServiceAccount bound to ClusterRole mcp-read (rbac.yaml: every
 # kind except Secrets, including CRDs installed later); Secrets are also denied in the server config. cluster_auth_mode=kubeconfig: the caller's Keycloak JWT is never sent to
-# the API server.
+# the API server. Two clusters through clusters.yaml (contexts k8s01 and vps): tools take a context argument.
 - apiVersion: v1
   kind: ServiceAccount
   metadata:
@@ -16,6 +16,7 @@
           read_only = true
           disable_destructive = true
           cluster_auth_mode = "kubeconfig"
+          kubeconfig = "/etc/kube/config"
           toolsets = ["core", "config", "helm"]
           [[denied_resources]]
           group = ""
@@ -55,6 +56,9 @@
                     volumeMounts:
                         - name: config
                           mountPath: /etc/mcp
+                        - name: kubeconfig
+                          mountPath: /etc/kube
+                          readOnly: true
                     resources:
                         requests:
                             cpu: 10m
@@ -65,6 +69,9 @@
                   - name: config
                     configMap:
                         name: kubernetes-mcp
+                  - name: kubeconfig
+                    secret:
+                        secretName: mcp-kubeconfig
 - apiVersion: v1
   kind: Service
   metadata:

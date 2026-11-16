@@ -4,7 +4,8 @@
 # changes state) and its ServiceAccount is bound to ClusterRole mcp-read (rbac.yaml: read-only, never Secrets).
 # Tools that duplicate /kubernetes (get, logs, top, api-resources, custom resources, node logs/stats) or read
 # Secrets are removed by launch.py before registration (MCP_DROP_TOOLS); the Helm toolset is off because
-# Helm releases live in Secrets (and Argo CD renders charts, it does not install releases).
+# Helm releases live in Secrets (and Argo CD renders charts, it does not install releases). Two clusters through
+# clusters.yaml (contexts k8s01 and vps): tools take a context argument.
 - apiVersion: v1
   kind: ServiceAccount
   metadata:
@@ -55,6 +56,8 @@
                     command: [python, /launch/launch.py]
                     args: [--transport, http, --host, 0.0.0.0, --port, "8000", --read-only]
                     env:
+                        - name: KUBECONFIG
+                          value: /etc/kube/config
                         - name: MCP_TOOLSETS
                           value: core,diagnostics,security,cost,crds,certs,policy,backup,keda,istio,rollouts
                         - name: MCP_DROP_TOOLS
@@ -83,6 +86,9 @@
                           mountPath: /home/mcp
                         - name: tmp
                           mountPath: /tmp
+                        - name: kubeconfig
+                          mountPath: /etc/kube
+                          readOnly: true
                     resources:
                         requests:
                             cpu: 10m
@@ -97,6 +103,9 @@
                     emptyDir: {}
                   - name: tmp
                     emptyDir: {}
+                  - name: kubeconfig
+                    secret:
+                        secretName: mcp-kubeconfig
 - apiVersion: v1
   kind: Service
   metadata:

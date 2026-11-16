@@ -188,6 +188,7 @@ add an app with a secret, add a row here.
 | `oidc` | `argocd`, `grafana`, `vault`, `hermes`, `backstage`, `keycloak-mcp` | Keycloak clients, Argo CD, Grafana, Vault, MCP server keycloak | Random strings; see [sso.md](sso.md) |
 | `otel` | `external-token` | otel-gateway external receiver | Token the VPS sends |
 | `mcp` | `argocd-token`, `grafana-token`, `dependency-track-api-key` | MCP servers | Argo CD account `mcp` token, Grafana service-account token, API key of a Dependency-Track VIEW_* team |
+| `mcp-vps` | `token`, `ca.crt` | MCP servers /kubernetes and /kubectl (kubeconfig context `vps`) | Token and CA of ServiceAccount `mcp-servers/mcp-reader` on the VPS k3s (Secret `mcp-reader-token`, created by platform-vps `mcp-servers`; read-only ClusterRole `mcp-read`). Rotate: delete the Secret there, copy the new one |
 | `llm` | `api-key` | llama.cpp server | Clients send `Authorization: Bearer <key>` to `llm.staffops.space` |
 | `dependency-track` | `kek`, `admin-password` | Dependency-Track | `kek`: `openssl rand -base64 32`, keep a copy (losing it loses the secrets DT stores). `admin-password`: local `admin`, break-glass, not read by the cluster |
 | `velero` | `access-key-id`, `secret-access-key`, `endpoint` | Velero, every CloudNativePG ObjectStore, Argo CD render env | R2 API token, see [backup.md](backup.md#one-time-setup-r2-bucket-and-token) |

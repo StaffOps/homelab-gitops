@@ -1,0 +1,50 @@
+# kubeconfig of the Kubernetes MCP servers (/kubernetes, /kubectl): context k8s01 (this cluster, the pod's own
+# ServiceAccount token, read from its file so rotation is picked up) and context vps (the VPS k3s over the tailnet,
+# ServiceAccount mcp-servers/mcp-reader created there by platform-vps; token and CA in Vault homelab/mcp-vps).
+# Both identities are bound to ClusterRole mcp-read on their cluster: read-only, never Secrets.
+- apiVersion: external-secrets.io/v1
+  kind: ExternalSecret
+  metadata:
+      name: mcp-kubeconfig
+  spec:
+      refreshInterval: 1h
+      secretStoreRef:
+          kind: ClusterSecretStore
+          name: vault
+      target:
+          name: mcp-kubeconfig
+          template:
+              engineVersion: v2
+              data:
+                  config: |
+                      apiVersion: v1
+                      kind: Config
+                      clusters:
+                          - name: k8s01
+                            cluster:
+                                server: https://kubernetes.default.svc
+                                certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                          - name: vps
+                            cluster:
+                                server: {{ .Values.remoteClusters.vps.server }}
+                                certificate-authority-data: {{`{{ index . "ca.crt" | b64enc }}`}}
+                      users:
+                          - name: k8s01
+                            user:
+                                tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+                          - name: vps
+                            user:
+                                token: {{`{{ .token }}`}}
+                      contexts:
+                          - name: k8s01
+                            context:
+                                cluster: k8s01
+                                user: k8s01
+                          - name: vps
+                            context:
+                                cluster: vps
+                                user: vps
+                      current-context: k8s01
+      dataFrom:
+          - extract:
+                key: {{ .Values.vault.prefix }}/mcp-vps
