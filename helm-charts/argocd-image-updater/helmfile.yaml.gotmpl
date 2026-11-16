@@ -1,0 +1,36 @@
+# Argo CD Image Updater (trial): watches registries for images of selected Argo CD Applications and writes the new
+# version back to git. What it updates is declared in ImageUpdater resources (argocd-image-updater-raw); today only
+# the sandbox app image-updater-demo (homelab-gitops-apps _sandbox/, ApplicationSet-free). Our real apps render
+# through the helmfile plugin, so their bumps come from Renovate PRs instead.
+repositories:
+    - name: argo
+      url: https://argoproj.github.io/argo-helm
+    - name: bedag
+      url: https://bedag.github.io/helm-charts
+environments:
+    default:
+        values:
+            - ../environment.yaml
+            - argocd-image-updater:
+                  enabled: true
+                  version: 1.4.2 # Image Updater v1.4.0
+            - argocd-image-updater-raw:
+                  enabled: true
+                  version: 2.0.2
+---
+templates:
+    default: &default
+        version: '{{`{{ .Values | get .Release.Name | get "version" }}`}}'
+        namespace: argo
+        values:
+            - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+releases:
+    - chart: argo/argocd-image-updater
+      name: argocd-image-updater
+      condition: argocd-image-updater.enabled
+      <<: *default
+    # Git credentials (ExternalSecret) and the ImageUpdater resources
+    - chart: bedag/raw
+      name: argocd-image-updater-raw
+      condition: argocd-image-updater-raw.enabled
+      <<: *default

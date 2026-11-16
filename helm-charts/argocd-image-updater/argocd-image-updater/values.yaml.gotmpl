@@ -1,0 +1,18 @@
+image:
+    tag: v1.4.0
+    pullPolicy: IfNotPresent
+config:
+    # Commits it pushes (ImageUpdater git write-back) carry this identity
+    git.user: argocd-image-updater
+    git.email: argocd-image-updater@{{ .Values.domain }}
+    log.level: info
+metrics:
+    enabled: true
+    serviceMonitor:
+        enabled: true
+resources:
+    requests:
+        cpu: 10m
+        memory: 64Mi
+    limits:
+        memory: 192Mi

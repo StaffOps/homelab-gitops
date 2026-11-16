@@ -1,0 +1,28 @@
+# Sandbox of the Argo CD Image Updater trial (helm-charts/argocd-image-updater): podinfo on the VPS, from a plain
+# Helm chart in homelab-gitops-apps _sandbox/ (ApplicationSets skip "_" directories). The Image Updater commits new
+# tags into its values.yaml. Delete this file and that directory to end the trial.
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+      name: image-updater-demo
+      labels:
+          type: app
+          cluster: vps
+  spec:
+      project: vps
+      source:
+          repoURL: {{ .Values.apps.repoURL }}
+          targetRevision: {{ .Values.apps.revision }}
+          path: _sandbox/image-updater-demo
+      destination:
+          server: {{ .Values.remoteClusters.vps.server }}
+          namespace: image-updater-demo
+      syncPolicy:
+          automated:
+              prune: true
+              selfHeal: true
+          managedNamespaceMetadata:
+              labels:
+                  staffops.space/tier: apps
+          syncOptions:
+              - CreateNamespace=true
