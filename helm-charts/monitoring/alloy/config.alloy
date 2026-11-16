@@ -187,24 +187,15 @@ prometheus.remote_write "central" {
 }
 
 // ---------- eBPF auto-instrumentation (Beyla) ----------
-// RED metrics and traces of the app namespaces without touching the apps (k8s01 does the same with OBI). Beyla runs as
+// RED metrics and traces of center, docs, chaitops and mentoria without touching the apps (edge and openclaw left
+// out: the openclaw Node.js process alone drove Alloy out of memory) (k8s01 does the same with OBI). Beyla runs as
 // a child process of Alloy, with the capabilities and hostPID granted in values.yaml.gotmpl. Traces join the host's OTLP
 // path (cluster attribute, otel-gateway); metrics are scraped from the component and remote-written like the rest.
 beyla.ebpf "apps" {
     discovery {
-        // Route harvesting of the big Node.js processes (openclaw, 9router) pushed the container past its limit;
-        // their HTTP spans and RED metrics stay (routes fall back to the heuristic matcher)
+        // Route harvesting of a big Node.js process (openclaw) pushed the container past its limit; kept off for any
+        // Node.js app (HTTP spans and RED metrics stay, routes fall back to the heuristic matcher)
         disabled_route_harvesters = ["nodejs"]
-        instrument {
-            kubernetes {
-                namespace = "edge"
-            }
-        }
-        instrument {
-            kubernetes {
-                namespace = "openclaw"
-            }
-        }
         instrument {
             kubernetes {
                 namespace = "chaitops"
