@@ -6,6 +6,8 @@
 #   scripts/vault.sh init                first time only: init (1 key share), unseal, save keys locally
 #   scripts/vault.sh unseal              after every restart of vault-0 (Vault starts sealed)
 #   scripts/vault.sh configure           KV v2 mount, Kubernetes auth, policy + role for External Secrets
+#   scripts/vault.sh configure-vps       Kubernetes auth mount for the VPS k3s (ADR 0008): its External Secrets
+#                                        reads the same secret/<prefix>/* over the tailnet
 #   scripts/vault.sh autounseal-secret   Secret vault-unseal (unseal key) for the auto-unseal CronJob
 #   scripts/vault.sh oidc                login with Keycloak (realm keycloak.realm in environment.yaml, client vault): /vault/admin → admin, /vault/viewer → viewer
 #   scripts/vault.sh put <name> k1 k2…   prompt for each key (hidden) and write secret/<prefix>/<name>
@@ -105,6 +107,29 @@ case "$cmd" in
                 policies=apps-read ttl=1h >/dev/null
         "
         ok "KV v2 at $KV_MOUNT/, Kubernetes auth, policies external-secrets-read + apps-read, roles external-secrets + apps"
+        ;;
+    configure-vps)
+        # Second Kubernetes auth mount, for the VPS k3s (ADR 0008). Vault validates the VPS ServiceAccount token
+        # against the k3s API over the tailnet (server and CA = the Argo CD cluster Secret: environment.yaml and
+        # homelab/argocd-cluster-vps ca-data). disable_local_ca_jwt: without it Vault would use its own k8s01 token
+        # as reviewer; the client's JWT reviews itself instead, so the VPS ServiceAccount external-secrets needs
+        # ClusterRole system:auth-delegator there (external-secrets-raw, environment vps). Same read policy as k8s01.
+        [ "$(sealed)" = "false" ] || fail "Vault is sealed — run unseal first"
+        server="$(yq '.remoteClusters.vps.server' "$(dirname "$0")/../helm-charts/environment.yaml")"
+        [ -n "$server" ] && [ "$server" != "null" ] || fail "remoteClusters.vps.server missing in environment.yaml"
+        : | with_token "
+            set -e
+            vault auth list -format=json | grep -q '\"kubernetes-vps/\"' || vault auth enable -path=kubernetes-vps kubernetes
+            vault kv get -field=ca-data $KV_MOUNT/$PREFIX/argocd-cluster-vps | base64 -d >/tmp/vps-ca.pem
+            vault write auth/kubernetes-vps/config kubernetes_host=$server kubernetes_ca_cert=@/tmp/vps-ca.pem \
+                disable_local_ca_jwt=true >/dev/null
+            rm -f /tmp/vps-ca.pem
+            vault write auth/kubernetes-vps/role/external-secrets \
+                bound_service_account_names=external-secrets \
+                bound_service_account_namespaces=external-secrets \
+                policies=external-secrets-read ttl=1h >/dev/null
+        "
+        ok "auth/kubernetes-vps ($server), role external-secrets → policy external-secrets-read"
         ;;
     autounseal-secret)
         # The key goes from the local init file to the cluster on stdin; it never touches git or a command line

@@ -150,6 +150,12 @@ Symptoms: `ClusterSecretStore vault` not Ready, events with `permission denied` 
 3. If it still fails: the role is bound to ServiceAccount `external-secrets/external-secrets`. The External Secrets
    chart uses `fullnameOverride: external-secrets` for that reason; check it was not changed.
 
+On the **VPS k3s** (ADR 0008) the ClusterSecretStore has the same name and reads the same paths, through the auth
+mount `kubernetes-vps`: Vault reviews the VPS ServiceAccount token against the k3s API over the tailnet. Recreate it
+with `scripts/vault.sh configure-vps` (idempotent; needs `homelab/argocd-cluster-vps`, it reads the k3s CA from it).
+If the VPS store is not Ready: Vault must reach `https://100.81.185.50:6443` (Calico mark mask, homelab-ansible), and
+the VPS ServiceAccount `external-secrets` must hold `system:auth-delegator` there.
+
 ### Lost the Vault volume
 
 1. Move the old init file away, then initialise the empty Vault and configure it:
@@ -157,6 +163,7 @@ Symptoms: `ClusterSecretStore vault` not Ready, events with `permission denied` 
     ```bash
     scripts/vault.sh init
     scripts/vault.sh configure
+    scripts/vault.sh configure-vps    # after homelab/argocd-cluster-vps is back (it reads its ca-data)
     ```
 
     Expect: a new `~/.config/homelab/vault-init.json`. Copy it offline now.
