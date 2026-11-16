@@ -151,7 +151,7 @@ prometheus.exporter.unix "node" {
     filesystem {
         mount_points_exclude = "^/(dev|proc|run|sys|host|var/lib/kubelet|var/lib/rancher)($|/)"
     }
-    // pod veths and the Docker bridges: per-pod network is in cAdvisor, Docker is retired
+    // pod veths and the Docker bridges: per-pod network is in cAdvisor; Docker stays only for the agent's builds and tests
     netclass {
         ignored_devices = "^(veth.*|br-.*|docker.*)$"
     }
