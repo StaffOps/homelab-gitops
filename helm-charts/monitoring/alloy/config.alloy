@@ -2,8 +2,8 @@
 // tailnet through the k8s01 Gateway:
 //   scraped metrics → Prometheus remote-write (https://prometheus.<domain>/api/v1/write)
 //   logs            → Loki push (https://loki.<domain>/loki/api/v1/push)
-//   OTLP from the host's SDKs (Hermes) → otel-gateway (https://otel.<domain>, bearer token), like k8s01's OTel path
-// Every signal carries cluster=<CLUSTER> (OTLP also k8s.cluster.name), the same label k8s01 puts on its own.
+// OTLP from SDKs (Hermes) does not pass here: it goes to the otel-agent of this cluster (helm-charts/opentelemetry),
+// which forwards to the gateway published on k8s01. Every signal carries cluster=<CLUSTER>, as on k8s01.
 // Inserted as-is (readFile, no tpl): settings come from environment variables set in values.yaml.gotmpl.
 
 logging {
@@ -231,73 +231,5 @@ loki.write "central" {
     }
     endpoint {
         url = sys.env("LOKI_PUSH_URL")
-    }
-}
-
-// ---------- OTLP from the host (Hermes) ----------
-otelcol.receiver.otlp "host" {
-    http {
-        endpoint = "0.0.0.0:4318"
-    }
-    grpc {
-        endpoint = "0.0.0.0:4317"
-    }
-    output {
-        metrics = [otelcol.processor.transform.cluster.input]
-        logs    = [otelcol.processor.transform.cluster.input]
-        traces  = [otelcol.processor.transform.cluster.input]
-    }
-}
-
-// ---------- OTLP to the otel-gateway on k8s01 ----------
-otelcol.processor.transform "cluster" {
-    error_mode = "ignore"
-    metric_statements {
-        context    = "resource"
-        statements = [
-            `set(attributes["cluster"], "` + sys.env("CLUSTER") + `")`,
-            `set(attributes["k8s.cluster.name"], "` + sys.env("CLUSTER") + `")`,
-        ]
-    }
-    log_statements {
-        context    = "resource"
-        statements = [
-            `set(attributes["cluster"], "` + sys.env("CLUSTER") + `")`,
-            `set(attributes["k8s.cluster.name"], "` + sys.env("CLUSTER") + `")`,
-        ]
-    }
-    trace_statements {
-        context    = "resource"
-        statements = [
-            `set(attributes["cluster"], "` + sys.env("CLUSTER") + `")`,
-            `set(attributes["k8s.cluster.name"], "` + sys.env("CLUSTER") + `")`,
-        ]
-    }
-    output {
-        metrics = [otelcol.processor.batch.default.input]
-        logs    = [otelcol.processor.batch.default.input]
-        traces  = [otelcol.processor.batch.default.input]
-    }
-}
-
-otelcol.processor.batch "default" {
-    output {
-        metrics = [otelcol.exporter.otlphttp.central.input]
-        logs    = [otelcol.exporter.otlphttp.central.input]
-        traces  = [otelcol.exporter.otlphttp.central.input]
-    }
-}
-
-otelcol.auth.bearer "central" {
-    token = sys.env("OTEL_EXTERNAL_TOKEN")
-}
-
-otelcol.exporter.otlphttp "central" {
-    client {
-        endpoint = sys.env("OTEL_ENDPOINT")
-        auth     = otelcol.auth.bearer.central.handler
-    }
-    sending_queue {
-        queue_size = 5000
     }
 }

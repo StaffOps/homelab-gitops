@@ -1,13 +1,12 @@
-# One file per collector in resources/ (CR + RBAC), rendered with the helmfile values. OTTL and collector
-# ${env:…} references pass through untouched; bedag/raw does not run tpl again.
+# One directory per component (collector CR + RBAC, one file per object or group), rendered with the helmfile
+# values. OTTL and collector ${env:…} references pass through untouched; bedag/raw does not run tpl again.
+# This list picks the components of the environment; values-<environment>.yaml.gotmpl replaces it.
+# (Rendered in environment default only: the gateway and logs collectors read k8s01 values.)
 resources:
-    {{- range $f := readDir "./resources" }}
+    {{- if eq .Environment.Name "default" }}
+    {{- range $c := list "agent" "gateway" "logs" "prometheus-rule" }}
+    {{- range $f := readDir (printf "./%s" $c) }}
     {{- tpl (readFile (printf "./%s" $f)) $ | nindent 4 }}
     {{- end }}
-    # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates
-    - apiVersion: monitoring.coreos.com/v1
-      kind: PrometheusRule
-      metadata:
-          name: otel-collector
-      spec:
-          {{- readFile "./prometheus.rules.yaml" | nindent 10 }}
+    {{- end }}
+    {{- end }}

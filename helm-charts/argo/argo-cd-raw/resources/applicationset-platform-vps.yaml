@@ -20,7 +20,11 @@
       generators:
           - list:
                 elements:
-                    # kube-prometheus-stack reduced to kube-state-metrics (values-vps); Alloy next
+                    # operator + otel-agent: SDKs (Hermes) → agent → gateway published on k8s01
+                    - appName: opentelemetry
+                      path: opentelemetry
+                      namespace: opentelemetry
+                    # kube-prometheus-stack reduced to kube-state-metrics, plus Alloy (metrics → Prometheus, logs → Loki)
                     - appName: external-secrets
                       path: external-secrets
                       namespace: external-secrets

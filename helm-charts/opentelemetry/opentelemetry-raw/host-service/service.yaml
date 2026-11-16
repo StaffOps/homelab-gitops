@@ -1,15 +1,15 @@
-# OTLP receiver of Alloy on a fixed ClusterIP: the host (Hermes monitoring.export.otlp.endpoint
+# The agent's OTLP receiver on a fixed ClusterIP: the host's SDK clients (Hermes monitoring.export.otlp.endpoint
 # http://10.43.100.40:4318/v1/metrics) cannot use cluster DNS
 - apiVersion: v1
   kind: Service
   metadata:
-      name: alloy-otlp
+      name: otel-agent-host
   spec:
       type: ClusterIP
       clusterIP: 10.43.100.40
       selector:
-          app.kubernetes.io/name: alloy
-          app.kubernetes.io/instance: alloy
+          app.kubernetes.io/component: opentelemetry-collector
+          app.kubernetes.io/instance: opentelemetry.otel-agent
       ports:
           - name: otlp-http
             port: 4318

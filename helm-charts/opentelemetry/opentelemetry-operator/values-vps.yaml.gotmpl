@@ -1,0 +1,13 @@
+# Edge cluster (VPS k3s): no prometheus-operator, so no ServiceMonitor or PrometheusRule (the rules live on k8s01).
+# Memory-bound host: request close to k8s01's use (~50Mi).
+manager:
+    resources:
+        requests:
+            cpu: 5m
+            memory: 64Mi
+        limits:
+            memory: 192Mi
+    serviceMonitor:
+        enabled: false
+    prometheusRule:
+        enabled: false

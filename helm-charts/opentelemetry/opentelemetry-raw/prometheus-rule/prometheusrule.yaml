@@ -1,0 +1,7 @@
+# Rules inserted as-is (no tpl), so they keep plain Prometheus templates
+- apiVersion: monitoring.coreos.com/v1
+  kind: PrometheusRule
+  metadata:
+      name: otel-collector
+  spec:
+      {{- readFile "./prometheus.rules.yaml" | nindent 6 }}

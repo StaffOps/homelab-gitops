@@ -16,6 +16,13 @@
             valueFrom:
                 fieldRef:
                     fieldPath: spec.nodeName
+          {{- if .Values.otel.gateway.external }}
+          - name: OTEL_EXTERNAL_TOKEN
+            valueFrom:
+                secretKeyRef:
+                    name: otel-external-token
+                    key: token
+          {{- end }}
       resources:
           requests:
               cpu: 50m
@@ -26,6 +33,12 @@
           metrics:
               enableMetrics: true
       config:
+          {{- if .Values.otel.gateway.external }}
+          extensions:
+              bearertokenauth/gateway:
+                  scheme: Bearer
+                  token: ${env:OTEL_EXTERNAL_TOKEN}
+          {{- end }}
           receivers:
               otlp:
                   protocols:
@@ -84,17 +97,29 @@
                   send_batch_size: 1000
                   send_batch_max_size: 2000
                   timeout: 5s
+          # The gateway of this cluster (k8s01: in-cluster gRPC), or the one published on k8s01 for an edge cluster
+          # (otel.gateway.external in the environment: OTLP/HTTP to https://otel.<domain> with the bearer token)
           exporters:
-              otlp_grpc:
+              {{- if .Values.otel.gateway.external }}
+              otlp_http/gateway:
+                  endpoint: https://otel.{{ .Values.domain }}
+                  auth:
+                      authenticator: bearertokenauth/gateway
+              {{- else }}
+              otlp_grpc/gateway:
                   endpoint: otel-gateway-collector.opentelemetry:4317
                   tls:
                       insecure: true
+              {{- end }}
                   sending_queue:
                       enabled: true
                       queue_size: 2000
                   retry_on_failure:
                       enabled: true
           service:
+              {{- if .Values.otel.gateway.external }}
+              extensions: [bearertokenauth/gateway]
+              {{- end }}
               telemetry:
                   metrics:
                       level: normal
@@ -108,15 +133,15 @@
                   traces:
                       receivers: [otlp]
                       processors: [memory_limiter, k8s_attributes, resource, filter/noise, batch]
-                      exporters: [otlp_grpc]
+                      exporters: [{{ if .Values.otel.gateway.external }}otlp_http/gateway{{ else }}otlp_grpc/gateway{{ end }}]
                   metrics:
                       receivers: [otlp]
                       processors: [memory_limiter, k8s_attributes, resource, batch]
-                      exporters: [otlp_grpc]
+                      exporters: [{{ if .Values.otel.gateway.external }}otlp_http/gateway{{ else }}otlp_grpc/gateway{{ end }}]
                   logs:
                       receivers: [otlp]
                       processors: [memory_limiter, k8s_attributes, resource, batch]
-                      exporters: [otlp_grpc]
+                      exporters: [{{ if .Values.otel.gateway.external }}otlp_http/gateway{{ else }}otlp_grpc/gateway{{ end }}]
 - apiVersion: v1
   kind: ServiceAccount
   metadata:

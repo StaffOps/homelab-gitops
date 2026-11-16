@@ -1,5 +1,5 @@
-# Grafana Alloy, only on edge clusters (environment vps): metrics to Prometheus, logs to Loki and the host's OTLP to
-# the otel-gateway, all on k8s01 over the tailnet (config.alloy). The pipeline is read as-is from config.alloy; what differs per cluster comes in as env.
+# Grafana Alloy, only on edge clusters (environment vps): metrics to Prometheus and logs to Loki on k8s01 over the
+# tailnet (config.alloy). OTLP goes through the otel-agent (helm-charts/opentelemetry). The pipeline is read as-is from config.alloy; what differs per cluster comes in as env.
 alloy:
     configMap:
         create: true
@@ -13,13 +13,6 @@ alloy:
           value: https://prometheus.{{ .Values.domain }}/api/v1/write
         - name: LOKI_PUSH_URL
           value: https://loki.{{ .Values.domain }}/loki/api/v1/push
-        - name: OTEL_ENDPOINT
-          value: https://otel.{{ .Values.domain }}
-        - name: OTEL_EXTERNAL_TOKEN
-          valueFrom:
-              secretKeyRef:
-                  name: otel-external-token
-                  key: token
         # journald matches (OR between units): the host services and the node itself
         - name: JOURNAL_MATCHES
           value: >-
@@ -27,15 +20,6 @@ alloy:
               _SYSTEMD_UNIT=mentoria-sync.service _SYSTEMD_UNIT=k3s.service _SYSTEMD_UNIT=containerd.service
               _SYSTEMD_UNIT=ssh.service _SYSTEMD_UNIT=cron.service _SYSTEMD_UNIT=tailscaled.service
               _SYSTEMD_UNIT=fail2ban.service _SYSTEMD_UNIT=unattended-upgrades.service
-    extraPorts:
-        - name: otlp-http
-          port: 4318
-          targetPort: 4318
-          protocol: TCP
-        - name: otlp-grpc
-          port: 4317
-          targetPort: 4317
-          protocol: TCP
     mounts:
         varlog: false
         dockercontainers: false
@@ -82,7 +66,6 @@ controller:
             - name: root
               hostPath:
                   path: /
-# The host reaches the OTLP receiver on a fixed ClusterIP (alloy-raw otlp-service): Hermes exports to it
 service:
     enabled: true
 crds:

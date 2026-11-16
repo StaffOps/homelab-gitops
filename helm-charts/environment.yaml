@@ -83,6 +83,10 @@ externalDns:
     policy: sync
     txtOwnerId: k8s01
     txtPrefix: _extdns.
+# OpenTelemetry: where this cluster's otel-agent sends (helm-charts/opentelemetry). k8s01 has its own gateway.
+otel:
+    gateway:
+        external: false
 # Vault (in-cluster) is the only secret source; External Secrets reads it with Kubernetes auth.
 vault:
     address: http://vault.vault.svc:8200
