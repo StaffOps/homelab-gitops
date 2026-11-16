@@ -1,12 +1,19 @@
 # Argo Events: event-driven automation. EventSources receive or poll events, the EventBus (NATS JetStream, one
 # node) carries them, Sensors act on them (submit an Argo Workflow, call HTTP, log). Today: Argo CD notifications
 # (sync succeeded/failed, health degraded) arrive at EventSource argocd. GitHub cannot reach the lab, so repositories
-# are watched by polling with Argo Workflows (ClusterWorkflowTemplate github-watch), not by webhooks.
+# are watched by polling with Argo Workflows (ClusterWorkflowTemplate github-watch) or a calendar EventSource
+# (golden-images), not by webhooks.
 repositories:
     - name: argo
       url: https://argoproj.github.io/argo-helm
     - name: bedag
       url: https://bedag.github.io/helm-charts
+    # private charts (StaffOps/private-helm-charts); credentials from the Argo CD render env (argocd-render-env)
+    - name: staffops-private
+      url: ghcr.io/staffops/charts
+      oci: true
+      username: '{{ env "GHCR_CHARTS_USERNAME" }}'
+      password: '{{ env "GHCR_CHARTS_TOKEN" }}'
 environments:
     default:
         values:
@@ -17,6 +24,10 @@ environments:
             - argo-events-raw:
                   enabled: true
                   version: 2.0.2
+            # Trivy → Dependency-Track for every image of StaffOps/golden-images (golden-images/values.yaml.gotmpl)
+            - golden-images:
+                  enabled: true
+                  version: 0.2.0
 ---
 templates:
     default: &default
@@ -35,4 +46,11 @@ releases:
       condition: argo-events-raw.enabled
       needs:
           - argo-events
+      <<: *default
+    # Hourly poll of the golden images (calendar EventSource → Sensor → Workflow in argo-workflows)
+    - chart: staffops-private/event
+      name: golden-images
+      condition: golden-images.enabled
+      needs:
+          - argo-events-raw
       <<: *default

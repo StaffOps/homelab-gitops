@@ -1,0 +1,176 @@
+# Golden images (github.com/StaffOps/golden-images, public): every hour, scan with Trivy each image whose digest
+# changed since the last run and send the CycloneDX SBOM to Dependency-Track. Chart staffops-private/event
+# (StaffOps/private-helm-charts). GitHub cannot reach the lab, so a calendar EventSource polls instead of a webhook.
+#
+#   EventSource golden-images (calendar, :07 every hour) → Sensor golden-images → Workflow golden-images-scan-<id>
+#   in argo-workflows: detect → scan → upload
+#   detect: catalog.json (repo + tags) → digest of each repo:tag on ghcr (anonymous) → compared with ConfigMap
+#           golden-images-scan-state (key <repo>.<tag> = last uploaded digest); a build republishes all 14 images,
+#           unchanged digests are skipped
+#   scan:   trivy image <repo>@<digest>, once per digest → CycloneDX (components + vulnerabilities)
+#   upload: POST /api/v1/bom, autoCreate, projectName ghcr.io/staffops/<repo>, projectVersion <tag> (the moving tags
+#           of catalog.json, not the dated twins), tag golden-image; then records the uploaded digests
+# DT key: team golden-images-scan (BOM_UPLOAD, PROJECT_CREATION_UPLOAD, VIEW_PORTFOLIO), Vault
+# homelab/dependency-track-upload. Teams/areas in DT come later; only the golden-image tag for now.
+# Rescan everything: kubectl -n argo-workflows delete configmap golden-images-scan-state
+description: Trivy → Dependency-Track for every image published by StaffOps/golden-images (hourly digest poll)
+labels:
+    app.kubernetes.io/part-of: golden-images
+eventBusName: default
+eventSource:
+    types:
+        calendar:
+            hourly:
+                schedule: "7 * * * *"
+                timezone: UTC
+sensor:
+    serviceAccountName: argo-events-sensor # may create Workflows in argo-workflows (argo-workflows-raw rbac.yaml)
+    dependencies:
+        - name: tick
+          eventName: hourly
+    triggers:
+        - name: scan
+          retryStrategy:
+              steps: 3
+              duration: 30s
+          argoWorkflow:
+              workflow:
+                  namespace: argo-workflows
+                  serviceAccountName: argo-workflow # executor + ConfigMaps (argo-workflows-raw rbac.yaml)
+                  activeDeadlineSeconds: 3000 # finish before the next tick
+                  volumeClaimTemplates:
+                      - name: work
+                        storage: 3Gi # Trivy DB (~1 GiB unpacked) + SBOMs
+                        storageClassName: {{ .Values.storageClass }}
+                  steps:
+                      - - name: detect
+                          template: detect
+                      - - name: scan
+                          template: scan
+                          when: "{{`{{steps.detect.outputs.parameters.count}}`}} != 0"
+                      - - name: upload
+                          template: upload
+                          when: "{{`{{steps.detect.outputs.parameters.count}}`}} != 0"
+                  templates:
+                      - name: detect
+                        outputs:
+                            parameters:
+                                - name: count
+                                  valueFrom:
+                                      path: /tmp/count
+                        script:
+                            image: &tools
+                                repository: alpine/k8s
+                                tag: "1.36.5"
+                                digest: sha256:094adf64cdc4827377cdbe7ea5747472ce115f9fbc64a4e35970ec66777f9a00
+                            command: [sh]
+                            env: &home
+                                - name: HOME
+                                  value: /tmp
+                            resources: &small
+                                requests:
+                                    cpu: 10m
+                                    memory: 32Mi
+                                limits:
+                                    memory: 128Mi
+                            volumeMounts: &work
+                                - name: work
+                                  mountPath: /work
+                            source: |
+                                set -eu
+                                curl -fsSL https://raw.githubusercontent.com/StaffOps/golden-images/main/catalog.json -o /tmp/catalog.json
+                                path=$(jq -r '.registry | sub("^ghcr.io/"; "")' /tmp/catalog.json)   # staffops
+                                kubectl -n argo-workflows get configmap golden-images-scan-state -o json 2>/dev/null \
+                                    | jq '.data // {}' > /tmp/state.json || echo '{}' > /tmp/state.json
+                                : > /work/changed.tsv
+                                jq -r '.images[] | .repo as $r | .tags[] | "\($r) \(.)"' /tmp/catalog.json | sort -u |
+                                while read -r repo tag; do
+                                    token=$(curl -fsS "https://ghcr.io/token?scope=repository:$path/$repo:pull&service=ghcr.io" | jq -r .token)
+                                    digest=$(curl -fsSI -H "Authorization: Bearer $token" \
+                                        -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json' \
+                                        "https://ghcr.io/v2/$path/$repo/manifests/$tag" | tr -d '\r' \
+                                        | awk -F': ' 'tolower($1)=="docker-content-digest" {print $2}')
+                                    [ -n "$digest" ] || { echo "no digest for $repo:$tag"; continue; }
+                                    last=$(jq -r --arg k "$repo.$tag" '.[$k] // ""' /tmp/state.json)
+                                    if [ "$digest" != "$last" ]; then
+                                        echo "$repo $tag $digest" >> /work/changed.tsv
+                                        echo "changed: $repo:$tag $digest"
+                                    fi
+                                done
+                                wc -l < /work/changed.tsv | tr -d ' ' > /tmp/count
+                                echo "$(cat /tmp/count) tag(s) to scan"
+                      - name: scan
+                        script:
+                            image:
+                                repository: aquasec/trivy
+                                tag: "0.76.1"
+                                digest: sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+                            command: [sh]
+                            env:
+                                - name: HOME
+                                  value: /tmp
+                                - name: TRIVY_CACHE_DIR
+                                  value: /work/trivy-cache
+                                - name: TRIVY_NO_PROGRESS
+                                  value: "true"
+                            resources:
+                                requests:
+                                    cpu: 100m
+                                    memory: 512Mi
+                                limits:
+                                    memory: 2Gi
+                            volumeMounts: *work
+                            source: |
+                                set -eu
+                                path=staffops
+                                mkdir -p /work/bom
+                                cut -d' ' -f1,3 /work/changed.tsv | sort -u | while read -r repo digest; do
+                                    echo "scanning ghcr.io/$path/$repo@$digest"
+                                    trivy image --quiet --format cyclonedx --scanners vuln \
+                                        --output "/work/bom/${digest#sha256:}.json" "ghcr.io/$path/$repo@$digest"
+                                done
+                      - name: upload
+                        script:
+                            image: *tools
+                            command: [sh]
+                            env:
+                                - name: HOME
+                                  value: /tmp
+                                - name: DT_URL
+                                  value: http://dependency-track-api-server.dependency-track:8080
+                                - name: DT_API_KEY # only this step gets the key (externalSecret.envFrom false)
+                                  valueFrom:
+                                      secretKeyRef:
+                                          name: golden-images-scan
+                                          key: DT_API_KEY
+                            resources: *small
+                            volumeMounts: *work
+                            source: |
+                                set -eu
+                                : > /tmp/uploaded.tsv
+                                failed=0
+                                while read -r repo tag digest; do
+                                    if curl -fsS -o /dev/null -X POST "$DT_URL/api/v1/bom" -H "X-Api-Key: $DT_API_KEY" \
+                                        -F autoCreate=true -F "projectName=ghcr.io/staffops/$repo" -F "projectVersion=$tag" \
+                                        -F projectTags=golden-image -F "bom=@/work/bom/${digest#sha256:}.json"; then
+                                        echo "$repo.$tag $digest" >> /tmp/uploaded.tsv
+                                        echo "uploaded ghcr.io/staffops/$repo:$tag"
+                                    else
+                                        echo "FAILED ghcr.io/staffops/$repo:$tag"; failed=1
+                                    fi
+                                done < /work/changed.tsv
+                                if [ -s /tmp/uploaded.tsv ]; then
+                                    kubectl -n argo-workflows get configmap golden-images-scan-state >/dev/null 2>&1 \
+                                        || kubectl -n argo-workflows create configmap golden-images-scan-state
+                                    patch=$(jq -R -s 'split("\n") | map(select(length > 0) | split(" ")) | map({(.[0]): .[1]}) | add | {data: .}' /tmp/uploaded.tsv)
+                                    kubectl -n argo-workflows patch configmap golden-images-scan-state --type merge -p "$patch"
+                                fi
+                                exit $failed
+                  externalSecret: # Secret golden-images-scan in argo-workflows
+                      enabled: true
+                      envFrom: false
+                      data:
+                          - secretKey: DT_API_KEY
+                            remoteRef:
+                                key: {{ .Values.vault.prefix }}/dependency-track-upload
+                                property: api-key
