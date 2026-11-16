@@ -84,6 +84,13 @@ externalDns:
     txtOwnerId: k8s01
     txtPrefix: _extdns.
 # OpenTelemetry: where this cluster's otel-agent sends (helm-charts/opentelemetry). k8s01 has its own gateway.
+# Alerts to OpenClaw (the agent on the VPS): Alertmanager posts the VPS alerts (cluster="vps", warning/critical) to
+# https://claw.<domain>/hooks/alertmanager with the hooks bearer token (Vault homelab/apps/openclaw/openclaw
+# OPENCLAW_HOOKS_TOKEN). Off: no route, no Secret. Turning it on also needs openclaw-raw hooksIngress: true in
+# homelab-gitops-apps (the /hooks/alertmanager path without Authelia).
+alerting:
+    openclaw:
+        enabled: false
 otel:
     gateway:
         external: false

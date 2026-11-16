@@ -48,6 +48,10 @@ vault:
     authMount: kubernetes-vps
 # OpenTelemetry: SDKs send to the local otel-agent, which forwards to the gateway published on k8s01
 # (https://otel.<domain>, bearer token Vault homelab/otel external-token)
+# Read by values shared with k8s01; alerting runs on k8s01 only
+alerting:
+    openclaw:
+        enabled: false
 otel:
     gateway:
         external: true

@@ -118,8 +118,43 @@ prometheus:
                         requests:
                             storage: 20Gi
 alertmanager:
+    {{- if .Values.alerting.openclaw.enabled }}
+    # alerting.openclaw (environment.yaml): VPS alerts to OpenClaw. Lists replace the chart's, so its default route
+    # (receiver null, Watchdog → null) is restated; the chart's inhibit_rules and templates stay.
+    config:
+        route:
+            receiver: "null"
+            group_by: [namespace]
+            group_wait: 30s
+            group_interval: 5m
+            repeat_interval: 12h
+            routes:
+                - receiver: "null"
+                  matchers:
+                      - alertname = "Watchdog"
+                - receiver: openclaw
+                  matchers:
+                      - cluster = "vps"
+                      - severity =~ "warning|critical"
+                  group_by: [alertname, namespace]
+                  repeat_interval: 24h
+        receivers:
+            - name: "null"
+            - name: openclaw
+              webhook_configs:
+                  - url: https://claw.{{ .Values.domain }}/hooks/alertmanager
+                    send_resolved: true
+                    max_alerts: 20
+                    http_config:
+                        authorization:
+                            type: Bearer
+                            credentials_file: /etc/alertmanager/secrets/alertmanager-openclaw-hook/token
+    {{- end }}
     alertmanagerSpec:
         externalUrl: https://alertmanager.{{ .Values.domain }}
+        {{- if .Values.alerting.openclaw.enabled }}
+        secrets: [alertmanager-openclaw-hook] # /etc/alertmanager/secrets/alertmanager-openclaw-hook/token
+        {{- end }}
         resources:
             requests:
                 cpu: 10m

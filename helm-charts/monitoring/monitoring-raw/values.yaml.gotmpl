@@ -1,6 +1,25 @@
 {{- $pg := .Values.backup.postgres }}
 {{- $gw := .Values.gateway }}
 resources:
+    {{- if .Values.alerting.openclaw.enabled }}
+    # Bearer token Alertmanager sends to OpenClaw /hooks/alertmanager (alerting.openclaw in environment.yaml)
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: alertmanager-openclaw-hook
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: alertmanager-openclaw-hook
+          data:
+              - secretKey: token
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/apps/openclaw/openclaw
+                    property: OPENCLAW_HOOKS_TOKEN
+    {{- end }}
     # Grafana admin credentials (Vault homelab/grafana: admin-user, admin-password)
     - apiVersion: external-secrets.io/v1
       kind: ExternalSecret
