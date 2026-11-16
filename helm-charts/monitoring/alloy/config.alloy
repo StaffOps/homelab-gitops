@@ -43,6 +43,18 @@ prometheus.scrape "kubelet" {
     tls_config {
         insecure_skip_verify = true
     }
+    forward_to = [prometheus.relabel.kubelet.receiver]
+}
+
+// k3s is one binary: its kubelet /metrics also carries the embedded apiserver, kine/etcd, scheduler and controllers
+// (~74k series, 70 % apiserver/etcd histograms). Keep what the kubelet dashboards and alerts use, plus the
+// apiserver request counter as a cheap control-plane signal.
+prometheus.relabel "kubelet" {
+    rule {
+        source_labels = ["__name__"]
+        regex         = "(kubelet|volume_manager|storage_operation|prober|csi_operations|kubernetes_build)_.*|process_(cpu_seconds_total|resident_memory_bytes|start_time_seconds)|go_goroutines|rest_client_requests_total|apiserver_request_total|up|scrape_.*"
+        action        = "keep"
+    }
     forward_to = [prometheus.remote_write.central.receiver]
 }
 
@@ -172,6 +184,63 @@ prometheus.remote_write "central" {
             capacity = 10000
         }
     }
+}
+
+// ---------- eBPF auto-instrumentation (Beyla) ----------
+// RED metrics and traces of the app namespaces without touching the apps (k8s01 does the same with OBI). Beyla runs as
+// a child process of Alloy, with the capabilities and hostPID granted in values.yaml.gotmpl. Traces join the host's OTLP
+// path (cluster attribute, otel-gateway); metrics are scraped from the component and remote-written like the rest.
+beyla.ebpf "apps" {
+    discovery {
+        instrument {
+            kubernetes {
+                namespace = "edge"
+            }
+        }
+        instrument {
+            kubernetes {
+                namespace = "openclaw"
+            }
+        }
+        instrument {
+            kubernetes {
+                namespace = "chaitops"
+            }
+        }
+        instrument {
+            kubernetes {
+                namespace = "mentoria"
+            }
+        }
+        instrument {
+            kubernetes {
+                namespace = "center"
+            }
+        }
+        instrument {
+            kubernetes {
+                namespace = "docs"
+            }
+        }
+    }
+    attributes {
+        kubernetes {
+            enable = "true"
+        }
+    }
+    metrics {
+        features = ["application"]
+    }
+    output {
+        traces = [otelcol.processor.transform.cluster.input]
+    }
+}
+
+prometheus.scrape "beyla" {
+    job_name     = "beyla"
+    targets      = beyla.ebpf.apps.targets
+    honor_labels = true
+    forward_to   = [prometheus.remote_write.central.receiver]
 }
 
 // ---------- Logs ----------

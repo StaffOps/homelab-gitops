@@ -24,7 +24,7 @@ alloy:
         - name: JOURNAL_MATCHES
           value: >-
               _SYSTEMD_UNIT=hermes-gateway.service _SYSTEMD_UNIT=center-agent.service _SYSTEMD_UNIT=openclaw-poller.service
-              _SYSTEMD_UNIT=mentoria-sync.service _SYSTEMD_UNIT=k3s.service _SYSTEMD_UNIT=containerd.service
+              _SYSTEMD_UNIT=k3s.service _SYSTEMD_UNIT=containerd.service
               _SYSTEMD_UNIT=ssh.service _SYSTEMD_UNIT=cron.service _SYSTEMD_UNIT=tailscaled.service
               _SYSTEMD_UNIT=fail2ban.service _SYSTEMD_UNIT=unattended-upgrades.service
     extraPorts:
@@ -56,14 +56,27 @@ alloy:
               mountPath: /host/root
               readOnly: true
               mountPropagation: HostToContainer
+    # Beyla (beyla.ebpf) needs root with these capabilities and the host PID namespace (controller.hostPID); not
+    # privileged. AppArmor unconfined: the runtime default profile blocks some eBPF attach paths.
+    # https://grafana.com/docs/alloy/latest/reference/components/beyla/beyla.ebpf/ (Permissions)
+    securityContext:
+        runAsUser: 0
+        privileged: false
+        allowPrivilegeEscalation: true
+        appArmorProfile:
+            type: Unconfined
+        capabilities:
+            add: [BPF, NET_ADMIN, NET_RAW, PERFMON, DAC_READ_SEARCH, SYS_PTRACE, CHECKPOINT_RESTORE]
+    # Beyla is a child process in the same container: its memory counts here
     resources:
         requests:
-            cpu: 20m
-            memory: 96Mi
+            cpu: 30m
+            memory: 192Mi
         limits:
-            memory: 384Mi
+            memory: 768Mi
 controller:
     type: daemonset
+    hostPID: true
     volumes:
         extra:
             - name: journal
