@@ -68,10 +68,13 @@ monitoring:
     # Loki's own recording + alerting rules (PrometheusRule). The chart's dashboards are off: they target the
     # distributed mode (component containers, blooms, cloud object stores, boltdb) and stay mostly empty here;
     # monitoring-raw ships a dashboard for this monolithic Loki instead (dashboards/observability/loki.json).
+    # cluster in every by(): every series carries it (k8s01 scrape class), and an aggregation must not drop it
     rules:
         enabled: true
+        additionalAggregationLabels: [cluster]
     alerts:
         enabled: true
+        additionalAggregationLabels: [cluster]
     dashboards:
         enabled: false
 # rules sidecar (k8s-sidecar)

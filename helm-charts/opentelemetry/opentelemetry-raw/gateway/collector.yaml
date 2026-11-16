@@ -135,9 +135,12 @@
                       receivers: [otlp, otlp/external]
                       processors: [memory_limiter, resource/cluster, batch]
                       exporters: [otlp_http/prometheus]
+                  # resource/cluster inserts cluster=<this cluster> only where missing: service-graph series get it
+                  # (the edge's client_cluster/server_cluster dimensions say which side is where); span metrics keep
+                  # the cluster of the span's own resource
                   metrics/traces:
                       receivers: [span_metrics, service_graph]
-                      processors: [memory_limiter, batch]
+                      processors: [memory_limiter, resource/cluster, batch]
                       exporters: [otlp_http/prometheus]
                   logs:
                       receivers: [otlp, otlp/external]
