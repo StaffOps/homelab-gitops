@@ -6,11 +6,15 @@ groups:
           # kube_service_status_load_balancer_ingress) that no speaker announces (metallb_speaker_announced, MetalLB
           # https://metallb.io/prometheus-metrics/) is unreachable from the LAN. The chart's metallb.rules do not cover it.
           # The Service namespace moves to exported_namespace; namespace=metallb-system for the dashboards.
+          # Per cluster, and only in clusters that run MetalLB speakers (the VPS k3s uses its own servicelb).
           - alert: MetalLBServiceNotAnnounced
             expr: |-
                 label_replace(
-                  max by (namespace, service, ip) (kube_service_status_load_balancer_ingress)
-                  unless on (ip)
+                  (
+                    max by (cluster, namespace, service, ip) (kube_service_status_load_balancer_ingress)
+                    and on (cluster) group by (cluster) (metallb_speaker_announced)
+                  )
+                  unless on (cluster, ip)
                   (metallb_speaker_announced == 1),
                   "exported_namespace", "$1", "namespace", "(.*)"
                 )
