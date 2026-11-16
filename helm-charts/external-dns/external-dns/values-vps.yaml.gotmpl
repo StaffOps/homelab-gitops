@@ -8,3 +8,6 @@ resources:
         memory: 48Mi
     limits:
         memory: 160Mi
+# Only Ingresses annotated external-dns.alpha.kubernetes.io/hostname: the names that already exist keep their manual
+# CNAMEs to the VPS (no owner TXT, upsert-only could not take them over); new names (*-vps) carry the annotation.
+annotationFilter: external-dns.alpha.kubernetes.io/hostname
