@@ -20,6 +20,10 @@
       generators:
           - list:
                 elements:
+                    # operator + otel-agent: OTLP from the host (Hermes) and apps → gateway published on k8s01
+                    - appName: opentelemetry
+                      path: opentelemetry
+                      namespace: opentelemetry
                     - appName: external-secrets
                       path: external-secrets
                       namespace: external-secrets
@@ -33,8 +37,8 @@
                     - appName: mcp-servers
                       path: mcp-servers
                       namespace: mcp-servers
-                    # kube-prometheus-stack reduced to kube-state-metrics, plus Alloy (metrics, logs, OTLP and Beyla →
-                    # Prometheus, Loki and the otel-gateway on k8s01)
+                    # kube-prometheus-stack reduced to kube-state-metrics, plus Alloy (scraped metrics → Prometheus, pod
+                    # and host logs → Loki, on k8s01)
                     - appName: monitoring
                       path: monitoring
                       namespace: monitoring

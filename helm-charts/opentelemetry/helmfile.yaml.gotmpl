@@ -1,7 +1,7 @@
 # OpenTelemetry: the operator, the collectors it runs (opentelemetry-raw) and OBI (eBPF auto-instrumentation).
 #
 #   apps / OBI ──OTLP──► otel-agent (DaemonSet) ──OTLP──► otel-gateway (Deployment) ──► Tempo / Prometheus / Loki
-#   VPS Alloy ──OTLP/HTTP + bearer token (otel.<domain>)───────►┘   (span metrics + service graph here)
+#   VPS otel-agent ──OTLP/HTTP + bearer token (otel.<domain>)──►┘   (span metrics + service graph here)
 #   /var/log/pods + Kubernetes events ──► otel-logs (DaemonSet) ──OTLP/HTTP──► Loki
 #
 # Apps send to otel-agent-collector.opentelemetry:4317 (gRPC) / :4318 (HTTP); the Service prefers the local node.
@@ -24,6 +24,22 @@ environments:
             - obi:
                   enabled: true
                   version: 0.16.1 # OBI v1.0.0
+    # Edge cluster (VPS k3s, ADR 0008): operator + otel-agent only. The host's SDKs (Hermes) and the apps send OTLP to
+    # the agent (fixed ClusterIP 10.43.100.40), which forwards to the gateway published on k8s01 (otel.<domain>,
+    # bearer token). Scraped metrics and pod logs of the VPS go through Alloy (helm-charts/monitoring).
+    vps:
+        values:
+            - ../environment-vps.yaml
+            - opentelemetry-operator:
+                  enabled: true
+                  version: 0.129.0
+            - opentelemetry-raw:
+                  enabled: true
+                  version: 2.0.2
+                  collectorImage: otel/opentelemetry-collector-contrib:0.165.0
+            - obi:
+                  enabled: false
+                  version: 0.16.1
 ---
 templates:
     default: &default
@@ -31,6 +47,10 @@ templates:
         namespace: opentelemetry
         values:
             - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+            # values-<environment>.yaml.gotmpl overlays the shared file in every environment but default (k8s01)
+            # {{ if ne .Environment.Name "default" }}
+            - ./{{`{{ .Release.Name }}`}}/values-{{`{{ .Environment.Name }}`}}.yaml.gotmpl
+            # {{ end }}
 releases:
     - chart: open-telemetry/opentelemetry-operator
       name: opentelemetry-operator

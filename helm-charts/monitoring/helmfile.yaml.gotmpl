@@ -33,9 +33,6 @@ environments:
             - alloy:
                   enabled: false
                   version: 1.16.0
-            - alloy-raw:
-                  enabled: false
-                  version: 2.0.2
     # VPS k3s (ADR 0008): an edge cluster. The central pieces stay on k8s01; kube-prometheus-stack runs reduced to
     # kube-state-metrics (values-vps.yaml.gotmpl) and Alloy (next) ships metrics and logs to k8s01 over the tailnet.
     vps:
@@ -56,9 +53,6 @@ environments:
             - alloy:
                   enabled: true
                   version: 1.16.0
-            - alloy-raw:
-                  enabled: true
-                  version: 2.0.2
 ---
 templates:
     default: &default
@@ -84,15 +78,10 @@ releases:
       name: loki
       condition: loki.enabled
       <<: *default
-    # Edge clusters only: Alloy ships metrics, logs and the host's OTLP to the otel-gateway on k8s01
+    # Edge clusters only: Alloy ships scraped metrics and logs to k8s01
     - chart: grafana/alloy
       name: alloy
       condition: alloy.enabled
-      <<: *default
-    # Token of the otel-gateway external receiver and the fixed-IP OTLP Service for the host
-    - chart: bedag/raw
-      name: alloy-raw
-      condition: alloy-raw.enabled
       <<: *default
     # OTLP on tempo:4317 (gRPC) / tempo:4318 (HTTP)
     - chart: grafana-community/tempo

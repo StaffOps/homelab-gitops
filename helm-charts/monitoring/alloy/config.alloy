@@ -1,11 +1,9 @@
-// Grafana Alloy on an edge cluster (the VPS k3s, ADR 0008). Each signal goes to its own backend on k8s01, over the
-// tailnet through the k8s01 Gateway:
+// Grafana Alloy on an edge cluster (the VPS k3s, ADR 0008): scraped metrics and logs, each to its backend on k8s01,
+// over the tailnet through the k8s01 Gateway:
 //   scraped metrics → Prometheus remote-write (https://prometheus.<domain>/api/v1/write)
-//   logs            → Loki push (https://loki.<domain>/loki/api/v1/push)
-//   OTLP from the host's SDKs (Hermes) → otel-gateway (https://otel.<domain>, bearer token), like k8s01's OTel path
-// Every signal carries cluster=<CLUSTER> (OTLP also k8s.cluster.name), the same label k8s01 puts on its own.
-// On the VPS Alloy also plays the otel-agent's role (one tool for scrape, logs and OTLP, being evaluated there):
-// the OTLP pipeline is separate from the scrape one and stays OTLP end to end.
+//   pod and host logs → Loki push (https://loki.<domain>/loki/api/v1/push)
+// OTLP from SDKs (Hermes, apps) goes to the otel-agent instead (helm-charts/opentelemetry). Every signal carries
+// cluster=<CLUSTER>, the same label k8s01 puts on its own.
 // Inserted as-is (readFile, no tpl): settings come from environment variables set in values.yaml.gotmpl.
 
 logging {
@@ -186,11 +184,6 @@ prometheus.remote_write "central" {
     }
 }
 
-// ---------- eBPF auto-instrumentation (Beyla) ----------
-// Off since 2026-11-16: beyla.ebpf on the app namespaces cost ~190Mi of eBPF maps (kernel memory charged to this
-// container) on top of Alloy, and kept the pod OOM-killed at 768Mi on a host with < 1 GB free. Reconsider when the
-// host has room (docker removed) or on k8s01 only (OBI). The block that was here is in git history (e5baa2f).
-
 // ---------- Logs ----------
 // Pod logs through the Kubernetes API (no hostPath). Label names as on k8s01, where logs arrive by OTLP:
 // k8s_namespace_name, k8s_pod_name, k8s_container_name, service_name
@@ -250,73 +243,5 @@ loki.write "central" {
     }
     endpoint {
         url = sys.env("LOKI_PUSH_URL")
-    }
-}
-
-// ---------- OTLP from the host (Hermes) ----------
-otelcol.receiver.otlp "host" {
-    http {
-        endpoint = "0.0.0.0:4318"
-    }
-    grpc {
-        endpoint = "0.0.0.0:4317"
-    }
-    output {
-        metrics = [otelcol.processor.transform.cluster.input]
-        logs    = [otelcol.processor.transform.cluster.input]
-        traces  = [otelcol.processor.transform.cluster.input]
-    }
-}
-
-// ---------- OTLP to the otel-gateway on k8s01 ----------
-otelcol.processor.transform "cluster" {
-    error_mode = "ignore"
-    metric_statements {
-        context    = "resource"
-        statements = [
-            `set(attributes["cluster"], "` + sys.env("CLUSTER") + `")`,
-            `set(attributes["k8s.cluster.name"], "` + sys.env("CLUSTER") + `")`,
-        ]
-    }
-    log_statements {
-        context    = "resource"
-        statements = [
-            `set(attributes["cluster"], "` + sys.env("CLUSTER") + `")`,
-            `set(attributes["k8s.cluster.name"], "` + sys.env("CLUSTER") + `")`,
-        ]
-    }
-    trace_statements {
-        context    = "resource"
-        statements = [
-            `set(attributes["cluster"], "` + sys.env("CLUSTER") + `")`,
-            `set(attributes["k8s.cluster.name"], "` + sys.env("CLUSTER") + `")`,
-        ]
-    }
-    output {
-        metrics = [otelcol.processor.batch.default.input]
-        logs    = [otelcol.processor.batch.default.input]
-        traces  = [otelcol.processor.batch.default.input]
-    }
-}
-
-otelcol.processor.batch "default" {
-    output {
-        metrics = [otelcol.exporter.otlphttp.central.input]
-        logs    = [otelcol.exporter.otlphttp.central.input]
-        traces  = [otelcol.exporter.otlphttp.central.input]
-    }
-}
-
-otelcol.auth.bearer "central" {
-    token = sys.env("OTEL_EXTERNAL_TOKEN")
-}
-
-otelcol.exporter.otlphttp "central" {
-    client {
-        endpoint = sys.env("OTEL_ENDPOINT")
-        auth     = otelcol.auth.bearer.central.handler
-    }
-    sending_queue {
-        queue_size = 5000
     }
 }

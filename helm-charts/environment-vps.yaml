@@ -37,6 +37,7 @@ platform:
         - external-dns
         - monitoring
         - mcp-servers
+        - opentelemetry
 # The one Vault, on k8s01, reached over the tailnet: vault.<domain> resolves to the k8s01 Gateway (192.168.68.240),
 # a subnet route k8s01 advertises; the VPS accepts it. Same mount and paths as k8s01, so ExternalSecrets are
 # identical; only the address and the auth mount differ (scripts/vault.sh configure-vps).
