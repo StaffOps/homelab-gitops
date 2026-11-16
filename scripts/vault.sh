@@ -110,8 +110,8 @@ case "$cmd" in
         ;;
     configure-vps)
         # Second Kubernetes auth mount, for the VPS k3s (ADR 0008). Vault validates the VPS ServiceAccount tokens
-        # against the k3s API over the tailnet (server, CA and reviewer token = the Argo CD cluster Secret:
-        # environment.yaml and homelab/argocd-cluster-vps). Rotating that token: run configure-vps again.
+        # against the k3s API over the tailnet (server and CA from environment.yaml and homelab/argocd-cluster-vps,
+        # reviewer token from homelab/vault-reviewer-vps). After rotating the reviewer token: run configure-vps again.
         [ "$(sealed)" = "false" ] || fail "Vault is sealed — run unseal first"
         server="$(yq '.remoteClusters.vps.server' "$(dirname "$0")/../helm-charts/environment.yaml")"
         [ -n "$server" ] && [ "$server" != "null" ] || fail "remoteClusters.vps.server missing in environment.yaml"
@@ -119,9 +119,11 @@ case "$cmd" in
             set -e
             vault auth list -format=json | grep -q '\"kubernetes-vps/\"' || vault auth enable -path=kubernetes-vps kubernetes
             vault kv get -field=ca-data $KV_MOUNT/$PREFIX/argocd-cluster-vps | base64 -d >/tmp/vps-ca.pem
-            # Reviewer: the argocd-manager token (cluster-admin on the k3s, already in Vault), so client ServiceAccounts
-            # (external-secrets, every app's vault-reader) need no system:auth-delegator binding there
-            vault kv get -field=token $KV_MOUNT/$PREFIX/argocd-cluster-vps >/tmp/vps-reviewer.jwt
+            # Reviewer: ServiceAccount kube-system/vault-token-reviewer on the k3s (system:auth-delegator + get/list/watch
+            # namespaces, created by the VPS Ansible), token in Vault homelab/vault-reviewer-vps. Client ServiceAccounts
+            # (external-secrets, every app's vault-reader) need no permission there; the namespace selector of role apps
+            # needs the reviewer to read Namespaces.
+            vault kv get -field=token $KV_MOUNT/$PREFIX/vault-reviewer-vps >/tmp/vps-reviewer.jwt
             vault write auth/kubernetes-vps/config kubernetes_host=$server kubernetes_ca_cert=@/tmp/vps-ca.pem \
                 token_reviewer_jwt=@/tmp/vps-reviewer.jwt disable_local_ca_jwt=true >/dev/null
             rm -f /tmp/vps-ca.pem /tmp/vps-reviewer.jwt

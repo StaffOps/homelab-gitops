@@ -153,8 +153,8 @@ Symptoms: `ClusterSecretStore vault` not Ready, events with `permission denied` 
 On the **VPS k3s** (ADR 0008) the ClusterSecretStore has the same name and reads the same paths, through the auth
 mount `kubernetes-vps`: Vault reviews the VPS ServiceAccount token against the k3s API over the tailnet. Recreate it
 with `scripts/vault.sh configure-vps` (idempotent; needs `homelab/argocd-cluster-vps`, it reads the k3s CA from it).
-If the VPS store is not Ready: Vault must reach `https://100.81.185.50:6443` (Calico mark mask, homelab-ansible), and
-the VPS ServiceAccount `external-secrets` must hold `system:auth-delegator` there.
+If a VPS store is not Ready: Vault must reach `https://100.81.185.50:6443` (Calico mark mask, homelab-ansible), and
+the reviewer token (`homelab/vault-reviewer-vps`, ServiceAccount `kube-system/vault-token-reviewer`) must be valid.
 
 ### Lost the Vault volume
 
@@ -194,6 +194,7 @@ add an app with a secret, add a row here.
 | `harbor` | `admin-password`, `secret-key`, `oidc-client-secret` | Harbor, Keycloak realm import | `secret-key`: exactly 16 characters, `openssl rand -hex 8`, keep it. `oidc-client-secret`: any random string, the Keycloak client `harbor` uses the same value |
 | `argo-workflows` | `oidc-client-secret`, `argocd-token` | Argo Workflows, Keycloak realm import | Token of the Argo CD account `argo-workflows`, see [argo-workflows.md](argo-workflows.md#secrets) |
 | `defectdojo` | `admin-password`, `secret-key`, `credential-aes-key` | DefectDojo | `admin-password`: local `admin`, `openssl rand -base64 24`, used only when the user is created. `secret-key`: Django `SECRET_KEY`, `openssl rand -hex 64`, keep it (sessions; the metrics password is derived from it). `credential-aes-key`: `openssl rand -hex 64`, keep a copy (losing it loses the secrets DefectDojo stores encrypted) |
+| `vault-reviewer-vps` | `token` | Vault auth mount `kubernetes-vps` (token reviewer) | Token of ServiceAccount `kube-system/vault-token-reviewer` on the VPS k3s (TokenReview + read Namespaces), created by the VPS Ansible; after changing it run `scripts/vault.sh configure-vps` |
 | `argocd-cluster-vps` | `token`, `ca-data` | Argo CD cluster Secret `vps` (ADR 0008) | `token`: long-lived token of the ServiceAccount Argo CD uses on the VPS k3s. `ca-data`: base64 of the k3s server CA |
 | `apps/<namespace>/<name>` | app-specific | Workload apps (homelab-gitops-apps) | [Write a secret for a workload app](#write-a-secret-for-a-workload-app) |
 
