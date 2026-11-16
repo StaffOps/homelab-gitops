@@ -94,6 +94,12 @@ prometheus:
                 - k8s.statefulset.name
                 - k8s.daemonset.name
                 - k8s.node.name
+        # Exemplars from OTLP ingestion (SDK trace_based filter): stored in memory, queried at /api/v1/query_exemplars
+        # and shown on panels linking to Tempo (Prometheus datasource exemplarTraceIdDestinations below)
+        enableFeatures:
+            - exemplar-storage
+        exemplars:
+            maxSize: 100000
         retention: 15d
         retentionSize: 18GB
         externalUrl: https://prometheus.{{ .Values.domain }}
@@ -156,12 +162,14 @@ grafana:
                   datasourceUid: prometheus # service graph from the otel-gateway (traces_service_graph_*)
               nodeGraph:
                   enabled: true
+              # OTLP logs carry trace_id as Loki structured metadata, not in the line: filter on it ($$ escapes the
+              # provisioning env-var expansion)
               tracesToLogsV2:
                   datasourceUid: loki
                   spanStartTimeShift: -5m
                   spanEndTimeShift: 5m
-                  filterByTraceID: true
-                  customQuery: false
+                  customQuery: true
+                  query: '{service_name="$${__span.tags["service.name"]}"} | trace_id="$${__trace.traceId}"'
               lokiSearch:
                   datasourceUid: loki
     envValueFrom:
@@ -214,6 +222,12 @@ grafana:
     # dashboard/datasource sidecars (k8s-sidecar). Dashboards go to the Grafana folder named by the ConfigMap
     # annotation grafana_folder (monitoring-raw/dashboards/<folder>/); the chart's own dashboards → "Kubernetes".
     sidecar:
+        # default Prometheus datasource (uid prometheus): exemplar trace_id → Tempo
+        datasources:
+            exemplarTraceIdDestinations:
+                datasourceUid: tempo
+                traceIdLabelName: trace_id
+                urlDisplayLabel: View trace
         dashboards:
             folderAnnotation: grafana_folder
             provider:
