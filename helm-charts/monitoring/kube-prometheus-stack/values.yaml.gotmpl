@@ -63,6 +63,16 @@ prometheus:
         ruleSelectorNilUsesHelmValues: false
         probeSelectorNilUsesHelmValues: false
         scrapeConfigSelectorNilUsesHelmValues: false
+        # Label cluster=<cluster.name of the environment> on every scraped series (default scrape class: every
+        # ServiceMonitor/PodMonitor/Probe/ScrapeConfig without its own class). The VPS series arrive by remote-write
+        # with cluster=vps (Alloy), so dashboards and rules tell the clusters apart (kubernetes-mixin $cluster).
+        scrapeClasses:
+            - name: cluster
+              default: true
+              relabelings:
+                  - action: replace
+                    targetLabel: cluster
+                    replacement: {{ .Values.cluster.name }}
         # OTLP metrics from the otel-gateway (apps, OBI, span metrics, service graph): /api/v1/otlp
         enableOTLPReceiver: true
         otlp:
