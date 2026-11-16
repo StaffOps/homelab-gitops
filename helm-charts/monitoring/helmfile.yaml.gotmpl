@@ -11,6 +11,8 @@ repositories:
       url: https://grafana-community.github.io/helm-charts
     - name: bedag
       url: https://bedag.github.io/helm-charts
+    - name: grafana
+      url: https://grafana.github.io/helm-charts
 environments:
     default:
         values:
@@ -26,6 +28,13 @@ environments:
                   version: 3.2.1 # Tempo 3.1.1, single binary
             - monitoring-raw:
                   enabled: true
+                  version: 2.0.2
+            # Alloy only runs on edge clusters (k8s01 has the OTel collectors of helm-charts/opentelemetry)
+            - alloy:
+                  enabled: false
+                  version: 1.16.0
+            - alloy-raw:
+                  enabled: false
                   version: 2.0.2
     # VPS k3s (ADR 0008): an edge cluster. The central pieces stay on k8s01; kube-prometheus-stack runs reduced to
     # kube-state-metrics (values-vps.yaml.gotmpl) and Alloy (next) ships metrics and logs to k8s01 over the tailnet.
@@ -43,6 +52,12 @@ environments:
                   version: 3.2.1
             - monitoring-raw:
                   enabled: false
+                  version: 2.0.2
+            - alloy:
+                  enabled: true
+                  version: 1.16.0
+            - alloy-raw:
+                  enabled: true
                   version: 2.0.2
 ---
 templates:
@@ -68,6 +83,16 @@ releases:
     - chart: grafana-community/loki
       name: loki
       condition: loki.enabled
+      <<: *default
+    # Edge clusters only: Alloy ships metrics, logs and the host's OTLP to the otel-gateway on k8s01
+    - chart: grafana/alloy
+      name: alloy
+      condition: alloy.enabled
+      <<: *default
+    # Token of the otel-gateway external receiver and the fixed-IP OTLP Service for the host
+    - chart: bedag/raw
+      name: alloy-raw
+      condition: alloy-raw.enabled
       <<: *default
     # OTLP on tempo:4317 (gRPC) / tempo:4318 (HTTP)
     - chart: grafana-community/tempo

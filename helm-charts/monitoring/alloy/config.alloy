@@ -1,0 +1,290 @@
+// Grafana Alloy on an edge cluster (the VPS k3s, ADR 0008): scrapes and tails locally and ships everything as OTLP
+// to the otel-gateway on k8s01 (https://otel.<domain>, bearer token), which forwards metrics to Prometheus, logs
+// to Loki and traces to Tempo. Every signal carries cluster=<CLUSTER> (and k8s.cluster.name), like on k8s01.
+// Inserted as-is (readFile, no tpl): settings come from environment variables set in values.yaml.gotmpl.
+
+logging {
+    level  = "info"
+    format = "logfmt"
+}
+
+// ---------- Metrics ----------
+discovery.kubernetes "nodes" {
+    role = "node"
+}
+
+discovery.kubernetes "endpoints" {
+    role = "endpoints"
+}
+
+discovery.kubernetes "pods" {
+    role = "pod"
+}
+
+// kubelet and cAdvisor of every node, with this pod's ServiceAccount token
+discovery.relabel "kubelet" {
+    targets = discovery.kubernetes.nodes.targets
+    rule {
+        source_labels = ["__meta_kubernetes_node_name"]
+        target_label  = "node"
+    }
+}
+
+prometheus.scrape "kubelet" {
+    job_name          = "kubelet"
+    targets           = discovery.relabel.kubelet.output
+    scheme            = "https"
+    bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    tls_config {
+        insecure_skip_verify = true
+    }
+    forward_to = [otelcol.receiver.prometheus.default.receiver]
+}
+
+prometheus.scrape "cadvisor" {
+    job_name          = "cadvisor"
+    targets           = discovery.relabel.kubelet.output
+    metrics_path      = "/metrics/cadvisor"
+    scheme            = "https"
+    bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    tls_config {
+        insecure_skip_verify = true
+    }
+    forward_to = [otelcol.receiver.prometheus.default.receiver]
+}
+
+// Node metrics (node_exporter equivalent) from the host's /proc, /sys and / mounted read-only
+prometheus.exporter.unix "node" {
+    procfs_path = "/host/proc"
+    sysfs_path  = "/host/sys"
+    rootfs_path = "/host/root"
+    filesystem {
+        mount_points_exclude = "^/(dev|proc|run|sys|host|var/lib/kubelet|var/lib/rancher)($|/)"
+    }
+}
+
+prometheus.scrape "node" {
+    job_name   = "node-exporter"
+    targets    = prometheus.exporter.unix.node.targets
+    forward_to = [otelcol.receiver.prometheus.default.receiver]
+}
+
+// Services and pods annotated prometheus.io/scrape=true (kube-state-metrics, authelia, nats exporter, ...)
+discovery.relabel "annotated_endpoints" {
+    targets = discovery.kubernetes.endpoints.targets
+    rule {
+        source_labels = ["__meta_kubernetes_service_annotation_prometheus_io_scrape"]
+        regex         = "true"
+        action        = "keep"
+    }
+    rule {
+        source_labels = ["__address__", "__meta_kubernetes_service_annotation_prometheus_io_port"]
+        regex         = "([^:]+)(?::\\d+)?;(\\d+)"
+        replacement   = "$1:$2"
+        target_label  = "__address__"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_service_annotation_prometheus_io_path"]
+        regex         = "(.+)"
+        target_label  = "__metrics_path__"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_service_name"]
+        target_label  = "service"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_service_name"]
+        target_label  = "job"
+    }
+}
+
+prometheus.scrape "annotated_endpoints" {
+    targets    = discovery.relabel.annotated_endpoints.output
+    forward_to = [otelcol.receiver.prometheus.default.receiver]
+}
+
+discovery.relabel "annotated_pods" {
+    targets = discovery.kubernetes.pods.targets
+    rule {
+        source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_scrape"]
+        regex         = "true"
+        action        = "keep"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_pod_phase"]
+        regex         = "Running"
+        action        = "keep"
+    }
+    rule {
+        source_labels = ["__address__", "__meta_kubernetes_pod_annotation_prometheus_io_port"]
+        regex         = "([^:]+)(?::\\d+)?;(\\d+)"
+        replacement   = "$1:$2"
+        target_label  = "__address__"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_path"]
+        regex         = "(.+)"
+        target_label  = "__metrics_path__"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+        target_label  = "job"
+    }
+}
+
+prometheus.scrape "annotated_pods" {
+    targets    = discovery.relabel.annotated_pods.output
+    forward_to = [otelcol.receiver.prometheus.default.receiver]
+}
+
+otelcol.receiver.prometheus "default" {
+    output {
+        metrics = [otelcol.processor.transform.cluster.input]
+    }
+}
+
+// ---------- Logs ----------
+// Pod logs through the Kubernetes API (no hostPath), with namespace/pod/container labels
+discovery.relabel "pod_logs" {
+    targets = discovery.kubernetes.pods.targets
+    rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+    }
+    rule {
+        source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_container_name"]
+        separator     = "/"
+        target_label  = "service_name"
+    }
+}
+
+loki.source.kubernetes "pods" {
+    targets    = discovery.relabel.pod_logs.output
+    forward_to = [otelcol.receiver.loki.default.receiver]
+}
+
+// Host journal: the systemd units that stay on the host (Hermes, center-agent, poller...) and the node itself
+loki.relabel "journal" {
+    forward_to = []
+    rule {
+        source_labels = ["__journal__systemd_unit"]
+        target_label  = "unit"
+    }
+    rule {
+        source_labels = ["__journal__systemd_unit"]
+        regex         = "(.+)\\.service"
+        target_label  = "service_name"
+    }
+}
+
+loki.source.journal "host" {
+    path          = "/var/log/journal"
+    relabel_rules = loki.relabel.journal.rules
+    matches       = sys.env("JOURNAL_MATCHES")
+    labels        = {
+        job = "systemd-journal",
+    }
+    forward_to = [otelcol.receiver.loki.default.receiver]
+}
+
+otelcol.receiver.loki "default" {
+    output {
+        logs = [otelcol.processor.transform.cluster.input]
+    }
+}
+
+// ---------- OTLP from the host (Hermes) ----------
+otelcol.receiver.otlp "host" {
+    http {
+        endpoint = "0.0.0.0:4318"
+    }
+    grpc {
+        endpoint = "0.0.0.0:4317"
+    }
+    output {
+        metrics = [otelcol.processor.transform.cluster.input]
+        logs    = [otelcol.processor.transform.cluster.input]
+        traces  = [otelcol.processor.transform.cluster.input]
+    }
+}
+
+// ---------- To k8s01 ----------
+otelcol.processor.transform "cluster" {
+    error_mode = "ignore"
+    metric_statements {
+        context    = "resource"
+        statements = [
+            `set(attributes["cluster"], "` + sys.env("CLUSTER") + `")`,
+            `set(attributes["k8s.cluster.name"], "` + sys.env("CLUSTER") + `")`,
+        ]
+    }
+    log_statements {
+        context    = "resource"
+        statements = [
+            `set(attributes["cluster"], "` + sys.env("CLUSTER") + `")`,
+            `set(attributes["k8s.cluster.name"], "` + sys.env("CLUSTER") + `")`,
+        ]
+    }
+    trace_statements {
+        context    = "resource"
+        statements = [
+            `set(attributes["cluster"], "` + sys.env("CLUSTER") + `")`,
+            `set(attributes["k8s.cluster.name"], "` + sys.env("CLUSTER") + `")`,
+        ]
+    }
+    output {
+        metrics = [otelcol.processor.batch.default.input]
+        logs    = [otelcol.processor.batch.default.input]
+        traces  = [otelcol.processor.batch.default.input]
+    }
+}
+
+otelcol.processor.batch "default" {
+    output {
+        metrics = [otelcol.exporter.otlphttp.central.input]
+        logs    = [otelcol.exporter.otlphttp.central.input]
+        traces  = [otelcol.exporter.otlphttp.central.input]
+    }
+}
+
+otelcol.auth.bearer "central" {
+    token = sys.env("OTEL_EXTERNAL_TOKEN")
+}
+
+otelcol.exporter.otlphttp "central" {
+    client {
+        endpoint = sys.env("OTEL_ENDPOINT")
+        auth     = otelcol.auth.bearer.central.handler
+    }
+    sending_queue {
+        queue_size = 5000
+    }
+}

@@ -1,0 +1,87 @@
+# Grafana Alloy, only on edge clusters (environment vps): metrics, logs and the host's OTLP to k8s01 over the
+# tailnet (config.alloy). The pipeline is read as-is from config.alloy; what differs per cluster comes in as env.
+alloy:
+    configMap:
+        create: true
+        content: |
+            {{- readFile "./config.alloy" | nindent 12 }}
+    enableReporting: false
+    extraEnv:
+        - name: CLUSTER
+          value: {{ .Values.cluster.name }}
+        - name: OTEL_ENDPOINT
+          value: https://otel.{{ .Values.domain }}
+        - name: OTEL_EXTERNAL_TOKEN
+          valueFrom:
+              secretKeyRef:
+                  name: otel-external-token
+                  key: token
+        # journald matches (OR between units): the host services and the node itself
+        - name: JOURNAL_MATCHES
+          value: >-
+              _SYSTEMD_UNIT=hermes-gateway.service _SYSTEMD_UNIT=center-agent.service _SYSTEMD_UNIT=openclaw-poller.service
+              _SYSTEMD_UNIT=mentoria-sync.service _SYSTEMD_UNIT=k3s.service _SYSTEMD_UNIT=containerd.service
+              _SYSTEMD_UNIT=ssh.service _SYSTEMD_UNIT=cron.service _SYSTEMD_UNIT=tailscaled.service
+              _SYSTEMD_UNIT=fail2ban.service _SYSTEMD_UNIT=unattended-upgrades.service
+    extraPorts:
+        - name: otlp-http
+          port: 4318
+          targetPort: 4318
+          protocol: TCP
+        - name: otlp-grpc
+          port: 4317
+          targetPort: 4317
+          protocol: TCP
+    mounts:
+        varlog: false
+        dockercontainers: false
+        extra:
+            - name: journal
+              mountPath: /var/log/journal
+              readOnly: true
+            - name: machine-id
+              mountPath: /etc/machine-id
+              readOnly: true
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: root
+              mountPath: /host/root
+              readOnly: true
+              mountPropagation: HostToContainer
+    resources:
+        requests:
+            cpu: 20m
+            memory: 96Mi
+        limits:
+            memory: 384Mi
+controller:
+    type: daemonset
+    volumes:
+        extra:
+            - name: journal
+              hostPath:
+                  path: /var/log/journal
+            - name: machine-id
+              hostPath:
+                  path: /etc/machine-id
+                  type: File
+            - name: proc
+              hostPath:
+                  path: /proc
+            - name: sys
+              hostPath:
+                  path: /sys
+            - name: root
+              hostPath:
+                  path: /
+# The host reaches the OTLP receiver on a fixed ClusterIP (alloy-raw otlp-service): Hermes exports to it
+service:
+    enabled: true
+crds:
+    create: false
+serviceMonitor:
+    enabled: false
