@@ -128,8 +128,20 @@ case "$cmd" in
                 bound_service_account_names=external-secrets \
                 bound_service_account_namespaces=external-secrets \
                 policies=external-secrets-read ttl=1h >/dev/null
+            # Workload apps on the VPS (homelab-gitops-apps vps/): like role apps on k8s01, ServiceAccount
+            # vault-reader of a namespace labelled staffops.space/tier=apps reads only apps/<its namespace>/*.
+            # Own policy: the template names this mount's accessor.
+            accessor=\$(vault read -field=accessor sys/auth/kubernetes-vps)
+            printf '%s\n' \
+                \"path \\\"$KV_MOUNT/data/$PREFIX/apps/{{identity.entity.aliases.\$accessor.metadata.service_account_namespace}}/*\\\" { capabilities = [\\\"read\\\"] }\" \
+                \"path \\\"$KV_MOUNT/metadata/$PREFIX/apps/{{identity.entity.aliases.\$accessor.metadata.service_account_namespace}}/*\\\" { capabilities = [\\\"read\\\", \\\"list\\\"] }\" |
+                vault policy write apps-read-vps - >/dev/null
+            vault write auth/kubernetes-vps/role/apps \
+                bound_service_account_names=vault-reader \
+                bound_service_account_namespace_selector='{\"matchLabels\":{\"staffops.space/tier\":\"apps\"}}' \
+                policies=apps-read-vps ttl=1h >/dev/null
         "
-        ok "auth/kubernetes-vps ($server), role external-secrets → policy external-secrets-read"
+        ok "auth/kubernetes-vps ($server), roles external-secrets → external-secrets-read, apps → apps-read-vps"
         ;;
     autounseal-secret)
         # The key goes from the local init file to the cluster on stdin; it never touches git or a command line

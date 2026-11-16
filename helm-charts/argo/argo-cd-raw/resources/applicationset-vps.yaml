@@ -62,6 +62,10 @@
                           duration: 30s
                           factor: 2
                           maxDuration: 5m
+                  # Same label as ApplicationSet apps: the Vault role apps (mount kubernetes-vps) binds to it
+                  managedNamespaceMetadata:
+                      labels:
+                          staffops.space/tier: apps
                   syncOptions:
                       - CreateNamespace=true
                       - ServerSideApply=true
