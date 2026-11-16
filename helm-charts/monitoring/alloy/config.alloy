@@ -225,7 +225,8 @@ beyla.ebpf "apps" {
     }
     attributes {
         kubernetes {
-            enable = "true"
+            enable       = "true"
+            cluster_name = sys.env("CLUSTER")
         }
     }
     metrics {
