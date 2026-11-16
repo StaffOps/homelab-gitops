@@ -1,32 +1,8 @@
+# One directory per component, one file per object. This list picks the components of the environment;
+# values-<environment>.yaml.gotmpl replaces it (lists are not merged).
 resources:
-    # Apps declare ExternalSecrets with remoteRef.key "<prefix>/<name>" (e.g. homelab/cloudflare).
-    - apiVersion: external-secrets.io/v1
-      kind: ClusterSecretStore
-      metadata:
-          name: vault
-      spec:
-          provider:
-              vault:
-                  server: {{ .Values.vault.address }}
-                  path: {{ .Values.vault.kvMount }}
-                  version: v2
-                  auth:
-                      kubernetes:
-                          mountPath: kubernetes
-                          role: external-secrets
-                          serviceAccountRef:
-                              name: external-secrets
-                              namespace: external-secrets
-          # Only platform namespaces (environment.yaml platform.namespaces) may use it. Workload apps
-          # (homelab-gitops-apps) read their own secret/homelab/apps/<namespace>/* through a SecretStore of their
-          # namespace and the Vault role "apps" (docs/runbooks/vault.md).
-          conditions:
-              - namespaces:
-                    {{- toYaml .Values.platform.namespaces | nindent 22 }}
-    # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates
-    - apiVersion: monitoring.coreos.com/v1
-      kind: PrometheusRule
-      metadata:
-          name: external-secrets
-      spec:
-          {{- readFile "./prometheus.rules.yaml" | nindent 10 }}
+    {{- range $c := list "cluster-secret-store" "prometheus-rule" }}
+    {{- range $f := readDir (printf "./%s" $c) }}
+    {{- tpl (readFile (printf "./%s" $f)) $ | nindent 4 }}
+    {{- end }}
+    {{- end }}

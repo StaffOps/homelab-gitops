@@ -1,0 +1,8 @@
+# VPS k3s: the store (Vault on k8s01 over the tailnet) and the TokenReview permission its auth mount needs.
+# No PrometheusRule (no prometheus-operator there; the rules live on k8s01).
+resources:
+    {{- range $c := list "cluster-secret-store" "auth-delegator" }}
+    {{- range $f := readDir (printf "./%s" $c) }}
+    {{- tpl (readFile (printf "./%s" $f)) $ | nindent 4 }}
+    {{- end }}
+    {{- end }}

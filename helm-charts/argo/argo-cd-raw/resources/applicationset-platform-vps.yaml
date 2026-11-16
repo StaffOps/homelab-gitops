@@ -21,6 +21,9 @@
           - list:
                 elements:
                     # kube-prometheus-stack reduced to kube-state-metrics (values-vps); Alloy next
+                    - appName: external-secrets
+                      path: external-secrets
+                      namespace: external-secrets
                     - appName: monitoring
                       path: monitoring
                       namespace: monitoring

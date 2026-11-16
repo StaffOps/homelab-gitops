@@ -80,6 +80,7 @@ vault:
     address: http://vault.vault.svc:8200
     kvMount: secret # KV v2
     prefix: homelab # secrets live at secret/homelab/<name>
+    authMount: kubernetes # Kubernetes auth mount of this cluster (the VPS uses kubernetes-vps)
 # Velero backups to Cloudflare R2 (S3-compatible). The bucket is created by hand in the Cloudflare dashboard.
 # Credentials AND the S3 endpoint (it contains the Cloudflare account id) live in Vault homelab/velero, never here;
 # the endpoint reaches the BackupStorageLocation through the Argo CD render env (argocd-render-env).
