@@ -1,0 +1,8 @@
+# VPS k3s: the same Cloudflare token (Vault homelab/cloudflare) and the same Let's Encrypt issuers. No PrometheusRule
+# (no prometheus-operator there; the rules live on k8s01).
+resources:
+    {{- range $c := list "cloudflare" "issuers" }}
+    {{- range $f := readDir (printf "./%s" $c) }}
+    {{- tpl (readFile (printf "./%s" $f)) $ | nindent 4 }}
+    {{- end }}
+    {{- end }}

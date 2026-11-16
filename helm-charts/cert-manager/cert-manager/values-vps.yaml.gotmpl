@@ -1,0 +1,4 @@
+# VPS k3s: no prometheus-operator, so no ServiceMonitor (Alloy scrapes the metrics Service instead).
+prometheus:
+    servicemonitor:
+        enabled: false

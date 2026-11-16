@@ -19,6 +19,9 @@ ingress:
 # external-dns on the VPS: distinct owner id and prefix so it never fights the k8s01 one; upsert-only so it
 # never deletes records made by hand. grafana. and prometheus. belong to k8s01 (LAN-only) and are not managed here.
 externalDns:
+    sources:
+        - ingress
+    policy: upsert-only
     txtOwnerId: vps-srv1853985
     txtPrefix: vps-
 # Namespaces of the VPS base (ApplicationSet platform-vps): the same names as on k8s01. AppProject vps denies

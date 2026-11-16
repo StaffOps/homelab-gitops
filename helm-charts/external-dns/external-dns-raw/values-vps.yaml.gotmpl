@@ -1,0 +1,7 @@
+# VPS k3s: the same Cloudflare token (Vault homelab/cloudflare). No PrometheusRule (the rules live on k8s01).
+resources:
+    {{- range $c := list "cloudflare" }}
+    {{- range $f := readDir (printf "./%s" $c) }}
+    {{- tpl (readFile (printf "./%s" $f)) $ | nindent 4 }}
+    {{- end }}
+    {{- end }}

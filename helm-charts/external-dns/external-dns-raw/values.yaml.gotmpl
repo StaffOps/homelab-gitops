@@ -1,25 +1,8 @@
+# One directory per component, one file per object. This list picks the components of the environment;
+# values-<environment>.yaml.gotmpl replaces it (lists are not merged).
 resources:
-    # Cloudflare API token (Zone:DNS:Edit on the lab zone)
-    - apiVersion: external-secrets.io/v1
-      kind: ExternalSecret
-      metadata:
-          name: cloudflare-api-token
-      spec:
-          refreshInterval: 1h
-          secretStoreRef:
-              kind: ClusterSecretStore
-              name: vault
-          target:
-              name: cloudflare-api-token
-          data:
-              - secretKey: api-token
-                remoteRef:
-                    key: {{ .Values.vault.prefix }}/cloudflare
-                    property: api-token
-    # PrometheusRule: rules inserted as-is (no tpl), so they keep plain Prometheus templates
-    - apiVersion: monitoring.coreos.com/v1
-      kind: PrometheusRule
-      metadata:
-          name: external-dns
-      spec:
-          {{- readFile "./prometheus.rules.yaml" | nindent 10 }}
+    {{- range $c := list "cloudflare" "prometheus-rule" }}
+    {{- range $f := readDir (printf "./%s" $c) }}
+    {{- tpl (readFile (printf "./%s" $f)) $ | nindent 4 }}
+    {{- end }}
+    {{- end }}

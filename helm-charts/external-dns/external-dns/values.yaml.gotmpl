@@ -6,14 +6,16 @@ env:
           secretKeyRef:
               name: cloudflare-api-token
               key: api-token
+# sources, policy, owner id and prefix are per cluster (externalDns in the environment file): each cluster owns
+# only the records carrying its owner TXT, so two external-dns share the zone without fighting
 sources:
-    - gateway-httproute
+    {{- toYaml .Values.externalDns.sources | nindent 4 }}
 domainFilters:
     - {{ .Values.domain }}
-policy: sync # deletes the records of removed routes (only those owned by this txtOwnerId)
+policy: {{ .Values.externalDns.policy }}
 registry: txt
-txtOwnerId: {{ .Values.cluster.name }}
-txtPrefix: _extdns.
+txtOwnerId: {{ .Values.externalDns.txtOwnerId }}
+txtPrefix: {{ .Values.externalDns.txtPrefix }}
 interval: 1m
 logFormat: json
 logLevel: info

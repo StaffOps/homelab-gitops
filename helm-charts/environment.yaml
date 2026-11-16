@@ -75,6 +75,14 @@ gateway:
     mcp:
         name: mcp
         address: 192.168.68.241
+# external-dns of this cluster (helm-charts/external-dns). k8s01 publishes HTTPRoutes and owns its records
+# (sync deletes only records with its owner TXT). The VPS uses its own values (environment-vps.yaml).
+externalDns:
+    sources:
+        - gateway-httproute
+    policy: sync
+    txtOwnerId: k8s01
+    txtPrefix: _extdns.
 # Vault (in-cluster) is the only secret source; External Secrets reads it with Kubernetes auth.
 vault:
     address: http://vault.vault.svc:8200

@@ -24,6 +24,12 @@
                     - appName: external-secrets
                       path: external-secrets
                       namespace: external-secrets
+                    - appName: cert-manager
+                      path: cert-manager
+                      namespace: cert-manager
+                    - appName: external-dns
+                      path: external-dns
+                      namespace: external-dns
                     - appName: monitoring
                       path: monitoring
                       namespace: monitoring

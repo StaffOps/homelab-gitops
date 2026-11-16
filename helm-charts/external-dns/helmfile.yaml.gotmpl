@@ -15,6 +15,15 @@ environments:
             - external-dns-raw:
                   enabled: true
                   version: 2.0.2
+    vps:
+        values:
+            - ../environment-vps.yaml
+            - external-dns:
+                  enabled: true
+                  version: 1.23.0
+            - external-dns-raw:
+                  enabled: true
+                  version: 2.0.2
 ---
 templates:
     default: &default
@@ -22,6 +31,10 @@ templates:
         namespace: external-dns
         values:
             - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
+            # values-<environment>.yaml.gotmpl overlays the shared file in every environment but default (k8s01)
+            # {{ if ne .Environment.Name "default" }}
+            - ./{{`{{ .Release.Name }}`}}/values-{{`{{ .Environment.Name }}`}}.yaml.gotmpl
+            # {{ end }}
 releases:
     # Cloudflare token (ExternalSecret)
     - chart: bedag/raw

@@ -1,0 +1,7 @@
+# Rules inserted as-is (no tpl), so they keep plain Prometheus templates
+- apiVersion: monitoring.coreos.com/v1
+  kind: PrometheusRule
+  metadata:
+      name: external-dns
+  spec:
+      {{- readFile "./prometheus.rules.yaml" | nindent 6 }}
