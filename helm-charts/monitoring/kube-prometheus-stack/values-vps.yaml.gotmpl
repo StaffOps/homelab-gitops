@@ -32,8 +32,8 @@ coreDns:
 kubeDns:
     enabled: false
 kube-state-metrics:
-    # Alloy finds it by the prometheus.io/scrape annotation on the Service
-    prometheusScrape: true
+    # Alloy scrapes it by name with honor_labels (config.alloy), not through the generic prometheus.io/scrape path
+    prometheusScrape: false
     prometheus:
         monitor:
             enabled: false
