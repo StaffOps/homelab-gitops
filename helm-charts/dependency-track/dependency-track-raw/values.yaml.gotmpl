@@ -143,3 +143,125 @@ resources:
                 remoteRef:
                     key: {{ .Values.vault.prefix }}/dependency-track
                     property: kek
+    # Trivy server: the Trivy vulnerability analyzer of Dependency-Track (Administration → Analyzers → Trivy, runtime
+    # config in the DT database) sends components here and gets findings back from the Trivy DB (Alpine secdb, GHSA,
+    # distro feeds), the same results as the golden-images scan (same version, 0.76.1). URL
+    # http://trivy.dependency-track:4954, token from Vault homelab/trivy-server (also stored as DT secret trivy-token).
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+          name: trivy-server
+      spec:
+          refreshInterval: 1h
+          secretStoreRef:
+              kind: ClusterSecretStore
+              name: vault
+          target:
+              name: trivy-server
+          data:
+              - secretKey: TRIVY_TOKEN
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/trivy-server
+                    property: token
+    # Trivy DB (~1 GiB unpacked, refreshed by the server every 12 h) and Java DB
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+          name: trivy-cache
+      spec:
+          accessModes: [ReadWriteOnce]
+          storageClassName: {{ .Values.storageClass }}
+          resources:
+              requests:
+                  storage: 5Gi
+    - apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+          name: trivy
+          labels:
+              app.kubernetes.io/name: trivy
+      spec:
+          replicas: 1
+          strategy:
+              type: Recreate # RWO cache volume
+          selector:
+              matchLabels:
+                  app.kubernetes.io/name: trivy
+          template:
+              metadata:
+                  labels:
+                      app.kubernetes.io/name: trivy
+              spec:
+                  automountServiceAccountToken: false
+                  securityContext:
+                      runAsNonRoot: true
+                      runAsUser: 65532
+                      runAsGroup: 65532
+                      fsGroup: 65532
+                      seccompProfile:
+                          type: RuntimeDefault
+                  containers:
+                      - name: trivy
+                        image: docker.io/aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+                        args: [server, --listen, "0.0.0.0:4954"]
+                        env:
+                            - name: TRIVY_CACHE_DIR
+                              value: /cache
+                            - name: HOME
+                              value: /tmp
+                            - name: TRIVY_NO_PROGRESS
+                              value: "true"
+                        envFrom:
+                            - secretRef:
+                                  name: trivy-server # TRIVY_TOKEN: clients must send it (header Trivy-Token)
+                        ports:
+                            - name: http
+                              containerPort: 4954
+                        readinessProbe:
+                            httpGet:
+                                path: /healthz
+                                port: http
+                            periodSeconds: 10
+                        livenessProbe:
+                            httpGet:
+                                path: /healthz
+                                port: http
+                            initialDelaySeconds: 300 # first start downloads the DB
+                            periodSeconds: 30
+                        securityContext:
+                            allowPrivilegeEscalation: false
+                            readOnlyRootFilesystem: true
+                            capabilities:
+                                drop: [ALL]
+                        resources:
+                            requests:
+                                cpu: 20m
+                                memory: 512Mi
+                            limits:
+                                memory: 2Gi
+                        volumeMounts:
+                            - name: cache
+                              mountPath: /cache
+                            - name: tmp
+                              mountPath: /tmp
+                  volumes:
+                      - name: cache
+                        persistentVolumeClaim:
+                            claimName: trivy-cache
+                      - name: tmp
+                        emptyDir:
+                            sizeLimit: 1Gi
+    - apiVersion: v1
+      kind: Service
+      metadata:
+          name: trivy
+          labels:
+              app.kubernetes.io/name: trivy
+      spec:
+          selector:
+              app.kubernetes.io/name: trivy
+          ports:
+              - name: http
+                port: 4954
+                targetPort: http
+                appProtocol: http
