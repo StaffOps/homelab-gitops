@@ -92,6 +92,9 @@
               # error rate = status_code="STATUS_CODE_ERROR" / all (semconv: Unset = success). Exemplars → Tempo.
               span_metrics:
                   metrics_flush_interval: 30s
+                  # Series not updated for 5m stop being exported (e.g. the previous service.version after a
+                  # deploy); the default 0 keeps them forever
+                  metrics_expiration: 5m
                   aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
                   histogram:
                       unit: s
@@ -116,8 +119,12 @@
                       - name: messaging.operation.type
                       - name: messaging.destination.name
                       - name: error.type
+                  # The resource of a series is the first one seen for its key, so every attribute that must follow
+                  # a change (service.version on a deploy) is in the key. Never per-pod ids (service.instance.id):
+                  # they are deleted below and would only start new series on every restart.
                   resource_metrics_key_attributes:
                       - service.name
+                      - service.version
                       - service.namespace
                       - deployment.environment.name
                       - cluster

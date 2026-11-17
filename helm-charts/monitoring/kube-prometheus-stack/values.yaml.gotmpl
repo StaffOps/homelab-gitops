@@ -221,6 +221,11 @@ grafana:
                         query: histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{$$__tags}[5m])))
                       - name: Taxa de erro HTTP server (5xx)
                         query: sum(rate(http_server_request_duration_seconds_count{$$__tags, http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{$$__tags}[5m]))
+                      # Span metrics (otel-gateway span_metrics connector), filtered by the span's own name
+                      - name: Chamadas do span por status
+                        query: sum by (status_code, error_type) (rate(traces_span_metrics_calls_total{$$__tags, span_name="$${__span.name}"}[5m]))
+                      - name: Latência p95 do span
+                        query: histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_seconds_bucket{$$__tags, span_name="$${__span.name}"}[5m])))
               lokiSearch:
                   datasourceUid: loki
     envValueFrom:
