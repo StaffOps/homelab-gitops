@@ -67,33 +67,65 @@
                   send_batch_size: 2000
                   send_batch_max_size: 5000
                   timeout: 5s
+              # Span metrics / service graph series: drop per-pod and per-instance resource attributes, so a pod or
+              # gateway restart does not start new series. service.name + service.namespace (→ job) and
+              # service.version stay; instance (from service.instance.id) becomes empty.
+              transform/connector_output:
+                  error_mode: ignore
+                  metric_statements:
+                      - context: resource
+                        statements:
+                            - delete_key(attributes, "k8s.pod.name")
+                            - delete_key(attributes, "k8s.pod.uid")
+                            - delete_key(attributes, "k8s.container.name")
+                            - delete_key(attributes, "k8s.node.name")
+                            - delete_key(attributes, "service.instance.id")
+                            - delete_key(attributes, "collector.instance.id")
           connectors:
+              # RED metrics of every span, computed here on 100 % of the spans of both clusters (no sampling
+              # anywhere; with tail sampling this pipeline would have to stay before it). Prometheus names:
+              # traces_span_metrics_calls_total, traces_span_metrics_duration_seconds_{bucket,sum,count};
+              # error rate = status_code="STATUS_CODE_ERROR" / all (semconv: Unset = success). Exemplars → Tempo.
               span_metrics:
                   metrics_flush_interval: 30s
                   aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
                   histogram:
-                      unit: ms
+                      unit: s
                       explicit:
-                          buckets: [2ms, 4ms, 8ms, 16ms, 32ms, 64ms, 128ms, 256ms, 512ms, 1024ms, 2048ms, 4096ms, 8192ms]
+                          buckets: [2ms, 4ms, 8ms, 16ms, 32ms, 64ms, 128ms, 256ms, 512ms, 1024ms, 2048ms, 4096ms, 8192ms, 16s]
                   exemplars:
                       enabled: true
+                  # Bounded attributes only (never ids, full URLs, query text or user values). gRPC status appears
+                  # under both semconv names, depending on the SDK.
                   dimensions:
                       - name: http.request.method
                       - name: http.response.status_code
                       - name: http.route
+                      - name: rpc.service
                       - name: rpc.method
+                      - name: rpc.grpc.status_code
+                      - name: rpc.response.status_code
                       - name: db.system.name
+                      - name: db.operation.name
+                      - name: db.response.status_code
+                      - name: messaging.system
+                      - name: messaging.operation.type
+                      - name: messaging.destination.name
+                      - name: error.type
                   resource_metrics_key_attributes:
                       - service.name
                       - service.namespace
+                      - deployment.environment.name
                       - cluster
                       - k8s.cluster.name
                       - k8s.namespace.name
+              # Service graph here, not in Tempo (Tempo's metrics-generator stays off: no duplicate series)
               service_graph:
                   latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
                   dimensions:
                       - cluster
                       - k8s.cluster.name
+                      - k8s.namespace.name
                   store:
                       ttl: 10s
                       max_items: 10000
@@ -140,7 +172,7 @@
                   # the cluster of the span's own resource
                   metrics/traces:
                       receivers: [span_metrics, service_graph]
-                      processors: [memory_limiter, resource/cluster, batch]
+                      processors: [memory_limiter, resource/cluster, transform/connector_output, batch]
                       exporters: [otlp_http/prometheus]
                   logs:
                       receivers: [otlp, otlp/external]
