@@ -81,6 +81,10 @@
                             - delete_key(attributes, "k8s.node.name")
                             - delete_key(attributes, "service.instance.id")
                             - delete_key(attributes, "collector.instance.id")
+                      # the span_metrics connector puts collector.instance.id on each data point
+                      - context: datapoint
+                        statements:
+                            - delete_key(attributes, "collector.instance.id")
           connectors:
               # RED metrics of every span, computed here on 100 % of the spans of both clusters (no sampling
               # anywhere; with tail sampling this pipeline would have to stay before it). Prometheus names:
