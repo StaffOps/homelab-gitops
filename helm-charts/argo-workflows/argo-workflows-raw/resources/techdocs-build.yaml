@@ -122,15 +122,17 @@
                           echo "$(wc -l < plan.tsv) entities in $(cut -f1-3 plan.tsv | sort -u | wc -l) repositories"
                           failed=0; built=0
                           declare -A tokens
+                          # GitHub sometimes resets connections in bursts: retry with backoff (10 s, 30 s, 60 s)
+                          retry() { local d; for d in 0 10 30 60; do sleep "$d"; "$@" && return 0; done; return 1; }
+                          clone() { rm -rf src && git clone -q --depth 1 --branch "$3" \
+                              "https://x-access-token:${tokens[$1]}@github.com/$1/$2.git" src 2>clone.err; }
                           for key in $(cut -f1-3 plan.tsv | sort -u | tr '\t' '|'); do
                               IFS='|' read -r owner repo branch <<< "$key"
                               if [ -z "${tokens[$owner]:-}" ]; then
-                                  tokens[$owner]=$(GITHUB_APP_KEY_FILE=/github-app/github-app.pem gh-app-token "$owner") || {
+                                  tokens[$owner]=$(retry gh-app-token "$owner") || {
                                       echo "FAILED $owner: installation token"; failed=$((failed+1)); continue; }
                               fi
-                              rm -rf src && mkdir src
-                              if ! git clone -q --depth 1 --branch "$branch" \
-                                  "https://x-access-token:${tokens[$owner]}@github.com/$owner/$repo.git" src 2>clone.err; then
+                              if ! retry clone "$owner" "$repo" "$branch"; then
                                   echo "FAILED $owner/$repo@$branch: clone"; sed 's/x-access-token:[^@]*@/x-access-token:***@/' clone.err; failed=$((failed+1)); continue
                               fi
                               for path in $(awk -F'\t' -v o="$owner" -v r="$repo" -v b="$branch" '$1==o && $2==r && $3==b {print $4}' plan.tsv | sort -u); do
@@ -154,6 +156,8 @@
                     env:
                         - name: HOME
                           value: /work
+                        - name: GITHUB_APP_KEY_FILE
+                          value: /github-app/github-app.pem
                         - name: BACKSTAGE_URL
                           value: http://backstage.backstage.svc:7007
                         - name: R2_ENDPOINT
