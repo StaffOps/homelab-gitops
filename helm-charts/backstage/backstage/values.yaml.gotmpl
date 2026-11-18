@@ -52,8 +52,8 @@ env:
                 name: backstage-credentials
                 key: AUTH_OIDC_CLIENT_SECRET
     {{- if $techdocsR2 }}
-    # PENDING owner decision (R2 bucket staffops-techdocs, external builder): TechDocs publisher awsS3 with a
-    # read-only R2 token. The endpoint holds the Cloudflare account id: it comes from the Argo CD render env
+    # TechDocs publisher awsS3 on R2 bucket staffops-techdocs with a read-only token (the CronWorkflow techdocs-build
+    # publishes). The endpoint holds the Cloudflare account id: it comes from the Argo CD render env
     # (R2_ENDPOINT), never from git. Off: the variables are unset and TechDocs pages fail to load (rest works).
     TECHDOCS_S3_ENDPOINT: {{ env "R2_ENDPOINT" | quote }}
     TECHDOCS_S3_ACCESS_KEY_ID:
@@ -67,6 +67,13 @@ env:
                 name: backstage-credentials
                 key: TECHDOCS_S3_SECRET_ACCESS_KEY
     {{- end }}
+    # Static external-access token of subject techdocs-builder (catalog read only): the CronWorkflow techdocs-build
+    # lists the entities with it. Same value in Vault homelab/techdocs-builder (backstage-token).
+    TECHDOCS_BUILDER_TOKEN:
+        valueFrom:
+            secretKeyRef:
+                name: backstage-credentials
+                key: TECHDOCS_BUILDER_TOKEN
 # Vault homelab/backstage → Secret backstage-credentials. Files under /run/secrets/<name> (items below); the env keys
 # above are read with secretKeyRef. The *.authorization files ("Bearer <token>") are built here from the raw tokens,
 # so Vault keeps only raw tokens. Mode 0440 + fsGroup 65532: readable by the app only.
@@ -84,7 +91,7 @@ externalSecrets:
                     argocd.authorization: '{{`Bearer {{ index . "argocd.token" }}`}}'
                     grafana.authorization: '{{`Bearer {{ index . "grafana.token" }}`}}'
         data:
-            {{- range $file, $prop := dict "github-app.pem" "private-key" "argocd.token" "argocd-token" "grafana.token" "grafana-token" "dependency-track.token" "dependency-track-api-key" "k8s01.token" "k8s01-token" "k8s01-ca.crt" "k8s01-ca" "vps.token" "vps-token" "vps-ca.crt" "vps-ca" "AUTH_SESSION_SECRET" "auth-session-secret" "AUTH_OIDC_CLIENT_SECRET" "oidc-client-secret" }}
+            {{- range $file, $prop := dict "github-app.pem" "private-key" "argocd.token" "argocd-token" "grafana.token" "grafana-token" "dependency-track.token" "dependency-track-api-key" "k8s01.token" "k8s01-token" "k8s01-ca.crt" "k8s01-ca" "vps.token" "vps-token" "vps-ca.crt" "vps-ca" "AUTH_SESSION_SECRET" "auth-session-secret" "AUTH_OIDC_CLIENT_SECRET" "oidc-client-secret" "TECHDOCS_BUILDER_TOKEN" "techdocs-builder-token" }}
             - secretKey: {{ $file }}
               remoteRef:
                   key: {{ $.Values.vault.prefix }}/backstage
@@ -96,7 +103,7 @@ externalSecrets:
                   key: {{ .Values.vault.prefix }}/backstage
                   property: k8s01-token
             {{- if $techdocsR2 }}
-            # PENDING owner decision (TechDocs on R2): read-only token of bucket staffops-techdocs
+            # TechDocs on R2: read-only token of bucket staffops-techdocs
             - secretKey: TECHDOCS_S3_ACCESS_KEY_ID
               remoteRef:
                   key: {{ .Values.vault.prefix }}/backstage

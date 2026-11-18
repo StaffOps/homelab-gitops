@@ -18,9 +18,10 @@ environments:
             - backstage:
                   enabled: true
                   version: 0.1.0 # staffops/generic
-                  # PENDING owner decision: TechDocs from R2 bucket staffops-techdocs (external builder in CI, read-only
-                  # token in Vault homelab/backstage). Off = TECHDOCS_S3_* unset: TechDocs pages fail, the rest works.
-                  techdocsR2: false
+                  # TechDocs from R2 bucket staffops-techdocs: read-only token in Vault homelab/backstage; the sites are
+                  # built and published by the CronWorkflow techdocs-build (argo-workflows, RW token in
+                  # homelab/techdocs-builder). Off = TECHDOCS_S3_* unset: TechDocs pages fail, the rest works.
+                  techdocsR2: true
             - backstage-raw:
                   enabled: true
                   version: 2.0.2
