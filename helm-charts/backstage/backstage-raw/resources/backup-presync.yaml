@@ -1,0 +1,22 @@
+{{- if and (index .Values "backstage-raw" "preSyncBackup") (not (.Values.backup.postgres | get "restore" false)) }}
+# Base backup of backstage-db before every sync (ADR 0001 of StaffOps/backstage-platform: plugin migrations run at
+# startup and there is no staging, so every deploy must be restorable). Argo CD v3.6 ships a health check for
+# postgresql.cnpg.io/Backup (Progressing until status.phase=completed, Degraded on failed): the PreSync phase, and
+# so the whole sync, waits for the backup and stops if it fails. A new name each time (generateName); successful
+# ones are deleted (the data stays in R2, the Barman catalog does not need the object), failed ones stay to inspect.
+# Caveats: selfHeal syncs fire it too (one extra base backup per self-heal); the very first sync has no Cluster yet,
+# so the Backup never completes: sync once with backstage-raw.preSyncBackup: false, then turn it on.
+- apiVersion: postgresql.cnpg.io/v1
+  kind: Backup
+  metadata:
+      generateName: backstage-db-presync-
+      annotations:
+          argocd.argoproj.io/hook: PreSync
+          argocd.argoproj.io/hook-delete-policy: HookSucceeded
+  spec:
+      cluster:
+          name: backstage-db
+      method: plugin
+      pluginConfiguration:
+          name: barman-cloud.cloudnative-pg.io
+{{- end }}

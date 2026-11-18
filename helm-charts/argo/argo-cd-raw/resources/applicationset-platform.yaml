@@ -126,6 +126,9 @@
                     - appName: defectdojo
                       path: defectdojo
                       namespace: defectdojo
+                    - appName: backstage
+                      path: backstage
+                      namespace: backstage
       template:
           metadata:
               name: '{{`{{ .appName }}`}}'

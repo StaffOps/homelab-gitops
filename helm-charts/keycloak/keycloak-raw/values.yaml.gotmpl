@@ -198,7 +198,8 @@ resources:
           dataFrom:
               - extract:
                     key: {{ .Values.vault.prefix }}/oidc
-          # Harbor and Argo Workflows keep their client secret with their other secrets (Vault homelab/<app>)
+          # Harbor, Argo Workflows and Backstage keep their client secret with their other secrets (Vault
+          # homelab/<app>). data is applied after dataFrom, so backstage here replaces the old homelab/oidc key.
           data:
               - secretKey: harbor
                 remoteRef:
@@ -207,6 +208,10 @@ resources:
               - secretKey: argo-workflows
                 remoteRef:
                     key: {{ .Values.vault.prefix }}/argo-workflows
+                    property: oidc-client-secret
+              - secretKey: backstage
+                remoteRef:
+                    key: {{ .Values.vault.prefix }}/backstage
                     property: oidc-client-secret
     # Realm keycloak.realm (environment.yaml): groups /<tool>/admin and /<tool>/viewer for every tool in
     # keycloak.apps, scope "groups" (claim groups, full path), one client per app. Users are created by hand in
@@ -248,7 +253,7 @@ resources:
                               access.token.claim: "true"
                               userinfo.token.claim: "true"
               clients:
-                  {{- range $id, $c := dict "argocd" (dict "url" (printf "https://argocd.%s" $d) "callback" "/auth/callback") "grafana" (dict "url" (printf "https://grafana.%s" $d) "callback" "/login/generic_oauth") "vault" (dict "url" (printf "https://vault.%s" $d) "callback" "/ui/vault/auth/oidc/oidc/callback") "harbor" (dict "url" (printf "https://harbor.%s" $d) "callback" "/c/oidc/callback") "argo-workflows" (dict "url" (printf "https://argo-workflows.%s" $d) "callback" "/oauth2/callback") }}
+                  {{- range $id, $c := dict "argocd" (dict "url" (printf "https://argocd.%s" $d) "callback" "/auth/callback") "grafana" (dict "url" (printf "https://grafana.%s" $d) "callback" "/login/generic_oauth") "vault" (dict "url" (printf "https://vault.%s" $d) "callback" "/ui/vault/auth/oidc/oidc/callback") "harbor" (dict "url" (printf "https://harbor.%s" $d) "callback" "/c/oidc/callback") "argo-workflows" (dict "url" (printf "https://argo-workflows.%s" $d) "callback" "/oauth2/callback") "backstage" (dict "url" (printf "https://backstage.%s" $d) "callback" "/api/auth/oidc/handler/frame") }}
                   - clientId: {{ $id }}
                     name: {{ $id }}
                     protocol: openid-connect
@@ -256,6 +261,10 @@ resources:
                     secret: $(env:{{ upper $id | replace "-" "_" }}_CLIENT_SECRET)
                     standardFlowEnabled: true
                     directAccessGrantsEnabled: false
+                    {{- if eq $id "backstage" }}
+                    # Backstage also calls the MCP servers with client_credentials (user service-account-backstage)
+                    serviceAccountsEnabled: true
+                    {{- end }}
                     rootUrl: {{ $c.url }}
                     redirectUris:
                         - {{ $c.url }}{{ $c.callback }}
@@ -266,12 +275,17 @@ resources:
                         - {{ $c.url }}
                     attributes:
                         post.logout.redirect.uris: {{ $c.url }}/*
-                        {{- if ne $id "argo-workflows" }}
+                        {{- if not (has $id (list "argo-workflows" "backstage")) }}
                         pkce.code.challenge.method: S256
                         {{- else }}
                         # Argo Workflows' SSO does not send a PKCE code_challenge (Keycloak answers "Missing parameter:
-                        # code_challenge_method"); confidential client with a secret instead
+                        # code_challenge_method"); confidential client with a secret instead. Backstage: same, its
+                        # oidc provider is configured as a confidential client.
                         pkce.code.challenge.method: ""
+                        {{- end }}
+                        {{- if eq $id "backstage" }}
+                        # Kept from the client_credentials client it was before (MCP calls), see serviceAccountsEnabled
+                        client_credentials.use_refresh_token: "false"
                         {{- end }}
                     defaultClientScopes:
                         - web-origins
@@ -312,7 +326,7 @@ resources:
                         - roles
                         - groups
                   # Services that call the MCP servers: client_credentials only (no browser login)
-                  {{- range $id := list "hermes" "backstage" "keycloak-mcp" }}
+                  {{- range $id := list "hermes" "keycloak-mcp" }}
                   - clientId: {{ $id }}
                     name: {{ $id }}
                     protocol: openid-connect

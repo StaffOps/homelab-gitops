@@ -40,7 +40,7 @@ flowchart LR
 | What | Tool | Prefix in the bucket | Schedule / retention |
 |------|------|----------------------|----------------------|
 | Kubernetes objects of `backup.namespaces` (`vault`, `keycloak`, `dependency-track`): Cluster CRs, generated Secrets such as `keycloak-db-app`, PVCs; and every volume of those namespaces **except** PostgreSQL data (Vault storage, Dependency-Track data) | Velero (Schedule `velero-daily`) | `k8s01/` | 03:00 UTC, 30 days (`backup.ttl`) |
-| PostgreSQL `keycloak-db`, `dtrack-db`, `harbor-db`, `workflows-db`, `defectdojo-db`, `grafana-db`: base backup + continuous [WAL](../glossary.md) (point-in-time recovery) | CloudNativePG [Barman Cloud](../glossary.md) plugin | `cnpg/<cluster>/` | base 02:00 UTC + WAL every ≤ 5 min, 30 days |
+| PostgreSQL `keycloak-db`, `dtrack-db`, `harbor-db`, `workflows-db`, `defectdojo-db`, `backstage-db`, `grafana-db`: base backup + continuous [WAL](../glossary.md) (point-in-time recovery) | CloudNativePG [Barman Cloud](../glossary.md) plugin | `cnpg/<cluster>/` | base 02:00 UTC + WAL every ≤ 5 min, 30 days |
 
 Not backed up, on purpose:
 
@@ -161,8 +161,8 @@ CloudNativePG restores into a **new** Cluster: it never overwrites a running one
 > for [disaster recovery](disaster-recovery.md#1-before-bootstrapping-point-the-databases-at-their-backups-git). For
 > one database, edit only that Cluster as below.
 
-The Clusters live in `keycloak-raw`, `dependency-track-raw`, `harbor-raw`, `argo-workflows-raw`, `defectdojo-raw` and
-`monitoring-raw` (`grafana-db`). The example uses `keycloak-db`.
+The Clusters live in `keycloak-raw`, `dependency-track-raw`, `harbor-raw`, `argo-workflows-raw`, `defectdojo-raw`,
+`backstage-raw` and `monitoring-raw` (`grafana-db`). The example uses `keycloak-db`.
 
 1. Stop the app: scale its Deployment/StatefulSet to 0, or disable auto-sync for it in Argo CD.
 2. In git, replace `bootstrap.initdb` with a recovery from the object store, and add the source as an external
