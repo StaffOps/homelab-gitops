@@ -9,6 +9,7 @@ metadata:
   annotations:
     github.com/project-slug: StaffOps/homelab-gitops
     argoworkflows.argoproj.io/workflow-selector: app.kubernetes.io/part-of=image-scan
+    backstage.io/kubernetes-namespace: argo-workflows
   links:
     - url: https://github.com/StaffOps/homelab-gitops
       title: Repository
