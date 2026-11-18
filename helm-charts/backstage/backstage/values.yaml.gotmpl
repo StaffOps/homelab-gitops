@@ -1,0 +1,176 @@
+# backstage (staffops/generic 0.1.0; every key: helm show values staffops/generic --repo https://staffops.github.io/helm-charts).
+# Golden image (node 24): entrypoint /usr/bin/node, uid 65532, no shell, port 7007. The four app-config files are baked
+# into the image (StaffOps/backstage-platform): app-config.k8s.yaml holds the URLs, Keycloak OIDC and TechDocs;
+# app-config.integrations.yaml reads the credential files under /run/secrets. This release only supplies env and files.
+{{- $d := .Values.domain }}
+{{- $techdocsR2 := .Values.backstage.techdocsR2 }}
+fullnameOverride: backstage
+# Semver tags only. Renovate (renovate.json5) proposes new tag + digest pairs; merging the PR deploys.
+# TODO(first publish): set digest to the sha256 of v0.1.0 once CI has pushed it (Renovate only matches a pinned digest).
+image:
+    registry: ghcr.io
+    repository: staffops/backstage-platform
+    tag: "v0.1.0"
+    digest: ""
+imagePullSecrets:
+    - name: backstage-ghcr # backstage-raw, from Vault homelab/argocd-ghcr-charts
+args:
+    - packages/backend
+    - --config
+    - app-config.yaml
+    - --config
+    - app-config.production.yaml
+    - --config
+    - app-config.integrations.yaml
+    - --config
+    - app-config.k8s.yaml
+ports:
+    - name: http
+      containerPort: 7007
+env:
+    NODE_ENV: production
+    POSTGRES_HOST: backstage-db-rw # CloudNativePG read-write Service (backstage-raw)
+    POSTGRES_PORT: "5432"
+    POSTGRES_USER:
+        valueFrom:
+            secretKeyRef:
+                name: backstage-db-app
+                key: username
+    POSTGRES_PASSWORD:
+        valueFrom:
+            secretKeyRef:
+                name: backstage-db-app
+                key: password
+    # Single keys of the credentials Secret, not envFrom: the tokens stay files and never become environment
+    AUTH_SESSION_SECRET:
+        valueFrom:
+            secretKeyRef:
+                name: backstage-credentials
+                key: AUTH_SESSION_SECRET
+    AUTH_OIDC_CLIENT_SECRET:
+        valueFrom:
+            secretKeyRef:
+                name: backstage-credentials
+                key: AUTH_OIDC_CLIENT_SECRET
+    {{- if $techdocsR2 }}
+    # PENDING owner decision (R2 bucket staffops-techdocs, external builder): TechDocs publisher awsS3 with a
+    # read-only R2 token. The endpoint holds the Cloudflare account id: it comes from the Argo CD render env
+    # (R2_ENDPOINT), never from git. Off: the variables are unset and TechDocs pages fail to load (rest works).
+    TECHDOCS_S3_ENDPOINT: {{ env "R2_ENDPOINT" | quote }}
+    TECHDOCS_S3_ACCESS_KEY_ID:
+        valueFrom:
+            secretKeyRef:
+                name: backstage-credentials
+                key: TECHDOCS_S3_ACCESS_KEY_ID
+    TECHDOCS_S3_SECRET_ACCESS_KEY:
+        valueFrom:
+            secretKeyRef:
+                name: backstage-credentials
+                key: TECHDOCS_S3_SECRET_ACCESS_KEY
+    {{- end }}
+# Vault homelab/backstage → Secret backstage-credentials. Files under /run/secrets/<name> (items below); the env keys
+# above are read with secretKeyRef. The *.authorization files ("Bearer <token>") are built here from the raw tokens,
+# so Vault keeps only raw tokens. Mode 0440 + fsGroup 65532: readable by the app only.
+externalSecrets:
+    credentials:
+        refreshInterval: 1h
+        secretStoreRef:
+            kind: ClusterSecretStore
+            name: vault
+        target:
+            template:
+                engineVersion: v2
+                mergePolicy: Merge
+                data:
+                    argocd.authorization: '{{`Bearer {{ index . "argocd.token" }}`}}'
+                    grafana.authorization: '{{`Bearer {{ index . "grafana.token" }}`}}'
+        data:
+            {{- range $file, $prop := dict "github-app.pem" "private-key" "argocd.token" "argocd-token" "grafana.token" "grafana-token" "dependency-track.token" "dependency-track-api-key" "k8s01.token" "k8s01-token" "k8s01-ca.crt" "k8s01-ca" "vps.token" "vps-token" "vps-ca.crt" "vps-ca" "AUTH_SESSION_SECRET" "auth-session-secret" "AUTH_OIDC_CLIENT_SECRET" "oidc-client-secret" }}
+            - secretKey: {{ $file }}
+              remoteRef:
+                  key: {{ $.Values.vault.prefix }}/backstage
+                  property: {{ $prop }}
+            {{- end }}
+            # argo-server runs --auth-mode=client: the same backstage-reader token, sent as a Bearer
+            - secretKey: argo-workflows.token
+              remoteRef:
+                  key: {{ .Values.vault.prefix }}/backstage
+                  property: k8s01-token
+            {{- if $techdocsR2 }}
+            # PENDING owner decision (TechDocs on R2): read-only token of bucket staffops-techdocs
+            - secretKey: TECHDOCS_S3_ACCESS_KEY_ID
+              remoteRef:
+                  key: {{ .Values.vault.prefix }}/backstage
+                  property: techdocs-access-key-id
+            - secretKey: TECHDOCS_S3_SECRET_ACCESS_KEY
+              remoteRef:
+                  key: {{ .Values.vault.prefix }}/backstage
+                  property: techdocs-secret-access-key
+            {{- end }}
+        mountPath: /run/secrets
+        defaultMode: 288 # 0440
+        items:
+            {{- range list "github-app.pem" "argocd.token" "argocd.authorization" "argo-workflows.token" "grafana.token" "grafana.authorization" "dependency-track.token" "k8s01.token" "k8s01-ca.crt" "vps.token" "vps-ca.crt" }}
+            - key: {{ . }}
+              path: {{ . }}
+            {{- end }}
+livenessProbe:
+    httpGet:
+        path: /.backstage/health/v1/liveness
+        port: http
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+readinessProbe:
+    httpGet:
+        path: /.backstage/health/v1/readiness
+        port: http
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+# First boot runs the plugin migrations (one schema per plugin) and the first catalog ingestion: 3 minutes before
+# liveness counts
+startupProbe:
+    httpGet:
+        path: /.backstage/health/v1/liveness
+        port: http
+    periodSeconds: 10
+    failureThreshold: 18
+resources:
+    requests:
+        cpu: 100m
+        memory: 512Mi # no measurement yet (local compose only)
+    limits:
+        memory: 1536Mi
+# Golden image user (nonroot 65532, no shell)
+podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+        type: RuntimeDefault
+# Writable scratch for the scaffolder workspace (read-only root filesystem)
+tmpVolume:
+    enabled: true
+    mountPath: /tmp
+    sizeLimit: 2Gi
+# The pod's own ServiceAccount never talks to the API (Kubernetes plugin uses the backstage-reader token)
+serviceAccount:
+    create: true
+    automount: false
+service:
+    enabled: true
+httpRoute:
+    enabled: true
+    parentRefs:
+        - name: {{ .Values.gateway.name }}
+          namespace: {{ .Values.gateway.namespace }}
+          sectionName: https
+    hostnames:
+        - backstage.{{ $d }}
+tests:
+    enabled: false
+pdb:
+    enabled: false # single node: a PDB only blocks drains

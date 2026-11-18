@@ -65,6 +65,7 @@ flowchart LR
 | Data | CloudNativePG (PostgreSQL), local-path storage, Velero | databases and backups to R2 |
 | Security | Harbor, Dependency-Track, DefectDojo | images, SBOMs, vulnerability management |
 | AI | llama.cpp on the GPU, MCP servers | a local LLM and tools for AI agents |
+| Developer portal | Backstage | catalog of every repository, docs, cluster and pipeline views |
 
 ## Where to click
 
@@ -78,6 +79,7 @@ flowchart LR
 | Harbor | https://harbor.staffops.space | Keycloak |
 | Dependency-Track | https://dependency-track.staffops.space | Keycloak |
 | DefectDojo | https://defectdojo.staffops.space | local account |
+| Backstage | https://backstage.staffops.space | Keycloak |
 | Prometheus | https://prometheus.staffops.space | — |
 | Alertmanager | https://alertmanager.staffops.space | — |
 | LLM (OpenAI API) | https://llm.staffops.space | API key |

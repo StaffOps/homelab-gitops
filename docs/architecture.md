@@ -152,8 +152,8 @@ flowchart LR
 
 - **Storage**: `local-path` volumes on the node's SSD. One node means no replication: a dead disk loses what is
   not in R2.
-- **Databases**: CloudNativePG runs `keycloak-db`, `dtrack-db`, `harbor-db`, `workflows-db`, `defectdojo-db` and
-  `grafana-db`. Each one streams its *WAL* to R2 and takes a daily base backup, so it can be restored to any point
+- **Databases**: CloudNativePG runs `keycloak-db`, `dtrack-db`, `harbor-db`, `workflows-db`, `defectdojo-db`,
+  `backstage-db` and `grafana-db`. Each one streams its *WAL* to R2 and takes a daily base backup, so it can be restored to any point
   in the last 30 days.
 - **Velero** backs up the namespaces `vault`, `keycloak` and `dependency-track` (objects and volumes, without the
   database files).
@@ -252,6 +252,7 @@ Known limits: one SATA SSD shared by everything (fast enough for etcd, checked w
 | Security | `harbor` | harbor | image and Helm chart registry with Trivy |
 | | `dependency-track` | dependency-track | SBOM analysis |
 | | `defectdojo` | defectdojo | vulnerability management |
+| Developer portal | `backstage` | backstage | Backstage (StaffOps/backstage-platform), catalog, TechDocs, cluster views |
 | AI | `llm` | llm | llama.cpp on the GPU, OpenAI-compatible API |
 | | `mcp-servers` | mcp-servers | read-only MCP servers for AI agents |
 

@@ -1,0 +1,59 @@
+// Renovate (self-hosted in .github/workflows/renovate.yaml), scoped to the platform apps that run our own images:
+// today only helm-charts/backstage (ghcr.io/staffops/backstage-platform). Same rules as StaffOps/homelab-gitops-apps:
+// a PR when an image of our organizations gets a new semver tag or a new digest of the same tag; third-party images
+// and charts are never touched. Images are pinned as registry/repository/tag/digest blocks (staffops/generic values).
+// Merging the PR deploys it (Argo CD syncs main).
+{
+    $schema: "https://docs.renovatebot.com/renovate-schema.json",
+    extends: ["config:recommended", ":semanticCommits"],
+    timezone: "America/Sao_Paulo",
+    enabledManagers: ["custom.regex"],
+    includePaths: ["helm-charts/backstage/**"],
+    prHourlyLimit: 0,
+    prConcurrentLimit: 10,
+    labels: ["renovate"],
+    // GitHub notifies the owner of each new PR (web, mobile app, e-mail per their notification settings)
+    assignees: ["karlipegomes"],
+    customManagers: [
+        {
+            customType: "regex",
+            description: "image block: registry / repository / tag / digest",
+            managerFilePatterns: ["/\\.ya?ml(\\.gotmpl)?$/"],
+            matchStrings: [
+                "registry:\\s*(?<registry>[^\\s\"']+)\\s*\\n\\s*repository:\\s*(?<repository>[^\\s\"']+)\\s*\\n\\s*tag:\\s*[\"']?(?<currentValue>[^\\s\"']+)[\"']?\\s*\\n\\s*digest:\\s*(?<currentDigest>sha256:[a-f0-9]{64})",
+            ],
+            depNameTemplate: "{{{registry}}}/{{{repository}}}",
+            datasourceTemplate: "docker",
+        },
+        {
+            customType: "regex",
+            description: "inline image: <ref>:<tag>@sha256:<digest>",
+            managerFilePatterns: ["/\\.ya?ml(\\.gotmpl)?$/"],
+            matchStrings: [
+                "image:\\s*[\"']?(?<depName>[^\\s:@\"']+):(?<currentValue>[^\\s@\"']+)@(?<currentDigest>sha256:[a-f0-9]{64})",
+            ],
+            datasourceTemplate: "docker",
+        },
+    ],
+    packageRules: [
+        // Nothing by default...
+        {
+            matchPackageNames: ["*"],
+            enabled: false,
+        },
+        // ...only our own images, as soon as they are published, one PR per image
+        {
+            matchDatasources: ["docker"],
+            matchPackageNames: ["ghcr.io/personalaigent/**", "ghcr.io/staffops/**", "ghcr.io/staffops-mentoring/**"],
+            enabled: true,
+            addLabels: ["own-image"],
+            schedule: ["at any time"],
+            minimumReleaseAge: null,
+        },
+        // Backstage: semver release tags only, never a sha-… tag
+        {
+            matchPackageNames: ["ghcr.io/staffops/backstage-platform"],
+            allowedVersions: "/^v\\d+\\.\\d+\\.\\d+$/",
+        },
+    ],
+}

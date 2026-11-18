@@ -57,9 +57,10 @@ a DefectDojo Pro feature since [3.0](https://docs.defectdojo.com/releases/os_upg
 
 | Client | Vault path and key |
 |--------|--------------------|
-| `argocd`, `grafana`, `vault`, `hermes`, `backstage`, `keycloak-mcp` | `homelab/oidc`, key = client name |
+| `argocd`, `grafana`, `vault`, `hermes`, `keycloak-mcp` | `homelab/oidc`, key = client name |
 | `harbor` | `homelab/harbor`, `oidc-client-secret` |
 | `argo-workflows` | `homelab/argo-workflows`, `oidc-client-secret` |
+| `backstage` | `homelab/backstage`, `oidc-client-secret` (overrides the old `homelab/oidc` key `backstage`) |
 | `dependency-track` | none: public client (browser login, PKCE) |
 
 ### Break-glass local logins
@@ -163,7 +164,8 @@ account only holds realm-management view/query roles).
 
 The `mcp` Gateway rejects any request without a Keycloak JWT of realm `staffops` whose `groups` contain `/mcp/admin`
 or `/mcp/viewer` (gateway-raw: RequestAuthentication + AuthorizationPolicy). People join one of those groups.
-Services use their own client with client_credentials (`hermes`, `backstage`, secrets in Vault `homelab/oidc`); their
+Services use their own client with client_credentials (`hermes`, secret in Vault `homelab/oidc`; `backstage`, which
+also does the browser login, secret in `homelab/backstage` `oidc-client-secret`); their
 service-account users are in `/mcp/viewer`:
 
 ```bash
