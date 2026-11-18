@@ -1,6 +1,7 @@
 # Read-only identity of Backstage's Kubernetes plugin, on k8s01 and on the VPS (included by values-vps.yaml.gotmpl too).
 # Lives here, with the other machine readers, until Backstage is a platform app of its own. Only what the plugin shows
-# (workloads, services, routes, events, metrics); never Secrets, ConfigMaps or pods/log, and no write verb.
+# (workloads, services, routes, events, metrics); never Secrets, ConfigMaps or pods/log (except the workflow pods:
+# argo-workflows-raw rbac.yaml), and no write verb.
 # Long-lived token in Secret backstage-reader-token (filled by the token controller); the operator copies it with
 # ca.crt to Vault homelab/backstage (k8s01-token/k8s01-ca, vps-token/vps-ca). Rotate: delete the Secret, copy again.
 - apiVersion: v1
@@ -41,7 +42,7 @@
         resources: [pods]
         verbs: [get, list]
       # Argo Rollouts, and Argo Workflows through argo-server --auth-mode=client (the same token as a Bearer: the
-      # server applies this RBAC); no submit/retry/delete, no workflow logs (pods/log)
+      # server applies this RBAC); no submit/retry/delete; workflow logs come from a Role in argo-workflows
       - apiGroups: [argoproj.io]
         resources: [rollouts, workflows, workflowtemplates, cronworkflows, clusterworkflowtemplates, workfloweventbindings]
         verbs: [get, list, watch]
