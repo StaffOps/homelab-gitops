@@ -2,7 +2,8 @@
 # (client backstage, groups /backstage/admin and /backstage/viewer). Release backstage = the workload (staffops/generic:
 # Deployment, Service, HTTPRoute on the shared Gateway, ExternalSecret of the credentials mounted at /run/secrets; the
 # app-config files are baked into the image); backstage-raw = PostgreSQL (CloudNativePG Cluster backstage-db, backed up to R2), the ghcr pull
-# Secret and the PreSync Backup (ADR 0001 of backstage-platform: a backup before every deploy).
+# Secret. Backups: daily base backups + continuous WAL to R2, point-in-time recovery (ADR 0001 of backstage-platform,
+# amended: no PreSync backup hook).
 # Image: ghcr.io/staffops/backstage-platform, semver tag + digest in backstage/values.yaml.gotmpl; Renovate opens the
 # bump PR (renovate.json5 at the repo root), merging it deploys.
 repositories:
@@ -23,9 +24,6 @@ environments:
             - backstage-raw:
                   enabled: true
                   version: 2.0.2
-                  # On-demand CNPG Backup as an Argo CD PreSync hook: every sync (deploys AND self-heal syncs) waits
-                  # for a completed base backup. Turn off for the very first sync (no Cluster yet, see the file).
-                  preSyncBackup: true
 ---
 templates:
     default: &default
@@ -34,7 +32,7 @@ templates:
         values:
             - ./{{`{{ .Release.Name }}`}}/values.yaml.gotmpl
 releases:
-    # PostgreSQL Cluster + backups, ghcr pull Secret, PreSync Backup
+    # PostgreSQL Cluster + backups, ghcr pull Secret
     - chart: bedag/raw
       name: backstage-raw
       condition: backstage-raw.enabled
