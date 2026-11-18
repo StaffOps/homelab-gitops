@@ -152,13 +152,13 @@
                       prune: true
                       selfHeal: true
                   # Retry long enough to outlast a dependency that is briefly missing (e.g. an ExternalSecret whose Vault
-                  # key arrives later): 30 s doubling to 10 min, 30 tries ≈ 4 h, instead of giving up after ~35 min
+                  # key arrives later): 30 s doubling to 5 min, 15 tries ≈ 1 h, instead of giving up after ~35 min
                   retry:
-                      limit: 30
+                      limit: 15
                       backoff:
                           duration: 30s
                           factor: 2
-                          maxDuration: 10m
+                          maxDuration: 5m
                   syncOptions:
                       - CreateNamespace=true
                       - ServerSideApply=true
