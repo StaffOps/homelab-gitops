@@ -151,12 +151,14 @@
                   automated:
                       prune: true
                       selfHeal: true
+                  # Retry long enough to outlast a dependency that is briefly missing (e.g. an ExternalSecret whose Vault
+                  # key arrives later): 30 s doubling to 10 min, 30 tries ≈ 4 h, instead of giving up after ~35 min
                   retry:
-                      limit: 10
+                      limit: 30
                       backoff:
                           duration: 30s
                           factor: 2
-                          maxDuration: 5m
+                          maxDuration: 10m
                   syncOptions:
                       - CreateNamespace=true
                       - ServerSideApply=true
