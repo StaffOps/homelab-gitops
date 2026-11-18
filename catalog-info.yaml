@@ -8,6 +8,7 @@ metadata:
   description: "GitOps for a single-node Kubernetes homelab: Argo CD, Vault, Keycloak SSO, Istio ambient, Prometheus/Grafana/Loki/Tempo, CloudNativePG, Velero → Cloudflare R2, GPU LLM and MCP servers."
   annotations:
     github.com/project-slug: StaffOps/homelab-gitops
+    argoworkflows.argoproj.io/workflow-selector: app.kubernetes.io/part-of=image-scan
   links:
     - url: https://github.com/StaffOps/homelab-gitops
       title: Repository
