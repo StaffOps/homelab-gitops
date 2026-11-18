@@ -9,8 +9,8 @@ fullnameOverride: backstage
 image:
     registry: ghcr.io
     repository: staffops/backstage-platform
-    tag: "v0.1.3"
-    digest: "sha256:bcf936d16db5b72e74b12d5409869a4ac2418b77e596d3dc810e27d46174b95c"
+    tag: "v0.1.5"
+    digest: "sha256:f706a7e2c9203033cf7203fddf7862e4f21e462b3926275812b62e83d6f185e1"
 imagePullSecrets:
     - name: backstage-ghcr # backstage-raw, from Vault homelab/argocd-ghcr-charts
 args:
@@ -23,6 +23,9 @@ args:
     - app-config.integrations.yaml
     - --config
     - app-config.k8s.yaml
+    # static external-access token of the TechDocs builder (subject techdocs-builder, catalog.entity.read only)
+    - --config
+    - app-config.techdocs-builder.yaml
 ports:
     - name: http
       containerPort: 7007

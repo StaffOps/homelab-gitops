@@ -58,6 +58,7 @@ domains:
             lifecycle: experimental
             images:
                 - package: backstage-platform
+                - package: backstage-platform-techdocs
     - name: PersonalAIgent
       org: PersonalAIgent
       systems:

@@ -1,0 +1,188 @@
+# techdocs-build: every hour, build the TechDocs of every catalog entity annotated backstage.io/techdocs-ref and
+# publish them to R2 bucket staffops-techdocs, where Backstage reads them (read-only token, techdocs.builder external).
+# 1. list the entities from the Backstage catalog API (static token, subject techdocs-builder, catalog read only);
+# 2. group them by source repository (backstage.io/source-location) and docs directory (techdocs-ref dir:…);
+# 3. per owner, a GitHub App installation token downscoped to contents:read (gh-app-token in the image);
+# 4. shallow clone each repository once, techdocs-cli generate once per docs directory, publish once per entity.
+# A failing repository does not stop the others; the run ends Failed if any failed (shown in Argo Workflows).
+# Image: ghcr.io/staffops/backstage-platform-techdocs (StaffOps/backstage-platform, golden node:24 + mkdocs).
+# Secrets: Vault homelab/techdocs-builder (docs/runbooks/vault.md). R2 endpoint: Argo CD render env R2_ENDPOINT.
+- apiVersion: external-secrets.io/v1
+  kind: ExternalSecret
+  metadata:
+      name: techdocs-builder
+  spec:
+      refreshInterval: 1h
+      secretStoreRef:
+          kind: ClusterSecretStore
+          name: vault
+      target:
+          name: techdocs-builder
+      data:
+          {{- range $k, $p := dict "AWS_ACCESS_KEY_ID" "r2-access-key-id" "AWS_SECRET_ACCESS_KEY" "r2-secret-access-key" "BACKSTAGE_TOKEN" "backstage-token" "GITHUB_APP_ID" "github-app-id" "github-app.pem" "github-app-private-key" }}
+          - secretKey: {{ $k }}
+            remoteRef:
+                key: {{ $.Values.vault.prefix }}/techdocs-builder
+                property: {{ $p }}
+          {{- end }}
+# Pull secret of the private builder image (classic PAT read:packages, Vault homelab/argocd-ghcr-charts)
+- apiVersion: external-secrets.io/v1
+  kind: ExternalSecret
+  metadata:
+      name: techdocs-builder-ghcr
+  spec:
+      refreshInterval: 1h
+      secretStoreRef:
+          kind: ClusterSecretStore
+          name: vault
+      target:
+          name: techdocs-builder-ghcr
+          template:
+              type: kubernetes.io/dockerconfigjson
+              engineVersion: v2
+              data:
+                  .dockerconfigjson: '{{`{"auths":{"ghcr.io":{"auth":"{{ printf "%s:%s" .username .token | b64enc }}"}}}`}}'
+      data:
+          - secretKey: username
+            remoteRef:
+                key: {{ .Values.vault.prefix }}/argocd-ghcr-charts
+                property: username
+          - secretKey: token
+            remoteRef:
+                key: {{ .Values.vault.prefix }}/argocd-ghcr-charts
+                property: token
+- apiVersion: argoproj.io/v1alpha1
+  kind: CronWorkflow
+  metadata:
+      name: techdocs-build
+  spec:
+      schedules:
+          - "17 * * * *"
+      timezone: UTC
+      concurrencyPolicy: Forbid
+      startingDeadlineSeconds: 600
+      successfulJobsHistoryLimit: 3
+      failedJobsHistoryLimit: 3
+      workflowSpec:
+          entrypoint: build
+          activeDeadlineSeconds: 3000
+          ttlStrategy:
+              secondsAfterSuccess: 86400
+          podGC:
+              strategy: OnPodSuccess
+          imagePullSecrets:
+              - name: techdocs-builder-ghcr
+          securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              runAsGroup: 65532
+              fsGroup: 65532
+              seccompProfile:
+                  type: RuntimeDefault
+          volumes:
+              - name: work
+                emptyDir: {}
+              - name: tmp
+                emptyDir: {}
+              - name: github-app
+                secret:
+                    secretName: techdocs-builder
+                    defaultMode: 288 # 0440
+                    items:
+                        - key: github-app.pem
+                          path: github-app.pem
+          templates:
+              - name: build
+                container:
+                    image: ghcr.io/staffops/backstage-platform-techdocs:v0.1.5@sha256:230b0bc67fdaca4297de8f8494b5c3a71a9f6a340bbef8ca0c952d67ff545e89
+                    command: [bash, -c]
+                    args:
+                        - |
+                          set -uo pipefail
+                          cd /work
+                          if ! curl -sf -H "Authorization: Bearer $BACKSTAGE_TOKEN" \
+                              "$BACKSTAGE_URL/api/catalog/entities?filter=metadata.annotations.backstage.io/techdocs-ref" \
+                              -o entities.json; then
+                              echo "FAILED: catalog API"; exit 1
+                          fi
+                          # namespace kind name owner repo branch docsdir
+                          jq -r '.[] | [ (.metadata.namespace // "default"), .kind, .metadata.name,
+                                  (.metadata.annotations["backstage.io/source-location"] // ""),
+                                  (.metadata.annotations["backstage.io/techdocs-ref"] // "") ] | @tsv' entities.json |
+                          while IFS=$'\t' read -r ns kind name src ref; do
+                              if [[ "$src" =~ ^url:https://github\.com/([^/]+)/([^/]+)/tree/([^/]+)/?(.*)$ ]] && [[ "$ref" == dir:* ]]; then
+                                  owner=${BASH_REMATCH[1]}; repo=${BASH_REMATCH[2]%.git}; branch=${BASH_REMATCH[3]}
+                                  sub=${BASH_REMATCH[4]%/}; dir=${ref#dir:}; dir=${dir#./}; dir=${dir%/}
+                                  path=${sub:+$sub/}${dir:-.}; path=${path%/.}
+                                  printf '%s\t%s\t%s\t%s\t%s/%s/%s\n' "$owner" "$repo" "$branch" "${path:-.}" "$ns" "$kind" "$name"
+                              else
+                                  echo "SKIP $ns/$kind/$name: source-location '$src' or techdocs-ref '$ref' not supported" >&2
+                              fi
+                          done | sort -u > plan.tsv
+                          echo "$(wc -l < plan.tsv) entities in $(cut -f1-3 plan.tsv | sort -u | wc -l) repositories"
+                          failed=0; built=0
+                          declare -A tokens
+                          for key in $(cut -f1-3 plan.tsv | sort -u | tr '\t' '|'); do
+                              IFS='|' read -r owner repo branch <<< "$key"
+                              if [ -z "${tokens[$owner]:-}" ]; then
+                                  tokens[$owner]=$(GITHUB_APP_KEY_FILE=/github-app/github-app.pem gh-app-token "$owner") || {
+                                      echo "FAILED $owner: installation token"; failed=$((failed+1)); continue; }
+                              fi
+                              rm -rf src && mkdir src
+                              if ! git clone -q --depth 1 --branch "$branch" \
+                                  "https://x-access-token:${tokens[$owner]}@github.com/$owner/$repo.git" src 2>clone.err; then
+                                  echo "FAILED $owner/$repo@$branch: clone"; sed 's/x-access-token:[^@]*@/x-access-token:***@/' clone.err; failed=$((failed+1)); continue
+                              fi
+                              for path in $(awk -F'\t' -v o="$owner" -v r="$repo" -v b="$branch" '$1==o && $2==r && $3==b {print $4}' plan.tsv | sort -u); do
+                                  rm -rf site
+                                  if ! techdocs-cli generate --no-docker --source-dir "src/$path" --output-dir site >gen.log 2>&1; then
+                                      echo "FAILED $owner/$repo:$path: generate"; tail -20 gen.log; failed=$((failed+1)); continue
+                                  fi
+                                  for entity in $(awk -F'\t' -v o="$owner" -v r="$repo" -v b="$branch" -v p="$path" '$1==o && $2==r && $3==b && $4==p {print $5}' plan.tsv); do
+                                      if techdocs-cli publish --publisher-type awsS3 --storage-name staffops-techdocs \
+                                          --entity "$entity" --awsEndpoint "$R2_ENDPOINT" --awsS3ForcePathStyle \
+                                          --directory site >pub.log 2>&1; then
+                                          echo "OK $entity <- $owner/$repo:$path"; built=$((built+1))
+                                      else
+                                          echo "FAILED $entity: publish"; tail -20 pub.log; failed=$((failed+1))
+                                      fi
+                                  done
+                              done
+                          done
+                          echo "published $built, failed $failed"
+                          [ "$failed" -eq 0 ]
+                    env:
+                        - name: HOME
+                          value: /work
+                        - name: BACKSTAGE_URL
+                          value: http://backstage.backstage.svc:7007
+                        - name: R2_ENDPOINT
+                          value: {{ env "R2_ENDPOINT" | default "https://r2.invalid" | quote }}
+                        - name: AWS_REGION
+                          value: auto
+                        {{- range list "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "BACKSTAGE_TOKEN" "GITHUB_APP_ID" }}
+                        - name: {{ . }}
+                          valueFrom:
+                              secretKeyRef:
+                                  name: techdocs-builder
+                                  key: {{ . }}
+                        {{- end }}
+                    volumeMounts:
+                        - name: work
+                          mountPath: /work
+                        - name: tmp
+                          mountPath: /tmp
+                        - name: github-app
+                          mountPath: /github-app
+                          readOnly: true
+                    securityContext:
+                        allowPrivilegeEscalation: false
+                        readOnlyRootFilesystem: true
+                        capabilities:
+                            drop: [ALL]
+                    resources:
+                        requests:
+                            cpu: 200m
+                            memory: 512Mi
+                        limits:
+                            memory: 1536Mi
