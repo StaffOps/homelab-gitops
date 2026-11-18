@@ -1,0 +1,44 @@
+site_name: homelab-gitops
+site_description: "GitOps for a single-node Kubernetes homelab: Argo CD, Vault, Keycloak SSO, Istio ambient, Prometheus/Grafana/Loki/Tempo, CloudNativePG, Velero to Cloudflare R2, GPU LLM and MCP servers."
+repo_url: https://github.com/StaffOps/homelab-gitops
+edit_uri: edit/main/docs/
+
+nav:
+  - Home: README.md
+  - Overview: overview.md
+  - Architecture: architecture.md
+  - GitOps workflow: gitops-workflow.md
+  - Status: status.md
+  - Glossary: glossary.md
+  - Runbooks:
+      - runbooks/README.md
+      - First install: runbooks/first-install.md
+      - Node: runbooks/node.md
+      - Argo CD: runbooks/argocd.md
+      - Argo Workflows: runbooks/argo-workflows.md
+      - Vault: runbooks/vault.md
+      - SSO: runbooks/sso.md
+      - Backup: runbooks/backup.md
+      - Disaster recovery: runbooks/disaster-recovery.md
+  - Dashboards:
+      - dashboards/README.md
+      - Kubernetes: dashboards/kubernetes.md
+      - Platform: dashboards/platform.md
+      - Observability: dashboards/observability.md
+      - Networking: dashboards/networking.md
+      - Databases: dashboards/databases.md
+      - Security: dashboards/security.md
+      - AI: dashboards/ai.md
+  - Decisions:
+      - adr/README.md
+      - 0001 k3s single node: adr/0001-k3s-single-node.md
+      - 0002 Argo CD ApplicationSet: adr/0002-self-managed-argo-cd-applicationset.md
+      - 0003 Gateway API on Istio ambient: adr/0003-gateway-api-istio-ambient.md
+      - 0004 Cloudflare DNS: adr/0004-cloudflare-dns.md
+      - 0005 Vault in cluster: adr/0005-vault-in-cluster.md
+      - 0006 kubeadm + Calico: adr/0006-kubeadm-calico.md
+      - 0007 Separate apps repository: adr/0007-separate-apps-repository.md
+      - 0008 VPS remote cluster: adr/0008-vps-remote-cluster.md
+
+plugins:
+  - techdocs-core
