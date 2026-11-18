@@ -145,7 +145,7 @@ resources:
                     property: kek
     # Trivy server: the Trivy vulnerability analyzer of Dependency-Track (Administration → Analyzers → Trivy, runtime
     # config in the DT database) sends components here and gets findings back from the Trivy DB (Alpine secdb, GHSA,
-    # distro feeds), the same results as the golden-images scan (same version, 0.76.1). URL
+    # distro feeds), the same results as the image-scan workflow (same version, 0.76.1). URL
     # http://trivy.dependency-track:4954, token from Vault homelab/trivy-server (also stored as DT secret trivy-token).
     - apiVersion: external-secrets.io/v1
       kind: ExternalSecret

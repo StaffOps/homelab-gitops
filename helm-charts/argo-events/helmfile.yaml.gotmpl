@@ -2,7 +2,7 @@
 # node) carries them, Sensors act on them (submit an Argo Workflow, call HTTP, log). Today: Argo CD notifications
 # (sync succeeded/failed, health degraded) arrive at EventSource argocd. GitHub cannot reach the lab, so repositories
 # are watched by polling with Argo Workflows (ClusterWorkflowTemplate github-watch) or a calendar EventSource
-# (golden-images), not by webhooks.
+# (image-scan), not by webhooks.
 repositories:
     - name: argo
       url: https://argoproj.github.io/argo-helm
@@ -24,8 +24,8 @@ environments:
             - argo-events-raw:
                   enabled: true
                   version: 2.0.2
-            # Trivy → Dependency-Track for every image of StaffOps/golden-images (golden-images/values.yaml.gotmpl)
-            - golden-images:
+            # Trivy → Dependency-Track for the images of the GitHub orgs (image-scan/catalog.yaml)
+            - image-scan:
                   enabled: true
                   version: 0.2.0
 ---
@@ -47,10 +47,10 @@ releases:
       needs:
           - argo-events
       <<: *default
-    # Hourly poll of the golden images (calendar EventSource → Sensor → Workflow in argo-workflows)
+    # Hourly poll of the org images (calendar EventSource → Sensor → Workflow in argo-workflows)
     - chart: staffops-private/event
-      name: golden-images
-      condition: golden-images.enabled
+      name: image-scan
+      condition: image-scan.enabled
       needs:
           - argo-events-raw
       <<: *default

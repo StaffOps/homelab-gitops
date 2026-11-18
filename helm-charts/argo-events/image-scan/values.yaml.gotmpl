@@ -1,0 +1,293 @@
+# Image scan: every hour, scan with Trivy each image of the StaffOps, PersonalAIgent and StaffOps-Mentoring orgs
+# listed in catalog.yaml whose digest changed since the last run, and send the CycloneDX SBOM to Dependency-Track.
+# Chart staffops-private/event (StaffOps/private-helm-charts). GitHub cannot reach the lab, so a calendar
+# EventSource polls instead of a webhook.
+#
+#   EventSource image-scan (calendar, :07 every hour) → Sensor image-scan → Workflow image-scan-<id> in
+#   argo-workflows: detect → scan → upload
+#   detect: resolves each image of catalog.yaml to the version(s) to track and their digests (see catalog.yaml),
+#           writes /work/all.tsv (everything resolved) and /work/changed.tsv (digest differs from ConfigMap
+#           image-scan-state, key = <name>@<version> sanitized)
+#   scan:   trivy image <name>@<digest>, once per digest → CycloneDX (components + vulnerabilities)
+#   upload: keeps the Dependency-Track tree Domain → System → image (collections created when missing), sets
+#           parent, tags (domain:, system:, lifecycle:, lang:) and isLatest on every resolved project, uploads the
+#           BOM of the changed ones, then deletes versions of a scanned image that are no longer resolved
+# Credentials (Secret image-scan-scan in argo-workflows, each step gets only its own keys):
+#   GHCR_USERNAME/GHCR_TOKEN: Vault homelab/argocd-ghcr-charts (read:packages, also reads the private images)
+#   DT_API_KEY: Vault homelab/dependency-track-upload, team golden-images-scan (BOM_UPLOAD, PROJECT_CREATION_UPLOAD,
+#   VIEW_PORTFOLIO, PORTFOLIO_MANAGEMENT_READ/CREATE/UPDATE/DELETE)
+# Rescan everything: kubectl -n argo-workflows delete configmap image-scan-state
+description: Trivy → Dependency-Track for the container images of the GitHub orgs (catalog.yaml, hourly digest poll)
+labels:
+    app.kubernetes.io/part-of: image-scan
+eventBusName: default
+eventSource:
+    types:
+        calendar:
+            hourly:
+                schedule: "7 * * * *"
+                timezone: UTC
+sensor:
+    serviceAccountName: argo-events-sensor # may create Workflows in argo-workflows (argo-workflows-raw rbac.yaml)
+    dependencies:
+        - name: tick
+          eventName: hourly
+    triggers:
+        - name: scan
+          retryStrategy:
+              steps: 3
+              duration: 30s
+          argoWorkflow:
+              workflow:
+                  namespace: argo-workflows
+                  serviceAccountName: argo-workflow # executor + ConfigMaps (argo-workflows-raw rbac.yaml)
+                  activeDeadlineSeconds: 3300 # finish before the next tick
+                  volumeClaimTemplates:
+                      - name: work
+                        storage: 5Gi # Trivy DB (~1 GiB unpacked) + SBOMs
+                        storageClassName: {{ .Values.storageClass }}
+                  steps:
+                      - - name: detect
+                          template: detect
+                      - - name: scan
+                          template: scan
+                          when: "{{`{{steps.detect.outputs.parameters.count}}`}} != 0"
+                      - - name: upload
+                          template: upload
+                  templates:
+                      - name: detect
+                        outputs:
+                            parameters:
+                                - name: count
+                                  valueFrom:
+                                      path: /tmp/count
+                        script:
+                            image: &tools
+                                repository: alpine/k8s
+                                tag: "1.36.5"
+                                digest: sha256:094adf64cdc4827377cdbe7ea5747472ce115f9fbc64a4e35970ec66777f9a00
+                            command: [sh]
+                            env:
+                                - name: HOME
+                                  value: /tmp
+                                - name: GHCR_TOKEN
+                                  valueFrom:
+                                      secretKeyRef:
+                                          name: image-scan-scan
+                                          key: GHCR_TOKEN
+                            resources: &small
+                                requests:
+                                    cpu: 10m
+                                    memory: 32Mi
+                                limits:
+                                    memory: 128Mi
+                            volumeMounts: &work
+                                - name: work
+                                  mountPath: /work
+                            source: |
+                                set -eu
+                                cat > /tmp/catalog.json <<'EOF'
+                                {{ readFile "catalog.yaml" | fromYaml | toJson }}
+                                EOF
+                                kubectl -n argo-workflows get configmap image-scan-state -o json 2>/dev/null \
+                                    | jq '.data // {}' > /tmp/state.json || echo '{}' > /tmp/state.json
+                                : > /work/all.tsv
+                                # one line per tracked version:
+                                # name version digest domain system lang lifecycle latest
+                                emit() { echo "$*" >> /work/all.tsv; echo "resolved: $*"; }
+                                ghcr_digest() { # $1 = path (org/package), $2 = tag
+                                    t=$(curl -fsS -u "x:$GHCR_TOKEN" "https://ghcr.io/token?scope=repository:$1:pull&service=ghcr.io" | jq -r .token)
+                                    curl -fsSI -H "Authorization: Bearer $t" \
+                                        -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json' \
+                                        "https://ghcr.io/v2/$1/manifests/$2" | tr -d '\r' \
+                                        | awk -F': ' 'tolower($1)=="docker-content-digest" {print $2}'
+                                }
+                                jq -r '.domains[] | .name as $d | .org as $o | .systems[] | . as $s
+                                    | if .source == "golden-images" then "golden \($d) \($o) \(.name) \(.repo) \(.lang) \(.lifecycle) -"
+                                      else (.images[] | "ghcr \($d) \($o) \($s.name) \(.package) \(.lang // $s.lang) \(.lifecycle // $s.lifecycle) -") end' \
+                                    /tmp/catalog.json |
+                                while read -r kind domain org system ref lang lifecycle _; do
+                                    if [ "$kind" = golden ]; then
+                                        curl -fsSL "https://raw.githubusercontent.com/$ref/main/catalog.json" -o /tmp/gi.json || { echo "FAILED catalog of $ref"; continue; }
+                                        path=$(jq -r '.registry | sub("^ghcr.io/"; "")' /tmp/gi.json)
+                                        # canonical tag = first tag of each entry; isLatest on the entry tagged "latest"
+                                        jq -r '.images[] | "\(.repo) \(.tags[0]) \(.tags | index("latest") != null)"' /tmp/gi.json | sort -u |
+                                        while read -r repo tag latest; do
+                                            digest=$(ghcr_digest "$path/$repo" "$tag")
+                                            [ -n "$digest" ] || { echo "no digest for $path/$repo:$tag"; continue; }
+                                            emit "ghcr.io/$path/$repo $tag $digest $domain $system $lang $lifecycle $latest"
+                                        done
+                                        continue
+                                    fi
+                                    lorg=$(echo "$org" | tr 'A-Z' 'a-z')
+                                    enc=$(printf %s "$ref" | jq -sRr @uri)
+                                    curl -fsS -H "Authorization: Bearer $GHCR_TOKEN" -H 'Accept: application/vnd.github+json' \
+                                        "https://api.github.com/orgs/$org/packages/container/$enc/versions?per_page=100" \
+                                        | jq -r '.[] | .name as $d | .metadata.container.tags[] | "\(.) \($d)"' > /tmp/tags.txt \
+                                        || { echo "FAILED versions of $org/$ref"; continue; }
+                                    # highest semver tag; else the tag sharing the digest of main (or latest); else newest
+                                    pick=$(grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+ ' /tmp/tags.txt | sed 's/^v//' | sort -V -k1,1 | tail -1 | cut -d' ' -f2)
+                                    if [ -n "$pick" ]; then
+                                        line=$(grep -E "^v?[0-9]+\.[0-9]+\.[0-9]+ $pick\$" /tmp/tags.txt | head -1)
+                                    else
+                                        line=""
+                                        for moving in main latest; do
+                                            d=$(awk -v m="$moving" '$1==m {print $2; exit}' /tmp/tags.txt)
+                                            [ -n "$d" ] || continue
+                                            line=$(awk -v d="$d" -v m="$moving" '$2==d && $1!=m && $1!="main" && $1!="latest" {print; exit}' /tmp/tags.txt)
+                                            [ -n "$line" ] || line="$moving $d"
+                                            break
+                                        done
+                                        [ -n "$line" ] || line=$(head -1 /tmp/tags.txt)
+                                    fi
+                                    [ -n "$line" ] || { echo "no tag for $org/$ref"; continue; }
+                                    set -- $line
+                                    emit "ghcr.io/$lorg/$ref $1 $2 $domain $system $lang $lifecycle true"
+                                done
+                                : > /work/changed.tsv
+                                while read -r name version digest rest; do
+                                    key=$(echo "$name@$version" | sed 's#[^-._a-zA-Z0-9]#_#g')
+                                    last=$(jq -r --arg k "$key" '.[$k] // ""' /tmp/state.json)
+                                    [ "$digest" = "$last" ] || { echo "$name $version $digest" >> /work/changed.tsv; echo "changed: $name:$version"; }
+                                done < /work/all.tsv
+                                wc -l < /work/changed.tsv | tr -d ' ' > /tmp/count
+                                echo "$(wc -l < /work/all.tsv | tr -d ' ') resolved, $(cat /tmp/count) to scan"
+                      - name: scan
+                        script:
+                            image:
+                                repository: aquasec/trivy
+                                tag: "0.76.1"
+                                digest: sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+                            command: [sh]
+                            env:
+                                - name: HOME
+                                  value: /tmp
+                                - name: TRIVY_CACHE_DIR
+                                  value: /work/trivy-cache
+                                - name: TRIVY_NO_PROGRESS
+                                  value: "true"
+                                - name: TRIVY_USERNAME
+                                  valueFrom:
+                                      secretKeyRef:
+                                          name: image-scan-scan
+                                          key: GHCR_USERNAME
+                                - name: TRIVY_PASSWORD
+                                  valueFrom:
+                                      secretKeyRef:
+                                          name: image-scan-scan
+                                          key: GHCR_TOKEN
+                            resources:
+                                requests:
+                                    cpu: 100m
+                                    memory: 512Mi
+                                limits:
+                                    memory: 2Gi
+                            volumeMounts: *work
+                            source: |
+                                set -u
+                                mkdir -p /work/bom
+                                failed=0
+                                cut -d' ' -f1,3 /work/changed.tsv | sort -u | while read -r name digest; do
+                                    echo "scanning $name@$digest"
+                                    trivy image --quiet --format cyclonedx --scanners vuln \
+                                        --output "/work/bom/${digest#sha256:}.json" "$name@$digest" \
+                                        || { echo "FAILED $name@$digest"; rm -f "/work/bom/${digest#sha256:}.json"; }
+                                done
+                                exit 0
+                      - name: upload
+                        script:
+                            image: *tools
+                            command: [sh]
+                            env:
+                                - name: HOME
+                                  value: /tmp
+                                - name: DT_URL
+                                  value: http://dependency-track-api-server.dependency-track:8080
+                                - name: DT_API_KEY
+                                  valueFrom:
+                                      secretKeyRef:
+                                          name: image-scan-scan
+                                          key: DT_API_KEY
+                            resources: *small
+                            volumeMounts: *work
+                            source: |
+                                set -eu
+                                api() { curl -fsS -H "X-Api-Key: $DT_API_KEY" "$@"; }
+                                uuid_of() { # name [version] → uuid or empty
+                                    if [ -n "${2:-}" ]; then q="name=$(printf %s "$1" | jq -sRr @uri)&version=$(printf %s "$2" | jq -sRr @uri)"
+                                    else q="name=$(printf %s "$1" | jq -sRr @uri)"; fi
+                                    api "$DT_URL/api/v1/project/lookup?$q" 2>/dev/null | jq -r '.uuid // empty' || true
+                                }
+                                collection() { # name parent-uuid classifier tags-json → uuid (created when missing)
+                                    u=$(uuid_of "$1")
+                                    if [ -z "$u" ]; then
+                                        body=$(jq -n --arg n "$1" --arg p "$2" --arg c "$3" --argjson t "$4" \
+                                            '{name: $n, classifier: $c, collectionLogic: "AGGREGATE_DIRECT_CHILDREN", active: true,
+                                              tags: ($t | map({name: .}))} + (if $p == "" then {} else {parent: {uuid: $p}} end)')
+                                        u=$(api -X PUT -H 'Content-Type: application/json' "$DT_URL/api/v1/project" -d "$body" | jq -r .uuid)
+                                        echo "created collection $1" >&2
+                                    fi
+                                    echo "$u"
+                                }
+                                : > /tmp/uploaded.tsv
+                                failed=0
+                                while read -r name version digest domain system lang lifecycle latest; do
+                                    ld=$(echo "$domain" | tr 'A-Z' 'a-z')
+                                    du=$(collection "$domain" "" APPLICATION "[\"domain:$ld\"]")
+                                    su=$(collection "$system" "$du" APPLICATION "[\"domain:$ld\",\"system:$system\"]")
+                                    tags=$(jq -n --arg d "$ld" --arg s "$system" --arg l "$lifecycle" --arg g "$lang" \
+                                        '["domain:\($d)", "system:\($s)", "lifecycle:\($l)", "lang:\($g)"] | map({name: .})')
+                                    meta=$(jq -n --arg p "$su" --argjson t "$tags" --argjson latest "$latest" \
+                                        '{parent: {uuid: $p}, tags: $t, isLatest: $latest, classifier: "CONTAINER", active: true}')
+                                    pu=$(uuid_of "$name" "$version")
+                                    if [ -z "$pu" ]; then
+                                        pu=$(api -X PUT -H 'Content-Type: application/json' "$DT_URL/api/v1/project" \
+                                            -d "$(echo "$meta" | jq --arg n "$name" --arg v "$version" '. + {name: $n, version: $v}')" | jq -r .uuid) \
+                                            || { echo "FAILED create $name:$version"; failed=1; continue; }
+                                    else
+                                        api -X PATCH -H 'Content-Type: application/json' "$DT_URL/api/v1/project/$pu" -d "$meta" > /dev/null \
+                                            || echo "WARN metadata of $name:$version not updated"
+                                    fi
+                                    bom="/work/bom/${digest#sha256:}.json"
+                                    if grep -q "^$name $version $digest\$" /work/changed.tsv 2>/dev/null; then
+                                        if [ -s "$bom" ] && api -o /dev/null -X POST "$DT_URL/api/v1/bom" -F "project=$pu" -F "bom=@$bom"; then
+                                            echo "$(echo "$name@$version" | sed 's#[^-._a-zA-Z0-9]#_#g') $digest" >> /tmp/uploaded.tsv
+                                            echo "uploaded $name:$version"
+                                        else
+                                            echo "FAILED $name:$version"; failed=1
+                                        fi
+                                    fi
+                                done < /work/all.tsv
+                                # versions of a scanned image that are no longer tracked
+                                cut -d' ' -f1 /work/all.tsv | sort -u | while read -r name; do
+                                    keep=$(awk -v n="$name" '$1==n {print $2}' /work/all.tsv)
+                                    api "$DT_URL/api/v1/project?name=$(printf %s "$name" | jq -sRr @uri)&pageSize=500" \
+                                        | jq -r --arg n "$name" '.[] | select(.name == $n) | "\(.uuid) \(.version)"' |
+                                    while read -r u v; do
+                                        echo "$keep" | grep -qxF "$v" && continue
+                                        api -o /dev/null -X DELETE "$DT_URL/api/v1/project/$u" && echo "deleted $name:$v"
+                                    done
+                                done
+                                if [ -s /tmp/uploaded.tsv ]; then
+                                    kubectl -n argo-workflows get configmap image-scan-state >/dev/null 2>&1 \
+                                        || kubectl -n argo-workflows create configmap image-scan-state
+                                    patch=$(jq -R -s 'split("\n") | map(select(length > 0) | split(" ")) | map({(.[0]): .[1]}) | add | {data: .}' /tmp/uploaded.tsv)
+                                    kubectl -n argo-workflows patch configmap image-scan-state --type merge -p "$patch"
+                                fi
+                                exit $failed
+                  externalSecret: # Secret image-scan-scan in argo-workflows
+                      enabled: true
+                      envFrom: false
+                      data:
+                          - secretKey: DT_API_KEY
+                            remoteRef:
+                                key: {{ .Values.vault.prefix }}/dependency-track-upload
+                                property: api-key
+                          - secretKey: GHCR_USERNAME
+                            remoteRef:
+                                key: {{ .Values.vault.prefix }}/argocd-ghcr-charts
+                                property: username
+                          - secretKey: GHCR_TOKEN
+                            remoteRef:
+                                key: {{ .Values.vault.prefix }}/argocd-ghcr-charts
+                                property: token

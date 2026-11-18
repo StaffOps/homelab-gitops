@@ -1,0 +1,100 @@
+# Images scanned by the image-scan workflow (Trivy → Dependency-Track), organized like the future Backstage
+# catalog: Domain (GitHub org) → System (repository / product) → Component (one image).
+#
+# In Dependency-Track: Domain and System are collection projects (created once by an admin, see
+# docs/runbooks/dependency-track.md); each image is a project named after its reference (ghcr.io/<org>/<package>)
+# whose versions are the scanned tags, child of its System.
+#
+# Per system:
+#   source: golden-images   versions = canonical tag (first tag) of each catalog.json entry of the repository
+#   source: ghcr            images = packages of the org; version = highest semver tag, else the tag sharing the
+#                           digest of "main" (or "latest"), else the newest tag
+#   lifecycle: production (deployed) | experimental (in test, not deployed); per image, it overrides the system's
+#   lang: go | python | dotnet | node | multi
+# A new system needs its collection in DT first (the upload names it as parent).
+domains:
+    - name: StaffOps
+      org: StaffOps
+      systems:
+          - name: golden-images
+            source: golden-images
+            repo: StaffOps/golden-images
+            lifecycle: production
+            lang: multi
+          - name: chaitops
+            source: ghcr
+            repo: StaffOps/chaitops
+            lang: python
+            lifecycle: experimental
+            images:
+                - package: chaitops/agent-api
+                  lifecycle: production
+                - package: chaitops/claude-runner
+                  lifecycle: production
+                - package: chaitops/kiro-runner
+                - package: chaitops/opencode-runner
+          - name: anomaly-detection
+            source: ghcr
+            repo: StaffOps/anomaly-detection
+            lifecycle: experimental
+            images:
+                - package: staffops-anomaly-detection/controller
+                  lang: go
+                - package: staffops-anomaly-detection/worker
+                  lang: go
+                - package: staffops-anomaly-detection/ml
+                  lang: python
+          - name: aigent-squad
+            source: ghcr
+            repo: StaffOps/aigent-squad
+            lang: python
+            lifecycle: experimental
+            images:
+                - package: aigent-squad
+    - name: PersonalAIgent
+      org: PersonalAIgent
+      systems:
+          - name: center-ai-dashboard
+            source: ghcr
+            repo: PersonalAIgent/center-ai-dashboard
+            lang: go
+            lifecycle: production
+            images:
+                - package: center
+          - name: hermes-local-project
+            source: ghcr
+            repo: PersonalAIgent/hermes-local-project
+            lang: python
+            lifecycle: production
+            images:
+                - package: hermes-docs
+          - name: personal-assistant
+            source: ghcr
+            repo: PersonalAIgent/personal-assistant
+            lang: node
+            lifecycle: production
+            images:
+                - package: openclaw-exec
+                - package: openclaw-poller
+    - name: StaffOps-Mentoring
+      org: StaffOps-Mentoring
+      systems:
+          # lab apps of the mentoring program (used by the students, not deployed here); the unprefixed packages and
+          # the copies under the user karlipegomes are the old names, not scanned
+          - name: mentoria-apps
+            source: ghcr
+            repo: StaffOps-Mentoring/mentoria-apps
+            lang: go
+            lifecycle: experimental
+            images:
+                - package: mentoria-apps/staffops-api
+                - package: mentoria-apps/staffops-cofre
+                - package: mentoria-apps/staffops-sonda
+                - package: mentoria-apps/staffops-vitrine
+          - name: mentoria-roadmap
+            source: ghcr
+            repo: StaffOps-Mentoring/mentoria-roadmap
+            lang: multi
+            lifecycle: production
+            images:
+                - package: mentoria-portal
