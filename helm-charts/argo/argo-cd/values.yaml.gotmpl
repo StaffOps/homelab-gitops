@@ -15,6 +15,7 @@ configs:
     cm:
         admin.enabled: true # local admin kept as break-glass (Keycloak down)
         accounts.mcp: apiKey # token for the Argo CD MCP server (Vault homelab/mcp: argocd-token)
+        accounts.backstage: apiKey # token for the Backstage Argo CD plugin (Vault homelab/backstage: argocd-token)
         # token for Argo Workflows (ClusterWorkflowTemplate argocd-sync; Vault homelab/argo-workflows: argocd-token)
         accounts.argo-workflows: apiKey
         # Links from Argo Workflows objects to their page in the Argo Workflows UI
@@ -88,6 +89,7 @@ configs:
             g, /argocd/admin, role:admin
             g, /argocd/viewer, role:readonly
             g, mcp, role:readonly
+            g, backstage, role:readonly
             p, role:workflows, applications, get, */*, allow
             p, role:workflows, applications, sync, */*, allow
             g, argo-workflows, role:workflows

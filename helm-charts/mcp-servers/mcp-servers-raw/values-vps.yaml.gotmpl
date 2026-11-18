@@ -2,6 +2,7 @@
 # values.yaml.gotmpl: the shared RBAC (resources/rbac.yaml, readers = mcp-reader) plus vps/.
 resources:
     {{- tpl (readFile "./resources/rbac.yaml") $ | nindent 4 }}
+    {{- tpl (readFile "./resources/backstage-reader.yaml") $ | nindent 4 }}
     {{- range $f := readDir "./vps" }}
     {{- tpl (readFile (printf "./%s" $f)) $ | nindent 4 }}
     {{- end }}

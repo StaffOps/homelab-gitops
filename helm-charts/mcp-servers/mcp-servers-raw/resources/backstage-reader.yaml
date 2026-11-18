@@ -1,0 +1,57 @@
+# Read-only identity of Backstage's Kubernetes plugin, on k8s01 and on the VPS (included by values-vps.yaml.gotmpl too).
+# Lives here, with the other machine readers, until Backstage is a platform app of its own. Only what the plugin shows
+# (workloads, services, routes, events, metrics); never Secrets, ConfigMaps or pods/log, and no write verb.
+# Long-lived token in Secret backstage-reader-token (filled by the token controller); the operator copies it with
+# ca.crt to Vault homelab/backstage (k8s01-token/k8s01-ca, vps-token/vps-ca). Rotate: delete the Secret, copy again.
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+      name: backstage-reader
+- apiVersion: v1
+  kind: Secret
+  type: kubernetes.io/service-account-token
+  metadata:
+      name: backstage-reader-token
+      annotations:
+          kubernetes.io/service-account.name: backstage-reader
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+      name: backstage-read
+  rules:
+      - apiGroups: [""]
+        resources: [pods, services, endpoints, events, limitranges, resourcequotas, namespaces]
+        verbs: [get, list, watch]
+      - apiGroups: [apps]
+        resources: [deployments, replicasets, statefulsets, daemonsets]
+        verbs: [get, list, watch]
+      - apiGroups: [batch]
+        resources: [jobs, cronjobs]
+        verbs: [get, list, watch]
+      - apiGroups: [autoscaling]
+        resources: [horizontalpodautoscalers]
+        verbs: [get, list, watch]
+      - apiGroups: [networking.k8s.io]
+        resources: [ingresses]
+        verbs: [get, list, watch]
+      - apiGroups: [gateway.networking.k8s.io]
+        resources: [httproutes, gateways]
+        verbs: [get, list, watch]
+      - apiGroups: [metrics.k8s.io]
+        resources: [pods]
+        verbs: [get, list]
+      - apiGroups: [argoproj.io]
+        resources: [rollouts]
+        verbs: [get, list, watch]
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+      name: backstage-read
+  roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: backstage-read
+  subjects:
+      - kind: ServiceAccount
+        name: backstage-reader
+        namespace: {{ .Release.Namespace }}
