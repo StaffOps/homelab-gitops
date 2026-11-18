@@ -104,6 +104,11 @@ vault:
 # Velero backups to Cloudflare R2 (S3-compatible). The bucket is created by hand in the Cloudflare dashboard.
 # Credentials AND the S3 endpoint (it contains the Cloudflare account id) live in Vault homelab/velero, never here;
 # the endpoint reaches the BackupStorageLocation through the Argo CD render env (argocd-render-env).
+# Logs and artifacts of Argo Workflows: own R2 bucket and token (Vault homelab/argo-workflows-r2, scoped to this bucket
+# only), apart from the backups: argo-server reads that Secret with the caller's token (Backstage's reader included).
+# Created by hand in the Cloudflare dashboard, with a 30-day lifecycle rule (the workflow archive keeps 30 days).
+workflowArtifacts:
+    bucket: staffops-k8s-argo-workflows
 backup:
     bucket: staffops-k8s-local-velero
     ttl: 720h # 30 days

@@ -100,13 +100,13 @@ server:
             memory: 64Mi
         limits:
             memory: 256Mi
-# Logs and artifacts of every workflow in R2 (same bucket and token as Velero, prefix argo-workflows/). Endpoint from
-# R2_ENDPOINT (Argo CD render env), never in git; credentials from Vault homelab/velero (ExternalSecret).
+# Logs and artifacts of every workflow in R2 (own bucket workflowArtifacts.bucket, prefix argo-workflows/). Endpoint from
+# R2_ENDPOINT (Argo CD render env), never in git; credentials from Vault homelab/argo-workflows-r2 (ExternalSecret).
 useStaticCredentials: true
 artifactRepository:
     archiveLogs: true
     s3:
-        bucket: {{ .Values.backup.bucket }}
+        bucket: {{ .Values.workflowArtifacts.bucket }}
         endpoint: {{ $r2 | default "r2.invalid" }}
         region: auto
         insecure: false

@@ -153,3 +153,26 @@
       - kind: ServiceAccount
         name: backstage-reader
         namespace: mcp-servers
+# Archived step logs (archiveLogs → R2): argo-server reads the artifact repository Secret with the caller's token,
+# so Backstage needs that one Secret. It holds only the token scoped to the workflow-artifacts bucket.
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  metadata:
+      name: backstage-workflow-artifacts
+  rules:
+      - apiGroups: [""]
+        resources: [secrets]
+        resourceNames: [argo-workflows-r2]
+        verbs: [get]
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+      name: backstage-workflow-artifacts
+  roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: Role
+      name: backstage-workflow-artifacts
+  subjects:
+      - kind: ServiceAccount
+        name: backstage-reader
+        namespace: mcp-servers

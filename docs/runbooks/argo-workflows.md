@@ -23,7 +23,7 @@ secrets.
 
 | Tool | Namespace | Where | What it does here |
 |------|-----------|-------|-------------------|
-| Argo Workflows | `argo-workflows` | https://argo-workflows.staffops.space (Keycloak) | runs workflows and CronWorkflows; archive in `workflows-db` (CloudNativePG, 30 days), logs and artifacts in R2 (`argo-workflows/` prefix) |
+| Argo Workflows | `argo-workflows` | https://argo-workflows.staffops.space (Keycloak) | runs workflows and CronWorkflows; archive in `workflows-db` (CloudNativePG, 30 days), logs and artifacts in R2 (own bucket `staffops-k8s-argo-workflows`, `argo-workflows/` prefix, token in Vault `argo-workflows-r2`) |
 | Argo Events | `argo-events` | — | EventBus `default` (NATS JetStream, 1 server); EventSource `argocd` receives Argo CD notifications; Sensors start workflows |
 | Argo Rollouts | `argo-rollouts` | Argo CD UI (Rollout tab) | canary / blue-green for `Rollout` objects, Gateway API traffic split, analysis with the ClusterAnalysisTemplates `success-rate`, `p95-latency`, `pod-restarts` |
 
