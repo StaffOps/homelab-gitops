@@ -40,8 +40,10 @@
       - apiGroups: [metrics.k8s.io]
         resources: [pods]
         verbs: [get, list]
+      # Argo Rollouts, and Argo Workflows through argo-server --auth-mode=client (the same token as a Bearer: the
+      # server applies this RBAC); no submit/retry/delete, no workflow logs (pods/log)
       - apiGroups: [argoproj.io]
-        resources: [rollouts]
+        resources: [rollouts, workflows, workflowtemplates, cronworkflows, clusterworkflowtemplates, workfloweventbindings]
         verbs: [get, list, watch]
 - apiVersion: rbac.authorization.k8s.io/v1
   kind: ClusterRoleBinding
