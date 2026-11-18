@@ -51,6 +51,13 @@ domains:
             lifecycle: experimental
             images:
                 - package: aigent-squad
+          - name: backstage-platform
+            source: ghcr
+            repo: StaffOps/backstage-platform
+            lang: node
+            lifecycle: experimental
+            images:
+                - package: backstage-platform
     - name: PersonalAIgent
       org: PersonalAIgent
       systems:
