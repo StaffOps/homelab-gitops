@@ -4,7 +4,10 @@ grafana:
     apiKeySecret:
         name: mcp-credentials # ExternalSecret in mcp-servers-raw (Vault homelab/mcp: grafana-token)
         key: grafana-token
-disableWrite: true
+# TEMPORARY (owner decision 2026-11-19): write mode on for the otel-libs dashboard import (folder demo-otel-libs).
+# Every /mcp/* caller can write to Grafana as sa-1-mcp (Editor) while this is false. Set back to true when the owner
+# says so.
+disableWrite: false
 # No own bearer token: callers authenticate at the Gateway "mcp" (Keycloak JWT), which strips the
 # Authorization header before forwarding; a chart-generated token would reject every request with 401.
 serverAuth:
