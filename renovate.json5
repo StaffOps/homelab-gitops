@@ -2,7 +2,9 @@
 // today only helm-charts/backstage (ghcr.io/staffops/backstage-platform). Same rules as StaffOps/homelab-gitops-apps:
 // a PR when an image of our organizations gets a new semver tag or a new digest of the same tag; third-party images
 // and charts are never touched. Images are pinned as registry/repository/tag/digest blocks (staffops/generic values).
-// Merging the PR deploys it (Argo CD syncs main).
+// Our own images are merged automatically (automerge): the release is validated in the source repo before the tag
+// (backstage-platform docs/releasing.md: exact k8s config set, readiness, OIDC), so the bump PR needs no human step.
+// The PR stays as the audit trail of each deploy; Argo CD syncs main after the merge.
 {
     $schema: "https://docs.renovatebot.com/renovate-schema.json",
     extends: ["config:recommended", ":semanticCommits"],
@@ -49,6 +51,15 @@
             addLabels: ["own-image"],
             schedule: ["at any time"],
             minimumReleaseAge: null,
+            // Auto-deploy: Renovate merges its own PR (no human step). platformAutomerge stays off because the repo
+            // does not enable GitHub auto-merge; ignoreTests because this repo has no status checks to wait for.
+            // ROLLBACK: reverting a bump is not enough - the next run (<=30 min) re-opens and re-merges the newer tag.
+            // Revert AND pin here until a fixed version ships, e.g. a rule for that package with
+            // allowedVersions: "<=v0.1.N" (or enabled: false); remove the pin afterwards.
+            automerge: true,
+            automergeType: "pr",
+            platformAutomerge: false,
+            ignoreTests: true,
         },
         // Backstage: semver release tags only, never a sha-… tag
         {

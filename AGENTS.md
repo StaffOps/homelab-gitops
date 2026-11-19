@@ -23,6 +23,7 @@ Read first: [docs/overview.md](docs/overview.md), [docs/architecture.md](docs/ar
 | Prerequisite CRDs (Gateway API, prometheus-operator) | `./bootstrap.sh apply` |
 | Host, kubeadm, Calico | Ansible repository `homelab-ansible` (see docs/runbooks/node.md) |
 | First install / full recovery of Argo CD | `./bootstrap.sh apply` or `./bootstrap.sh apply --takeover` |
+| Image bumps of our own images (`ghcr.io/staffops/**`, `personalaigent/**`, `staffops-mentoring/**`) | Renovate opens **and auto-merges** the PR (`renovate.json5`, owner decision 2026-11-19). These merges are authorized: do not treat them as a rule-2 violation or revert them. Rollback = revert **plus** a temporary pin in `renovate.json5` (see the comment on the automerge rule) |
 
 ## Hard rules
 
