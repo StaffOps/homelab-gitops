@@ -94,7 +94,7 @@
           templates:
               - name: build
                 container:
-                    image: ghcr.io/staffops/backstage-platform-techdocs:v0.1.5@sha256:230b0bc67fdaca4297de8f8494b5c3a71a9f6a340bbef8ca0c952d67ff545e89
+                    image: ghcr.io/staffops/backstage-platform-techdocs:v0.1.6@sha256:60507f5d5b6a6a09b2eabaf457e919e43cb1d7367c45183f5d9d08b311970a7a
                     command: [bash, -c]
                     args:
                         - |
