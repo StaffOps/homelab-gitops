@@ -45,6 +45,10 @@
                   - name: mcp
                     image: {{ index .Values "mcp-servers-raw" "kubernetesMcpImage" }}
                     args: [--config, /etc/mcp/config.toml]
+                    env:
+                        # its OTel SDK otherwise reports service_name="unknown_service:kubernetes-mcp-server"
+                        - name: OTEL_SERVICE_NAME
+                          value: kubernetes-mcp
                     ports:
                         - name: http
                           containerPort: 8080

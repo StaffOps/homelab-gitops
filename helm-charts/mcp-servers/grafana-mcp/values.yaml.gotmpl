@@ -23,6 +23,10 @@ metrics:
     port: 9090
 serviceMonitor:
     enabled: true
+    # its metrics (http_server_request_duration_seconds…) carry no service_name: set it like the OTLP services
+    relabelings:
+        - targetLabel: service_name
+          replacement: grafana-mcp
 resources:
     requests:
         cpu: 10m
