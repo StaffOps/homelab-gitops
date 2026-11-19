@@ -8,7 +8,7 @@
     extends: ["config:recommended", ":semanticCommits"],
     timezone: "America/Sao_Paulo",
     enabledManagers: ["custom.regex"],
-    includePaths: ["helm-charts/backstage/**"],
+    includePaths: ["helm-charts/backstage/**", "helm-charts/argo-workflows/argo-workflows-raw/resources/techdocs-build.yaml"],
     prHourlyLimit: 0,
     prConcurrentLimit: 10,
     labels: ["renovate"],

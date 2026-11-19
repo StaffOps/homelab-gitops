@@ -1,5 +1,5 @@
-# Self-hosted Renovate for this repository (config: renovate.json5): PRs for our own images only, today just Backstage
-# (helm-charts/backstage). Same workflow as StaffOps/homelab-gitops-apps. Runs every 30 minutes and on demand.
+# Self-hosted Renovate for this repository (config: renovate.json5): PRs for our own images only, today Backstage and its TechDocs builder
+# (helm-charts/backstage, techdocs-build.yaml in argo-workflows-raw). Same workflow as StaffOps/homelab-gitops-apps. Runs every 30 minutes and on demand.
 # PRs are opened with the workflow's GITHUB_TOKEN. The private image ghcr.io/staffops/backstage-platform is read with the
 # repository secret RENOVATE_GHCR_TOKEN: a classic PAT with only read:packages, from an account that can pull it.
 name: renovate
