@@ -20,7 +20,7 @@
             description: "image block: registry / repository / tag / digest",
             managerFilePatterns: ["/\\.ya?ml(\\.gotmpl)?$/"],
             matchStrings: [
-                "registry:\\s*(?<registry>[^\\s\"']+)\\s*\\n\\s*repository:\\s*(?<repository>[^\\s\"']+)\\s*\\n\\s*tag:\\s*[\"']?(?<currentValue>[^\\s\"']+)[\"']?\\s*\\n\\s*digest:\\s*(?<currentDigest>sha256:[a-f0-9]{64})",
+                "registry:\\s*(?<registry>[^\\s\"']+)\\s*\\n\\s*repository:\\s*(?<repository>[^\\s\"']+)\\s*\\n\\s*tag:\\s*[\"']?(?<currentValue>[^\\s\"']+)[\"']?\\s*\\n\\s*digest:\\s*[\"']?(?<currentDigest>sha256:[a-f0-9]{64})",
             ],
             depNameTemplate: "{{{registry}}}/{{{repository}}}",
             datasourceTemplate: "docker",
