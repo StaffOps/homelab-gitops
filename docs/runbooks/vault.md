@@ -181,7 +181,7 @@ add an app with a secret, add a row here.
 
 | Path | Keys | Used by | Notes |
 |------|------|---------|-------|
-| `cloudflare` | `api-token` | cert-manager, external-dns | Cluster token from `scripts/cloudflare-setup.sh setup` |
+| `cloudflare` | `api-token` | cert-manager, external-dns (k8s01 and VPS) | Cloudflare **Account** API token `k8s-external-dns-cert-manager` (Manage account → Account API tokens): DNS Write + Zone Read on zone `staffops.space` only, no expiry. An account token, not a user token, so a clean-up of personal tokens cannot delete it (the first one, a user token from `scripts/cloudflare-setup.sh`, was deleted that way on 2026-11-18 and external-dns crash-looped on both clusters). Rotate: create a new account token with the same scope, `vault kv patch secret/homelab/cloudflare api-token=-` from stdin, force-sync ExternalSecret `cloudflare-api-token` in external-dns and cert-manager on both clusters, restart external-dns, delete the old token |
 | `grafana` | `admin-user`, `admin-password` | Grafana | Local break-glass admin |
 | `keycloak` | `admin-user`, `admin-password` | Keycloak | Bootstrap admin, first start only |
 | `keycloak-automation` | `client-secret` | Keycloak realm import Job | [sso.md](sso.md#automation-client-for-the-realm-import) |

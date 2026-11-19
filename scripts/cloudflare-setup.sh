@@ -15,6 +15,8 @@
 #   Account resources: your account; Zone resources: all zones from that account.
 # It is read from $CF_BOOTSTRAP_TOKEN or a hidden prompt — never pass it as an argument.
 #
+# Note: the token this script mints is a USER token (it disappears with the user's personal tokens). The live cluster
+# token is an ACCOUNT token created in the dashboard (docs/runbooks/vault.md, key cloudflare); prefer that for a rotation.
 # The cluster token (DNS Edit + Zone Read on this zone only) is written to $CF_CLUSTER_TOKEN_FILE
 # (default ~/.config/homelab/cloudflare-api-token, mode 600). Once Vault runs, store it with
 #   scripts/vault.sh put cloudflare api-token   (paste the file content at the hidden prompt)
