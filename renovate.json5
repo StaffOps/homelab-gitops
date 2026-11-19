@@ -53,6 +53,9 @@
             minimumReleaseAge: null,
             // Auto-deploy: Renovate merges its own PR (no human step). platformAutomerge stays off because the repo
             // does not enable GitHub auto-merge; ignoreTests because this repo has no status checks to wait for.
+            // ROLLBACK: reverting a bump is not enough - the next run (<=30 min) re-opens and re-merges the newer tag.
+            // Revert AND pin here until a fixed version ships, e.g. a rule for that package with
+            // allowedVersions: "<=v0.1.N" (or enabled: false); remove the pin afterwards.
             automerge: true,
             automergeType: "pr",
             platformAutomerge: false,
