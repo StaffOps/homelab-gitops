@@ -101,8 +101,11 @@ prometheus:
             - exemplar-storage
         exemplars:
             maxSize: 100000
-        retention: 15d
-        retentionSize: 18GB
+        # 45 days for the per-type dashboards (Backstage metrics survey). Sized on 2026-11-19: ~1 GB/day of blocks
+        # (5 GB after 5.5 days, both clusters), so ~45 GB at 45 days; retentionSize caps it first if ingestion grows.
+        # Node disk 234 GB, 52 % free before the change.
+        retention: 45d
+        retentionSize: 50GB
         externalUrl: https://prometheus.{{ .Values.domain }}
         resources:
             requests:
@@ -117,7 +120,9 @@ prometheus:
                     accessModes: [ReadWriteOnce]
                     resources:
                         requests:
-                            storage: 20Gi
+                            # local-path does not enforce the size (the data lives on the node disk); kept above
+                            # retentionSize so the request tells the truth
+                            storage: 60Gi
 alertmanager:
     {{- if .Values.alerting.openclaw.enabled }}
     # alerting.openclaw (environment.yaml): VPS alerts to OpenClaw. Lists replace the chart's, so its default route
@@ -301,6 +306,8 @@ kube-state-metrics:
     # kube_node_labels only exists for allow-listed labels; the CloudNativePG dashboard joins pods to the node zone
     metricLabelsAllowlist:
         - nodes=[topology.kubernetes.io/zone]
+        # kube_pod_labels: select a workload by release (Backstage annotation backstage.io/kubernetes-label-selector)
+        - pods=[app.kubernetes.io/instance,app.kubernetes.io/name]
     # Scrape its own telemetry port (8081: kube_state_metrics_list_total/watch_total): without it the mixin alerts
     # KubeStateMetricsListErrors/WatchErrors can never fire (Cluster add-ons dashboard uses the same series)
     selfMonitor:

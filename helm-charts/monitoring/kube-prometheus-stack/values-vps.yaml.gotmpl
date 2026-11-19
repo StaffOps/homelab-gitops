@@ -39,7 +39,9 @@ kube-state-metrics:
             enabled: false
     selfMonitor:
         enabled: false
-    metricLabelsAllowlist: []
+    # kube_pod_labels: select a workload by release (Backstage annotation backstage.io/kubernetes-label-selector)
+    metricLabelsAllowlist:
+        - pods=[app.kubernetes.io/instance,app.kubernetes.io/name]
     resources:
         requests:
             cpu: 10m
