@@ -105,8 +105,15 @@ case "$cmd" in
                 bound_service_account_names=vault-reader \
                 bound_service_account_namespace_selector='{\"matchLabels\":{\"staffops.space/tier\":\"apps\"}}' \
                 policies=apps-read ttl=1h >/dev/null
+            # Backstage Vault card: secret NAMES under $PREFIX/apps/* only (list on metadata, nothing on data). Any
+            # signed-in Backstage user can list what this policy allows. The plugin logs in on every request: batch, 5 min.
+            printf '%s\n' 'path \"$KV_MOUNT/metadata/$PREFIX/apps/*\" { capabilities = [\"list\"] }' |
+                vault policy write backstage-vault-plugin - >/dev/null
+            vault write auth/kubernetes/role/backstage-vault-plugin \
+                bound_service_account_names=backstage bound_service_account_namespaces=backstage \
+                token_policies=backstage-vault-plugin token_type=batch token_ttl=5m token_max_ttl=5m >/dev/null
         "
-        ok "KV v2 at $KV_MOUNT/, Kubernetes auth, policies external-secrets-read + apps-read, roles external-secrets + apps"
+        ok "KV v2 at $KV_MOUNT/, Kubernetes auth, policies external-secrets-read + apps-read + backstage-vault-plugin, roles external-secrets + apps + backstage-vault-plugin"
         ;;
     configure-vps)
         # Second Kubernetes auth mount, for the VPS k3s (ADR 0008). Vault validates the VPS ServiceAccount tokens

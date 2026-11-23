@@ -26,6 +26,9 @@ args:
     # static external-access token of the TechDocs builder (subject techdocs-builder, catalog.entity.read only)
     - --config
     - app-config.techdocs-builder.yaml
+    # Vault card: lists secret names under homelab/apps/* (Vault role/policy backstage-vault-plugin, scripts/vault.sh)
+    - --config
+    - app-config.vault.yaml
 ports:
     - name: http
       containerPort: 7007
@@ -166,10 +169,11 @@ tmpVolume:
     enabled: true
     mountPath: /tmp
     sizeLimit: 2Gi
-# The pod's own ServiceAccount never talks to the API (Kubernetes plugin uses the backstage-reader token)
+# The pod's own ServiceAccount has no RBAC: the Kubernetes plugin uses the backstage-reader token. Its token is mounted
+# only to prove identity to Vault (Kubernetes auth role backstage-vault-plugin, list on secret names).
 serviceAccount:
     create: true
-    automount: false
+    automount: true
 service:
     enabled: true
 httpRoute:
