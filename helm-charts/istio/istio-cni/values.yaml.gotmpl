@@ -1,5 +1,9 @@
 global:
     logAsJson: true
+# Retry the ambient check of a pod when it errors (e.g. its netns not ready yet after a CNI/node restart, 2026-11-20)
+# instead of giving up and leaving it out of ztunnel. AMBIENT_RECONCILE_POD_RULES_ON_STARTUP is already the default.
+ambient:
+    enableAmbientDetectionRetry: true
 excludeNamespaces:
     - kube-system
 resources:

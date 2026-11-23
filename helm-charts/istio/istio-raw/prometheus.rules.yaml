@@ -21,3 +21,32 @@ groups:
                 severity: warning
             annotations:
                 summary: "{{ $value }} xDS responses from istiod were rejected by proxies in 10m — run `istioctl proxy-status` and check istiod logs for the NACK"
+    # Ambient enrolment: istio-cni can fail to re-enrol pods after a CNI/node restart ("can't find netns for pod",
+    # 2026-11-20): the pods keep ambient.istio.io/redirection=enabled, so istiod sends them HBONE, but ztunnel never
+    # got them and connections to :15008 are refused. Fix = restart the pods missing from ztunnel.
+    - name: ambient-enrollment
+      rules:
+          # Derived: Running pods annotated for ambient (kube_pod_annotations, allow-listed in kube-state-metrics) vs
+          # pods ztunnel actually proxies (workload_manager_active_proxy_count). Rollouts close the gap within minutes.
+          - alert: AmbientPodsNotEnrolled
+            expr: |
+                count by (cluster) (
+                    kube_pod_annotations{annotation_ambient_istio_io_redirection="enabled"}
+                    and on (cluster, namespace, pod) (kube_pod_status_phase{phase="Running"} == 1)
+                )
+                - sum by (cluster) (workload_manager_active_proxy_count)
+                > 0
+            for: 15m
+            labels:
+                severity: warning
+            annotations:
+                summary: "{{ $value }} ambient pods in {{ $labels.cluster }} are not enrolled in ztunnel — restart them (compare ztunnel config_dump workloadState with pods annotated ambient.istio.io/redirection=enabled)"
+          # Derived: baseline ~0.1 failed ztunnel connections/s; the 2026-11-20 incident ran at ~7/s (refused HBONE to
+          # pods that were not enrolled).
+          - alert: ZtunnelConnectionFailuresHigh
+            expr: sum by (cluster) (rate(istio_tcp_connections_failed_total{job="istio-system/ztunnel"}[5m])) > 2
+            for: 15m
+            labels:
+                severity: warning
+            annotations:
+                summary: "ztunnel in {{ $labels.cluster }} fails {{ $value | humanize }} connections/s — check ztunnel logs for 'Connection refused' to :15008 and AmbientPodsNotEnrolled"

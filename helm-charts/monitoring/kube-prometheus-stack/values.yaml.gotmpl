@@ -308,6 +308,9 @@ kube-state-metrics:
         - nodes=[topology.kubernetes.io/zone]
         # kube_pod_labels: select a workload by release (Backstage annotation backstage.io/kubernetes-label-selector)
         - pods=[app.kubernetes.io/instance,app.kubernetes.io/name]
+    # kube_pod_annotations: ambient enrolment check (istio-raw rule AmbientPodsNotEnrolled)
+    metricAnnotationsAllowList:
+        - pods=[ambient.istio.io/redirection]
     # Scrape its own telemetry port (8081: kube_state_metrics_list_total/watch_total): without it the mixin alerts
     # KubeStateMetricsListErrors/WatchErrors can never fire (Cluster add-ons dashboard uses the same series)
     selfMonitor:
