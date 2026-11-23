@@ -29,6 +29,10 @@ args:
     # Vault card: lists secret names under homelab/apps/* (Vault role/policy backstage-vault-plugin, scripts/vault.sh)
     - --config
     - app-config.vault.yaml
+    # MCP server for AI agents (read-only agent-tools); after techdocs-builder: restates its externalAccess entry, then
+    # token ai-agents from /run/secrets/backstage-mcp-agents.token (Vault homelab/backstage)
+    - --config
+    - app-config.mcp.yaml
 ports:
     - name: http
       containerPort: 7007
@@ -98,7 +102,7 @@ externalSecrets:
                     grafana.authorization: '{{`Bearer {{ index . "grafana.token" }}`}}'
                     argo-workflows.authorization: '{{`Bearer {{ index . "argo-workflows.token" }}`}}'
         data:
-            {{- range $file, $prop := dict "github-app.pem" "private-key" "argocd.token" "argocd-token" "grafana.token" "grafana-token" "dependency-track.token" "dependency-track-api-key" "k8s01.token" "k8s01-token" "k8s01-ca.crt" "k8s01-ca" "vps.token" "vps-token" "vps-ca.crt" "vps-ca" "AUTH_SESSION_SECRET" "auth-session-secret" "AUTH_OIDC_CLIENT_SECRET" "oidc-client-secret" "TECHDOCS_BUILDER_TOKEN" "techdocs-builder-token" "github-app-client-secret" "github-app-client-secret" }}
+            {{- range $file, $prop := dict "github-app.pem" "private-key" "argocd.token" "argocd-token" "grafana.token" "grafana-token" "dependency-track.token" "dependency-track-api-key" "k8s01.token" "k8s01-token" "k8s01-ca.crt" "k8s01-ca" "vps.token" "vps-token" "vps-ca.crt" "vps-ca" "AUTH_SESSION_SECRET" "auth-session-secret" "AUTH_OIDC_CLIENT_SECRET" "oidc-client-secret" "TECHDOCS_BUILDER_TOKEN" "techdocs-builder-token" "github-app-client-secret" "github-app-client-secret" "backstage-mcp-agents.token" "backstage-mcp-agents.token" }}
             - secretKey: {{ $file }}
               remoteRef:
                   key: {{ $.Values.vault.prefix }}/backstage
@@ -123,7 +127,7 @@ externalSecrets:
         mountPath: /run/secrets
         defaultMode: 288 # 0440
         items:
-            {{- range list "github-app.pem" "github-app-client-secret" "argocd.token" "argocd.authorization" "argo-workflows.token" "argo-workflows.authorization" "grafana.token" "grafana.authorization" "dependency-track.token" "k8s01.token" "k8s01-ca.crt" "vps.token" "vps-ca.crt" }}
+            {{- range list "github-app.pem" "github-app-client-secret" "argocd.token" "argocd.authorization" "argo-workflows.token" "argo-workflows.authorization" "grafana.token" "grafana.authorization" "dependency-track.token" "k8s01.token" "k8s01-ca.crt" "vps.token" "vps-ca.crt" "backstage-mcp-agents.token" }}
             - key: {{ . }}
               path: {{ . }}
             {{- end }}
